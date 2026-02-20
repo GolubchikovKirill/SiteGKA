@@ -1,7 +1,7 @@
-import secrets
 from pydantic import PostgresDsn, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Self
+
+_PLACEHOLDER = "changethis"
 
 
 class Settings(BaseSettings):
@@ -12,19 +12,31 @@ class Settings(BaseSettings):
     )
 
     API_V1_STR: str = "/api/v1"
-    PROJECT_NAME: str = "SiteGKA"
+    PROJECT_NAME: str = "InfraScope"
+    ENVIRONMENT: str = "development"
 
-    SECRET_KEY: str = secrets.token_urlsafe(32)
+    SECRET_KEY: str = _PLACEHOLDER
+
+    @model_validator(mode="after")
+    def validate_secret_key(self) -> "Settings":
+        if self.ENVIRONMENT == "production" and self.SECRET_KEY == _PLACEHOLDER:
+            raise ValueError(
+                "SECRET_KEY must be set to a secure value in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        return self
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
-    FIRST_SUPERUSER_EMAIL: str = "admin@sitegka.com"
+    FIRST_SUPERUSER_EMAIL: str = "admin@infrascope.dev"
     FIRST_SUPERUSER_PASSWORD: str = "changethis"
 
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
-    POSTGRES_DB: str = "sitegka"
+    POSTGRES_DB: str = "infrascope"
+
+    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     @computed_field
     @property

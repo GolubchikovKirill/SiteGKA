@@ -8,7 +8,7 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.core.security import create_access_token
-from app.schemas import Token, UserPublic, UserRegister, Message
+from app.schemas import Token, UserCreate, UserPublic, UserRegister
 
 router = APIRouter(tags=["auth"])
 
@@ -19,19 +19,13 @@ def login_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
     """OAuth2 compatible token login, get an access token for future requests."""
-    user = crud.authenticate(
-        session=session, email=form_data.username, password=form_data.password
-    )
+    user = crud.authenticate(session=session, email=form_data.username, password=form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return Token(
-        access_token=create_access_token(
-            user.id, expires_delta=access_token_expires
-        )
-    )
+    return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
 
 
 @router.post("/register", response_model=UserPublic)
@@ -43,8 +37,6 @@ def register_user(session: SessionDep, user_in: UserRegister):
             status_code=400,
             detail="A user with this email already exists",
         )
-    from app.schemas import UserCreate
-
     user_create = UserCreate(
         email=user_in.email,
         password=user_in.password,

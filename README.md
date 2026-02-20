@@ -1,84 +1,126 @@
-# SiteGKA
+# InfraScope
 
-SaaS-проект на FastAPI + PostgreSQL, построенный по архитектуре [full-stack-fastapi-template](https://github.com/fastapi/full-stack-fastapi-template).
+IT infrastructure monitoring and administration platform. Built with FastAPI, React, PostgreSQL.
 
-## Стек
+## Features
 
-- **FastAPI** — API-фреймворк
-- **SQLModel** — ORM (SQLAlchemy + Pydantic)
-- **PostgreSQL 17** — база данных
-- **Alembic** — миграции
-- **JWT (PyJWT)** — аутентификация
-- **bcrypt** — хеширование паролей
-- **Docker Compose** — контейнеризация БД
+- **Printer Monitoring** — SNMP-based polling of HP, Ricoh, Kyocera and other corporate printers. Track online status and CMYK toner levels across all locations.
+- **User Management** — JWT authentication, role-based access (admin/user).
+- **Extensible** — designed to grow with new monitoring modules (network, servers, etc).
 
-## Быстрый старт
+## Tech Stack
+
+| Layer      | Technology                                                    |
+|------------|---------------------------------------------------------------|
+| Backend    | FastAPI, SQLModel, PostgreSQL, Alembic, SNMP (pysnmp)         |
+| Frontend   | React, TypeScript, Vite, Tailwind CSS, TanStack Query         |
+| Infra      | Docker Compose, Nginx, GitHub Actions CI/CD                   |
+
+## Quick Start
+
+### Full stack (Docker)
 
 ```bash
-# 1. Поднять PostgreSQL
-docker compose up -d
+cp .env.example .env
+# Edit .env — set SECRET_KEY, POSTGRES_PASSWORD, FIRST_SUPERUSER_PASSWORD
 
-# 2. Применить миграции
+docker compose up -d --build
+# App available at http://localhost
+```
+
+### Development
+
+```bash
+# 1. Start PostgreSQL
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up db -d
+
+# 2. Backend (port 8000)
+uv sync
 uv run alembic upgrade head
-
-# 3. Запустить сервер
 uv run uvicorn app.main:app --reload
 
-# Swagger UI доступен по адресу:
-# http://localhost:8000/docs
+# 3. Frontend (port 5173, proxies /api → backend)
+cd frontend && npm install && npm run dev
 ```
 
-## Структура проекта
+## Project Structure
 
 ```
-app/
-├── main.py              # Entrypoint FastAPI
-├── models.py            # SQLModel модели (User)
-├── schemas.py           # Pydantic-схемы запросов/ответов
-├── crud.py              # CRUD-операции
-├── initial_data.py      # Seed первого суперюзера
-├── core/
-│   ├── config.py        # Настройки (pydantic-settings)
-│   ├── db.py            # Database engine + init_db
-│   └── security.py      # JWT + bcrypt
-└── api/
-    ├── main.py          # Главный роутер
-    ├── deps.py          # Зависимости (сессия, текущий пользователь)
-    └── routes/
-        ├── auth.py      # /login, /register, /test-token
-        └── users.py     # CRUD пользователей
-alembic/                 # Миграции Alembic
-docker-compose.yml       # PostgreSQL
-.env                     # Переменные окружения (не коммитится)
+├── app/
+│   ├── main.py              # FastAPI entrypoint
+│   ├── models.py            # SQLModel models (User, Printer)
+│   ├── schemas.py           # Pydantic request/response schemas
+│   ├── crud.py              # User CRUD operations
+│   ├── core/
+│   │   ├── config.py        # Settings (pydantic-settings, .env)
+│   │   ├── db.py            # Engine, init_db
+│   │   └── security.py      # JWT + bcrypt
+│   ├── services/
+│   │   └── snmp.py          # Printer SNMP polling
+│   └── api/
+│       ├── deps.py          # Auth dependencies
+│       └── routes/
+│           ├── auth.py      # Register, login
+│           ├── users.py     # User management
+│           └── printers.py  # Printer CRUD + SNMP
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── auth.tsx         # Auth context
+│   │   ├── client.ts        # API client (axios)
+│   │   ├── components/      # Layout, PrinterCard, TonerBar, PrinterForm
+│   │   └── pages/           # Login, Dashboard
+│   ├── Dockerfile           # Multi-stage (Node build → Nginx)
+│   └── nginx.conf           # Serve SPA + proxy API
+├── alembic/                 # Database migrations
+├── scripts/
+│   └── prestart.sh          # Run migrations + seed on startup
+├── Dockerfile               # Backend image (Python 3.14 + uv)
+├── docker-compose.yml       # Production stack
+├── docker-compose.dev.yml   # Dev overrides
+├── .env.example             # Configuration template
+└── .github/workflows/ci.yml # CI/CD pipeline
 ```
 
-## API эндпоинты
+## API Endpoints
 
-| Метод   | Путь                          | Описание                  | Доступ          |
-|---------|-------------------------------|---------------------------|-----------------|
-| POST    | `/api/v1/auth/register`       | Регистрация               | Публичный       |
-| POST    | `/api/v1/auth/login`          | Получение JWT-токена      | Публичный       |
-| POST    | `/api/v1/auth/test-token`     | Проверка токена           | Авторизованный  |
-| GET     | `/api/v1/users/me`            | Текущий пользователь      | Авторизованный  |
-| PATCH   | `/api/v1/users/me`            | Обновить свой профиль     | Авторизованный  |
-| PATCH   | `/api/v1/users/me/password`   | Сменить пароль            | Авторизованный  |
-| GET     | `/api/v1/users/`              | Список пользователей      | Суперюзер       |
-| GET     | `/api/v1/users/{id}`          | Пользователь по ID        | Суперюзер       |
-| PATCH   | `/api/v1/users/{id}`          | Обновить пользователя     | Суперюзер       |
-| DELETE  | `/api/v1/users/{id}`          | Удалить пользователя      | Суперюзер       |
-| GET     | `/health`                     | Healthcheck               | Публичный       |
+### Auth
+| Method | Path                       | Description        | Access     |
+|--------|----------------------------|--------------------|------------|
+| POST   | `/api/v1/auth/register`    | Register           | Public     |
+| POST   | `/api/v1/auth/login`       | Login (get JWT)    | Public     |
+| POST   | `/api/v1/auth/test-token`  | Verify token       | Auth       |
 
-## Переменные окружения
+### Users
+| Method | Path                          | Description        | Access     |
+|--------|-------------------------------|--------------------|------------|
+| GET    | `/api/v1/users/me`            | Current user       | Auth       |
+| PATCH  | `/api/v1/users/me`            | Update profile     | Auth       |
+| PATCH  | `/api/v1/users/me/password`   | Change password    | Auth       |
+| GET    | `/api/v1/users/`              | List users         | Admin      |
+| GET    | `/api/v1/users/{id}`          | User by ID         | Admin      |
+| PATCH  | `/api/v1/users/{id}`          | Update user        | Admin      |
+| DELETE | `/api/v1/users/{id}`          | Delete user        | Admin      |
 
-Задаются в `.env`:
+### Printers
+| Method | Path                              | Description          | Access     |
+|--------|-----------------------------------|----------------------|------------|
+| GET    | `/api/v1/printers/`               | List printers        | Auth       |
+| POST   | `/api/v1/printers/`               | Add printer          | Admin      |
+| GET    | `/api/v1/printers/{id}`           | Printer by ID        | Auth       |
+| PATCH  | `/api/v1/printers/{id}`           | Update printer       | Admin      |
+| DELETE | `/api/v1/printers/{id}`           | Delete printer       | Admin      |
+| POST   | `/api/v1/printers/{id}/poll`      | Poll single printer  | Auth       |
+| POST   | `/api/v1/printers/poll-all`       | Poll all printers    | Auth       |
 
-```
-SECRET_KEY=your-secret-key
-POSTGRES_SERVER=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=sitegka
-FIRST_SUPERUSER_EMAIL=admin@sitegka.com
-FIRST_SUPERUSER_PASSWORD=changethis
-```
+## CI/CD
+
+GitHub Actions pipeline on every push/PR to `main`:
+1. **Backend Lint** — Ruff check + format
+2. **Backend Test** — Pytest against PostgreSQL service
+3. **Frontend Build** — TypeScript check + Vite production build
+4. **Docker Build** — Build backend + frontend images (on push to main)
+
+## License
+
+Private / Proprietary

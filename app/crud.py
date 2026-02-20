@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
@@ -33,7 +33,7 @@ def update_user(*, session: Session, db_user: User, user_in: UserUpdate) -> User
     user_data = user_in.model_dump(exclude_unset=True)
     if "password" in user_data:
         user_data["hashed_password"] = get_password_hash(user_data.pop("password"))
-    db_user.updated_at = datetime.now(timezone.utc)
+    db_user.updated_at = datetime.now(UTC)
     db_user.sqlmodel_update(user_data)
     session.add(db_user)
     session.commit()

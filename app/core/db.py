@@ -11,9 +11,7 @@ def init_db(session: Session) -> None:
     from app.core.security import get_password_hash
     from app.models import User
 
-    user = session.exec(
-        select(User).where(User.email == settings.FIRST_SUPERUSER_EMAIL)
-    ).first()
+    user = session.exec(select(User).where(User.email == settings.FIRST_SUPERUSER_EMAIL)).first()
 
     if not user:
         user = User(

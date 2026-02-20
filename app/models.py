@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlmodel import Field, SQLModel
 
@@ -11,5 +11,25 @@ class User(SQLModel, table=True):
     full_name: str | None = Field(default=None, max_length=255)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = Field(default=None)
+
+
+class Printer(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    store_name: str = Field(max_length=255, index=True)
+    model: str = Field(max_length=255)
+    ip_address: str = Field(max_length=45, unique=True, index=True)
+    snmp_community: str = Field(default="public", max_length=255)
+
+    # Cached status from last SNMP poll
+    is_online: bool | None = Field(default=None)
+    status: str | None = Field(default=None, max_length=50)
+    toner_black: int | None = Field(default=None)
+    toner_cyan: int | None = Field(default=None)
+    toner_magenta: int | None = Field(default=None)
+    toner_yellow: int | None = Field(default=None)
+    last_polled_at: datetime | None = Field(default=None)
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = Field(default=None)

@@ -1,15 +1,14 @@
-# Python-generated files
+# Python
 __pycache__/
-*.py[oc]
+*.py[cod]
+*.pyo
 build/
 dist/
 wheels/
 *.egg-info
-
-# Virtual environments
 .venv
 
-# Environment variables
+# Environment
 .env
 
 # IDE
@@ -17,3 +16,15 @@ wheels/
 .vscode/
 *.swp
 *.swo
+.DS_Store
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Testing / Linting
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage

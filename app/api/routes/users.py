@@ -9,11 +9,10 @@ from app.models import User
 from app.schemas import (
     Message,
     UpdatePassword,
-    UserCreate,
     UserPublic,
+    UsersPublic,
     UserUpdate,
     UserUpdateMe,
-    UsersPublic,
 )
 
 router = APIRouter(tags=["users"])
@@ -50,9 +49,7 @@ def update_user_me(
     if user_in.email:
         existing_user = crud.get_user_by_email(session=session, email=user_in.email)
         if existing_user and existing_user.id != current_user.id:
-            raise HTTPException(
-                status_code=409, detail="User with this email already exists"
-            )
+            raise HTTPException(status_code=409, detail="User with this email already exists")
     user_data = user_in.model_dump(exclude_unset=True)
     current_user.sqlmodel_update(user_data)
     session.add(current_user)
@@ -110,9 +107,7 @@ def update_user(
     if user_in.email:
         existing_user = crud.get_user_by_email(session=session, email=user_in.email)
         if existing_user and existing_user.id != user_id:
-            raise HTTPException(
-                status_code=409, detail="User with this email already exists"
-            )
+            raise HTTPException(status_code=409, detail="User with this email already exists")
     db_user = crud.update_user(session=session, db_user=db_user, user_in=user_in)
     return db_user
 
@@ -130,9 +125,7 @@ def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user == current_user:
-        raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
-        )
+        raise HTTPException(status_code=403, detail="Super users are not allowed to delete themselves")
     session.delete(user)
     session.commit()
     return Message(message="User deleted successfully")

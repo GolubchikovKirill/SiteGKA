@@ -1,0 +1,184 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw, Plus, Search } from "lucide-react";
+import {
+  getPrinters,
+  pollAllPrinters,
+  pollPrinter,
+  createPrinter,
+  updatePrinter,
+  deletePrinter,
+  type Printer,
+} from "../client";
+import { useAuth } from "../auth";
+import PrinterCard from "../components/PrinterCard";
+import PrinterForm from "../components/PrinterForm";
+
+export default function Dashboard() {
+  const { user } = useAuth();
+  const isSuperuser = user?.is_superuser ?? false;
+  const queryClient = useQueryClient();
+
+  const [search, setSearch] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
+  const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["printers", search],
+    queryFn: () => getPrinters(search || undefined),
+  });
+
+  const pollAllMut = useMutation({
+    mutationFn: pollAllPrinters,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["printers"] }),
+  });
+
+  const pollOneMut = useMutation({
+    mutationFn: pollPrinter,
+    onMutate: (id) => setPollingIds((s) => new Set(s).add(id)),
+    onSettled: (_d, _e, id) => {
+      setPollingIds((s) => { const n = new Set(s); n.delete(id); return n; });
+      queryClient.invalidateQueries({ queryKey: ["printers"] });
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: createPrinter,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["printers"] });
+      setShowForm(false);
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...rest }: { id: string; store_name: string; model: string; ip_address: string; snmp_community?: string }) =>
+      updatePrinter(id, rest),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["printers"] });
+      setEditingPrinter(null);
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: deletePrinter,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["printers"] }),
+  });
+
+  const handleDelete = (id: string) => {
+    if (confirm("Удалить принтер?")) deleteMut.mutate(id);
+  };
+
+  const printers = data?.data ?? [];
+
+  // Summary stats
+  const total = printers.length;
+  const online = printers.filter((p) => p.is_online === true).length;
+  const offline = printers.filter((p) => p.is_online === false).length;
+  const lowToner = printers.filter((p) => {
+    const levels = [p.toner_black, p.toner_cyan, p.toner_magenta, p.toner_yellow].filter((l): l is number => l !== null);
+    return levels.some((l) => l < 15);
+  }).length;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Мониторинг принтеров</h1>
+          <p className="text-sm text-gray-500 mt-1">Состояние картриджей и доступность</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => pollAllMut.mutate()}
+            disabled={pollAllMut.isPending}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition"
+          >
+            <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
+            {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
+          </button>
+          {isSuperuser && (
+            <button
+              onClick={() => { setEditingPrinter(null); setShowForm(true); }}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" />
+        <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" />
+        <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" />
+        <Stat label="Мало тонера" value={lowToner} color="text-amber-700" bg="bg-amber-50" />
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Поиск по магазину..."
+          className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
+      {/* Printer grid */}
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+        </div>
+      ) : printers.length === 0 ? (
+        <div className="text-center py-20 text-gray-400">
+          <p className="text-lg">Нет принтеров</p>
+          <p className="text-sm mt-1">Добавьте первый принтер для мониторинга</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {printers.map((printer) => (
+            <PrinterCard
+              key={printer.id}
+              printer={printer}
+              onPoll={(id) => pollOneMut.mutate(id)}
+              onEdit={(p) => { setEditingPrinter(p); setShowForm(true); }}
+              onDelete={handleDelete}
+              isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
+              isSuperuser={isSuperuser}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Modal form */}
+      {showForm && (
+        <PrinterForm
+          printer={editingPrinter}
+          loading={createMut.isPending || updateMut.isPending}
+          onClose={() => { setShowForm(false); setEditingPrinter(null); }}
+          onSave={(formData) => {
+            if (editingPrinter) {
+              updateMut.mutate({ id: editingPrinter.id, ...formData });
+            } else {
+              createMut.mutate(formData);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
+  return (
+    <div className={`rounded-xl ${bg} px-4 py-3`}>
+      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+      <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+    </div>
+  );
+}
