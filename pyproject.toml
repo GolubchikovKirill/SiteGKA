@@ -4,4 +4,16 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "alembic>=1.14",
+    "asyncpg>=0.30",
+    "bcrypt>=4.2",
+    "fastapi>=0.129.0",
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.7",
+    "pydantic[email]>=2.10",
+    "pyjwt[crypto]>=2.10",
+    "python-multipart>=0.0.18",
+    "sqlmodel>=0.0.22",
+    "uvicorn[standard]>=0.34",
+]
