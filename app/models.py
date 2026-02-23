@@ -39,6 +39,27 @@ class Printer(SQLModel, table=True):
     updated_at: datetime | None = Field(default=None)
 
 
+class NetworkSwitch(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    name: str = Field(max_length=255, index=True)
+    ip_address: str = Field(max_length=45, unique=True, index=True)
+    ssh_username: str = Field(max_length=128, default="admin")
+    ssh_password: str = Field(max_length=255, default="")
+    enable_password: str = Field(max_length=255, default="")
+    ssh_port: int = Field(default=22)
+    ap_vlan: int = Field(default=20)
+
+    model_info: str | None = Field(default=None, max_length=255)
+    ios_version: str | None = Field(default=None, max_length=255)
+    hostname: str | None = Field(default=None, max_length=255)
+    uptime: str | None = Field(default=None, max_length=255)
+    is_online: bool | None = Field(default=None)
+    last_polled_at: datetime | None = Field(default=None)
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = Field(default=None)
+
+
 class MediaPlayer(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     device_type: str = Field(max_length=20, index=True)

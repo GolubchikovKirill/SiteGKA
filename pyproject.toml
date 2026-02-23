@@ -21,6 +21,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "sqlmodel>=0.0.22",
     "uvicorn[standard]>=0.34",
+    "paramiko>=3.5",
 ]
 
 [dependency-groups]

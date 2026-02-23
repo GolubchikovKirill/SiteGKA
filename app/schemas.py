@@ -318,6 +318,106 @@ class ScanResults(BaseModel):
     devices: list[DiscoveredDevice] = []
 
 
+# ── NetworkSwitch schemas ───────────────────────────────────────
+
+
+class NetworkSwitchCreate(BaseModel):
+    name: str
+    ip_address: str
+    ssh_username: str = "admin"
+    ssh_password: str = ""
+    enable_password: str = ""
+    ssh_port: int = 22
+    ap_vlan: int = 20
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v or len(v) > 255:
+            raise ValueError("name must be 1-255 characters")
+        return v
+
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip(cls, v: str) -> str:
+        return _validate_ip(v)
+
+    @field_validator("ssh_port")
+    @classmethod
+    def validate_port(cls, v: int) -> int:
+        if v < 1 or v > 65535:
+            raise ValueError("ssh_port must be 1-65535")
+        return v
+
+    @field_validator("ap_vlan")
+    @classmethod
+    def validate_vlan(cls, v: int) -> int:
+        if v < 1 or v > 4094:
+            raise ValueError("ap_vlan must be 1-4094")
+        return v
+
+
+class NetworkSwitchUpdate(BaseModel):
+    name: str | None = None
+    ip_address: str | None = None
+    ssh_username: str | None = None
+    ssh_password: str | None = None
+    enable_password: str | None = None
+    ssh_port: int | None = None
+    ap_vlan: int | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v or len(v) > 255:
+                raise ValueError("name must be 1-255 characters")
+        return v
+
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip(cls, v: str | None) -> str | None:
+        if v is not None:
+            return _validate_ip(v)
+        return v
+
+
+class NetworkSwitchPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    ip_address: str
+    ssh_username: str
+    ssh_port: int = 22
+    ap_vlan: int = 20
+    model_info: str | None = None
+    ios_version: str | None = None
+    hostname: str | None = None
+    uptime: str | None = None
+    is_online: bool | None = None
+    last_polled_at: datetime | None = None
+    created_at: datetime
+
+
+class NetworkSwitchesPublic(BaseModel):
+    data: list[NetworkSwitchPublic]
+    count: int
+
+
+class AccessPointInfo(BaseModel):
+    mac_address: str
+    port: str
+    vlan: int
+    ip_address: str | None = None
+    cdp_name: str | None = None
+    cdp_platform: str | None = None
+    poe_power: str | None = None
+    poe_status: str | None = None
+
+
 # ── MediaPlayer schemas ─────────────────────────────────────────
 
 

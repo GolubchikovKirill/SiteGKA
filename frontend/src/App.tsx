@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import MediaPlayersPage from "./pages/MediaPlayersPage";
+import SwitchesPage from "./pages/SwitchesPage";
 import UsersPage from "./pages/Users";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -37,6 +38,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/media-players" element={<MediaPlayersPage />} />
+                <Route path="/switches" element={<SwitchesPage />} />
                 <Route
                   path="/users"
                   element={

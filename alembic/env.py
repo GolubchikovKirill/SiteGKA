@@ -7,7 +7,7 @@ from alembic import context
 from app.core.config import settings
 
 # Ensure all models are imported so SQLModel picks up metadata
-from app.models import MediaPlayer, Printer, User  # noqa: F401
+from app.models import MediaPlayer, NetworkSwitch, Printer, User  # noqa: F401
 
 config = context.config
 

@@ -383,3 +383,81 @@ export async function iconbitBulkReplace(file: File) {
   });
   return data as { success: number; failed: number; file: string };
 }
+
+// ── Network Switches ──
+
+export interface NetworkSwitch {
+  id: string;
+  name: string;
+  ip_address: string;
+  ssh_username: string;
+  ssh_port: number;
+  ap_vlan: number;
+  model_info: string | null;
+  ios_version: string | null;
+  hostname: string | null;
+  uptime: string | null;
+  is_online: boolean | null;
+  last_polled_at: string | null;
+  created_at: string;
+}
+
+export interface NetworkSwitchesResponse {
+  data: NetworkSwitch[];
+  count: number;
+}
+
+export interface AccessPoint {
+  mac_address: string;
+  port: string;
+  vlan: number;
+  ip_address: string | null;
+  cdp_name: string | null;
+  cdp_platform: string | null;
+  poe_power: string | null;
+  poe_status: string | null;
+}
+
+export async function getSwitches(name?: string) {
+  const params: Record<string, string> = {};
+  if (name) params.name = name;
+  const { data } = await api.get<NetworkSwitchesResponse>("/switches/", { params });
+  return data;
+}
+
+export async function createSwitch(sw: {
+  name: string;
+  ip_address: string;
+  ssh_username: string;
+  ssh_password: string;
+  enable_password: string;
+  ssh_port: number;
+  ap_vlan: number;
+}) {
+  const { data } = await api.post<NetworkSwitch>("/switches/", sw);
+  return data;
+}
+
+export async function updateSwitch(id: string, sw: Record<string, unknown>) {
+  const { data } = await api.patch<NetworkSwitch>(`/switches/${id}`, sw);
+  return data;
+}
+
+export async function deleteSwitch(id: string) {
+  await api.delete(`/switches/${id}`);
+}
+
+export async function pollSwitch(id: string) {
+  const { data } = await api.post<NetworkSwitch>(`/switches/${id}/poll`);
+  return data;
+}
+
+export async function getSwitchAPs(id: string) {
+  const { data } = await api.get<AccessPoint[]>(`/switches/${id}/access-points`);
+  return data;
+}
+
+export async function rebootAP(switchId: string, iface: string, method: string = "poe") {
+  const { data } = await api.post(`/switches/${switchId}/reboot-ap`, { interface: iface, method });
+  return data;
+}
