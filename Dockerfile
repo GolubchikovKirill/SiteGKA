@@ -28,7 +28,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1
 
 COPY scripts/prestart.sh /app/scripts/prestart.sh
-RUN chmod +x /app/scripts/prestart.sh
+RUN sed -i 's/\r$//' /app/scripts/prestart.sh && chmod +x /app/scripts/prestart.sh
 
 USER app
 
