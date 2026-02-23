@@ -78,6 +78,7 @@ def _validate_ip(v: str) -> str:
 
 
 class PrinterCreate(BaseModel):
+    printer_type: str = "laser"
     store_name: str
     model: str
     ip_address: str
@@ -87,6 +88,13 @@ class PrinterCreate(BaseModel):
     @classmethod
     def validate_ip(cls, v: str) -> str:
         return _validate_ip(v)
+
+    @field_validator("printer_type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        if v not in ("laser", "label"):
+            raise ValueError("printer_type must be 'laser' or 'label'")
+        return v
 
 
 class PrinterUpdate(BaseModel):
@@ -107,6 +115,7 @@ class PrinterPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    printer_type: str = "laser"
     store_name: str
     model: str
     ip_address: str

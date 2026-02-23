@@ -1,18 +1,20 @@
 import { useState, type FormEvent } from "react";
 import { X, AlertCircle } from "lucide-react";
-import type { Printer } from "../client";
+import type { Printer, PrinterType } from "../client";
 
 interface Props {
   printer?: Printer | null;
+  printerType: PrinterType;
   onSave: (data: { store_name: string; model: string; ip_address: string; snmp_community: string }) => void;
   onClose: () => void;
   loading: boolean;
   error?: string | null;
 }
 
-export default function PrinterForm({ printer, onSave, onClose, loading, error }: Props) {
+export default function PrinterForm({ printer, printerType, onSave, onClose, loading, error }: Props) {
+  const isLabel = printerType === "label";
   const [storeName, setStoreName] = useState(printer?.store_name ?? "");
-  const [model, setModel] = useState(printer?.model ?? "");
+  const [model, setModel] = useState(printer?.model ?? (isLabel ? "Zebra ZDesigner GK420t" : ""));
   const [ipAddress, setIpAddress] = useState(printer?.ip_address ?? "");
   const [community, setCommunity] = useState("public");
 
@@ -26,13 +28,15 @@ export default function PrinterForm({ printer, onSave, onClose, loading, error }
     });
   };
 
+  const title = printer
+    ? isLabel ? "Редактировать принтер этикеток" : "Редактировать принтер"
+    : isLabel ? "Добавить принтер этикеток" : "Добавить принтер";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {printer ? "Редактировать принтер" : "Добавить принтер"}
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 transition">
             <X className="h-5 w-5 text-gray-500" />
           </button>
@@ -53,7 +57,7 @@ export default function PrinterForm({ printer, onSave, onClose, loading, error }
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Магазин №1"
+              placeholder="A1"
             />
           </div>
 
@@ -64,7 +68,7 @@ export default function PrinterForm({ printer, onSave, onClose, loading, error }
               value={model}
               onChange={(e) => setModel(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="HP LaserJet M404dn"
+              placeholder={isLabel ? "Zebra ZDesigner GK420t" : "HP LaserJet M404dn"}
             />
           </div>
 
@@ -81,15 +85,17 @@ export default function PrinterForm({ printer, onSave, onClose, loading, error }
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">SNMP Community</label>
-            <input
-              value={community}
-              onChange={(e) => setCommunity(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="public"
-            />
-          </div>
+          {!isLabel && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">SNMP Community</label>
+              <input
+                value={community}
+                onChange={(e) => setCommunity(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="public"
+              />
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <button

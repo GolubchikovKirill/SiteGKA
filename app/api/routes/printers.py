@@ -15,6 +15,7 @@ from app.schemas import (
     PrintersPublic,
     PrinterUpdate,
 )
+from app.services.ping import check_port
 from app.services.snmp import poll_printer
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["printers"])
 
 MAX_POLL_WORKERS = 20
+
+# Cyrillic ↔ Latin lookalikes for smart search
+_CYR_TO_LAT = str.maketrans("АВЕКМНОРСТХавекмнорстх", "ABEKMHOPCTXabekmhopctx")
+
+
+def _normalize(text: str) -> str:
+    return text.translate(_CYR_TO_LAT)
+
+
+def _search_filter(column, query: str):
+    """Build OR filter matching both original and normalized text."""
+    normalized = _normalize(query)
+    from sqlalchemy import or_, func as sa_func
+    return or_(
+        sa_func.translate(column, "АВЕКМНОРСТХаверкмнорстх", "ABEKMHOPCTXabekmhopctx").ilike(f"%{normalized}%"),
+        column.ilike(f"%{query}%"),
+    )
 
 
 @router.get("/", response_model=PrintersPublic)
@@ -31,12 +49,14 @@ def read_printers(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, le=500),
     store_name: str | None = None,
+    printer_type: str = Query(default="laser"),
 ) -> PrintersPublic:
-    statement = select(Printer)
-    count_stmt = select(func.count()).select_from(Printer)
+    statement = select(Printer).where(Printer.printer_type == printer_type)
+    count_stmt = select(func.count()).select_from(Printer).where(Printer.printer_type == printer_type)
     if store_name:
-        statement = statement.where(Printer.store_name.ilike(f"%{store_name}%"))
-        count_stmt = count_stmt.where(Printer.store_name.ilike(f"%{store_name}%"))
+        flt = _search_filter(Printer.store_name, store_name)
+        statement = statement.where(flt)
+        count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     printers = session.exec(statement.offset(skip).limit(limit).order_by(Printer.store_name)).all()
     return PrintersPublic(data=printers, count=count)
@@ -95,19 +115,39 @@ def delete_printer(session: SessionDep, printer_id: uuid.UUID) -> Message:
     return Message(message="Printer deleted")
 
 
+def _poll_one(printer: Printer) -> tuple[str, object | None]:
+    """Poll a single printer using the appropriate method for its type."""
+    ip = printer.ip_address
+    try:
+        if printer.printer_type == "label":
+            online = check_port(ip)
+            return ip, {"is_online": online}
+        else:
+            return ip, poll_printer(ip, printer.snmp_community)
+    except Exception as e:
+        logger.warning("Poll failed for %s: %s", ip, e)
+        return ip, None
+
+
 @router.post("/{printer_id}/poll", response_model=PrinterPublic)
 def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Printer:
-    """Poll a single printer via SNMP and update its cached status."""
+    """Poll a single printer and update its cached status."""
     printer = session.get(Printer, printer_id)
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
-    result = poll_printer(printer.ip_address, printer.snmp_community)
-    printer.is_online = result.is_online
-    printer.status = result.status
-    printer.toner_black = result.toner_black
-    printer.toner_cyan = result.toner_cyan
-    printer.toner_magenta = result.toner_magenta
-    printer.toner_yellow = result.toner_yellow
+
+    if printer.printer_type == "label":
+        printer.is_online = check_port(printer.ip_address)
+        printer.status = "online" if printer.is_online else "offline"
+    else:
+        result = poll_printer(printer.ip_address, printer.snmp_community)
+        printer.is_online = result.is_online
+        printer.status = result.status
+        printer.toner_black = result.toner_black
+        printer.toner_cyan = result.toner_cyan
+        printer.toner_magenta = result.toner_magenta
+        printer.toner_yellow = result.toner_yellow
+
     printer.last_polled_at = datetime.now(UTC)
     session.add(printer)
     session.commit()
@@ -116,35 +156,42 @@ def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, current_user
 
 
 @router.post("/poll-all", response_model=PrintersPublic)
-def poll_all_printers(session: SessionDep, current_user: CurrentUser) -> PrintersPublic:
-    """Poll all printers in parallel and update their cached status."""
-    printers = session.exec(select(Printer)).all()
+def poll_all_printers(
+    session: SessionDep,
+    current_user: CurrentUser,
+    printer_type: str = Query(default="laser"),
+) -> PrintersPublic:
+    """Poll all printers of a given type in parallel."""
+    printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
     if not printers:
         return PrintersPublic(data=[], count=0)
 
     printer_map = {p.ip_address: p for p in printers}
 
     with ThreadPoolExecutor(max_workers=min(MAX_POLL_WORKERS, len(printers))) as pool:
-        futures = {pool.submit(poll_printer, p.ip_address, p.snmp_community): p.ip_address for p in printers}
+        futures = {pool.submit(_poll_one, p): p.ip_address for p in printers}
         for future in as_completed(futures):
             ip = futures[future]
             try:
-                result = future.result()
+                _, result = future.result()
             except Exception as e:
-                logger.warning("SNMP poll failed for %s: %s", ip, e)
+                logger.warning("Poll failed for %s: %s", ip, e)
                 result = None
 
             p = printer_map[ip]
-            if result:
+            if result is None:
+                p.is_online = False
+                p.status = "error"
+            elif isinstance(result, dict):
+                p.is_online = result["is_online"]
+                p.status = "online" if p.is_online else "offline"
+            else:
                 p.is_online = result.is_online
                 p.status = result.status
                 p.toner_black = result.toner_black
                 p.toner_cyan = result.toner_cyan
                 p.toner_magenta = result.toner_magenta
                 p.toner_yellow = result.toner_yellow
-            else:
-                p.is_online = False
-                p.status = "error"
             p.last_polled_at = datetime.now(UTC)
             session.add(p)
 

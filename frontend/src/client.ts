@@ -45,8 +45,11 @@ export async function getMe() {
 
 // ── Printers ──
 
+export type PrinterType = "laser" | "label";
+
 export interface Printer {
   id: string;
+  printer_type: PrinterType;
   store_name: string;
   model: string;
   ip_address: string;
@@ -65,13 +68,15 @@ export interface PrintersResponse {
   count: number;
 }
 
-export async function getPrinters(store_name?: string) {
-  const params = store_name ? { store_name } : {};
+export async function getPrinters(store_name?: string, printer_type: PrinterType = "laser") {
+  const params: Record<string, string> = { printer_type };
+  if (store_name) params.store_name = store_name;
   const { data } = await api.get<PrintersResponse>("/printers/", { params });
   return data;
 }
 
 export async function createPrinter(printer: {
+  printer_type?: PrinterType;
   store_name: string;
   model: string;
   ip_address: string;
@@ -95,7 +100,9 @@ export async function pollPrinter(id: string) {
   return data;
 }
 
-export async function pollAllPrinters() {
-  const { data } = await api.post<PrintersResponse>("/printers/poll-all");
+export async function pollAllPrinters(printer_type: PrinterType = "laser") {
+  const { data } = await api.post<PrintersResponse>("/printers/poll-all", null, {
+    params: { printer_type },
+  });
   return data;
 }

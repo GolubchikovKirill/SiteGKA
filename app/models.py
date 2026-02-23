@@ -17,12 +17,13 @@ class User(SQLModel, table=True):
 
 class Printer(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    printer_type: str = Field(default="laser", max_length=20, index=True)
     store_name: str = Field(max_length=255, index=True)
     model: str = Field(max_length=255)
     ip_address: str = Field(max_length=45, unique=True, index=True)
     snmp_community: str = Field(default="public", max_length=255)
 
-    # Cached status from last SNMP poll
+    # Cached status from last SNMP / TCP poll
     is_online: bool | None = Field(default=None)
     status: str | None = Field(default=None, max_length=50)
     toner_black: int | None = Field(default=None)
