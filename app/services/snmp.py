@@ -24,6 +24,7 @@ import asyncio
 import logging
 import re
 import socket
+import http.client
 import urllib.error
 import urllib.request
 import warnings
@@ -545,16 +546,37 @@ def _http_get(ip: str, path: str, timeout: float = _HTTP_TIMEOUT) -> bytes | Non
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "InfraScope/1.0"})
             with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
-                data = resp.read()
-                logger.info("HTTP %s => %d bytes", url, len(data))
-                return data
+                # Read in chunks to handle printers that close connection early
+                chunks = []
+                try:
+                    while True:
+                        chunk = resp.read(4096)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                except http.client.IncompleteRead as e:
+                    if e.partial:
+                        chunks.append(e.partial)
+                data = b"".join(chunks)
+                if data:
+                    logger.info("HTTP %s => %d bytes", url, len(data))
+                    return data
+        except http.client.IncompleteRead as e:
+            if e.partial and len(e.partial) > 500:
+                logger.info("HTTP %s => IncompleteRead, using %d partial bytes", url, len(e.partial))
+                return e.partial
+            logger.warning("HTTP %s => IncompleteRead, only %d bytes", url, len(e.partial) if e.partial else 0)
+            continue
         except urllib.error.HTTPError as e:
             logger.info("HTTP %s => %d %s", url, e.code, e.reason)
             if scheme == "http" and e.code in (301, 302, 308):
                 continue
             break
         except urllib.error.URLError as e:
-            logger.warning("HTTP %s => URLError: %s", url, e.reason)
+            reason = str(e.reason)
+            if "Connection refused" in reason:
+                continue
+            logger.warning("HTTP %s => URLError: %s", url, reason)
             continue
         except Exception as e:
             logger.warning("HTTP %s => %s: %s", url, type(e).__name__, e)
