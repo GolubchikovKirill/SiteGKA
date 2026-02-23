@@ -58,10 +58,28 @@ OID_MARKER_LEVEL      = "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
 OID_MARKER_COLORANT_IDX = "1.3.6.1.2.1.43.11.1.1.3" # prtMarkerSuppliesColorantIndex
 OID_COLORANT_VALUE    = "1.3.6.1.2.1.43.12.1.1.4"   # prtMarkerColorantValue
 
-# RFC 3805 prtMarkerSuppliesType values
-SUPPLY_TYPE_TONER     = 3
-SUPPLY_TYPE_INK       = 4
-SUPPLY_TYPE_DEVELOPER = 7   # liquid developer — consumable like toner
+# RFC 3805 prtMarkerSuppliesType values — consumable types we track
+_CONSUMABLE_SUPPLY_TYPES: frozenset[int] = frozenset({
+    3,   # toner
+    5,   # ink
+    6,   # inkCartridge
+    10,  # developer
+    21,  # tonerCartridge
+})
+# Non-consumable supply types we always skip
+_NON_CONSUMABLE_SUPPLY_TYPES: frozenset[int] = frozenset({
+    4,   # wasteToner
+    8,   # wasteInk
+    9,   # opc (photo conductor)
+    11,  # fuserOil
+    14,  # wasteWax
+    15,  # fuser
+    16,  # coronaWire
+    17,  # fuserOilWick
+    18,  # cleanerUnit
+    19,  # fuserCleaningPad
+    20,  # transferUnit
+})
 
 # ── Brother proprietary OIDs ────────────────────────────────────────────────
 # Returns toner remaining as integer percentage (0-100).
@@ -177,7 +195,13 @@ def _is_toner_supply(description: str, supply_type: int | None) -> bool:
     if any(kw in desc_lower for kw in NON_TONER_KEYWORDS):
         return False
     if supply_type is not None and supply_type != 0:
-        return supply_type in (SUPPLY_TYPE_TONER, SUPPLY_TYPE_INK, SUPPLY_TYPE_DEVELOPER)
+        if supply_type in _NON_CONSUMABLE_SUPPLY_TYPES:
+            return False
+        if supply_type in _CONSUMABLE_SUPPLY_TYPES:
+            return True
+        # Unknown type (1=other, 2=unknown, etc.) — accept if description
+        # doesn't look like a non-consumable
+        return True
     return True
 
 
@@ -282,12 +306,42 @@ async def _get_standard_toners(
 ) -> list[TonerLevel]:
     """Standard Printer MIB (RFC 3805). Works on HP, Ricoh, Kyocera, Canon, Xerox, etc."""
     descriptions = await _snmp_walk(engine, target, comm, OID_MARKER_DESCR)
+
+    # Fallback: if WALK returned nothing, try direct GETs on common indices.
+    # Some HP printers block WALK but respond to individual GETs.
+    if not descriptions:
+        for dev_idx in (1, 2):
+            for sup_idx in range(1, 9):
+                oid = f"{OID_MARKER_DESCR}.{dev_idx}.{sup_idx}"
+                val = await _snmp_get(engine, target, comm, oid)
+                if val and val.strip():
+                    descriptions.append((oid, val))
+            if descriptions:
+                break
+
     if not descriptions:
         return []
 
     types_raw = await _snmp_walk(engine, target, comm, OID_MARKER_TYPE)
     max_raw   = await _snmp_walk(engine, target, comm, OID_MARKER_MAX)
     level_raw = await _snmp_walk(engine, target, comm, OID_MARKER_LEVEL)
+
+    # If WALK worked for descriptions but not for levels, try GET fallback too
+    if descriptions and not level_raw:
+        for oid_d, _ in descriptions:
+            key = _extract_supply_key(oid_d)
+            level_oid = f"{OID_MARKER_LEVEL}.{key}"
+            max_oid = f"{OID_MARKER_MAX}.{key}"
+            type_oid = f"{OID_MARKER_TYPE}.{key}"
+            lv = await _snmp_get(engine, target, comm, level_oid)
+            if lv is not None:
+                level_raw.append((level_oid, lv))
+            mv = await _snmp_get(engine, target, comm, max_oid)
+            if mv is not None:
+                max_raw.append((max_oid, mv))
+            tv = await _snmp_get(engine, target, comm, type_oid)
+            if tv is not None:
+                types_raw.append((type_oid, tv))
 
     # Colorant-based color detection (Ricoh, some Canon/Xerox):
     # prtMarkerSuppliesColorantIndex links supply → colorant index
@@ -322,6 +376,7 @@ async def _get_standard_toners(
             pass
 
         if not _is_toner_supply(desc, supply_type):
+            logger.debug("Skipping non-toner supply: %r (type=%s)", desc, supply_type)
             continue
 
         try:
@@ -365,6 +420,14 @@ async def _get_standard_toners(
             max_capacity=max_val,
             current_level=cur_val,
         ))
+
+    if descriptions and not toners:
+        logger.info(
+            "Found %d supply entries but all filtered out — "
+            "descriptions: %s",
+            len(descriptions),
+            [(d, types_map.get(_extract_supply_key(o))) for o, d in descriptions],
+        )
 
     return toners
 
