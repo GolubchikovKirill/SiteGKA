@@ -130,12 +130,13 @@ COLOR_KEYWORDS: dict[str, str] = {
     "noir":   "black",
     "jaune":  "yellow",
     # Russian
-    "чёрный":   "black",
-    "черный":   "black",
-    "голубой":  "cyan",
-    "пурпурный":"magenta",
-    "жёлтый":  "yellow",
-    "желтый":  "yellow",
+    "чёрный":    "black",
+    "черный":    "black",
+    "голубой":   "cyan",
+    "пурпурный": "magenta",
+    "малиновый": "magenta",
+    "жёлтый":   "yellow",
+    "желтый":   "yellow",
 }
 
 # Words that indicate a supply is NOT toner (drum, maintenance, waste, etc.)
@@ -485,9 +486,17 @@ async def _get_ricoh_toners(
         idx = oid.rsplit(".", 1)[-1]
         desc = descr_map.get(idx, "")
         try:
-            pct = max(0, min(100, int(val)))
+            raw_val = int(val)
         except (ValueError, TypeError):
             continue
+
+        # Ricoh private MIB also uses -3 = "some remaining"
+        if raw_val == -3:
+            pct = -3
+        elif raw_val < 0:
+            pct = -2
+        else:
+            pct = max(0, min(100, raw_val))
 
         color = _detect_color(desc)
         if not color and len(level_raw) == 1:
@@ -498,10 +507,12 @@ async def _get_ricoh_toners(
             color=color,
             level_pct=pct,
             max_capacity=100,
-            current_level=pct,
+            current_level=raw_val if raw_val >= 0 else 0,
         ))
 
-    if ricoh_toners:
+    # Only use Ricoh proprietary data if it has at least one precise level (>= 0)
+    has_precise = any(t.level_pct is not None and t.level_pct >= 0 for t in ricoh_toners)
+    if ricoh_toners and has_precise:
         logger.info(
             "Ricoh proprietary OIDs returned %d toner(s) with precise levels",
             len(ricoh_toners),
@@ -514,15 +525,10 @@ async def _get_ricoh_toners(
 
 _HTTP_TIMEOUT = 5
 
-# HP EWS endpoints that return supply data as XML
-_HP_XML_URLS = [
+# HP EWS endpoints (ordered by reliability)
+_HP_URLS = [
     "/DevMgmt/ConsumableConfigDyn.xml",
-    "/DevMgmt/ConsumableConfigDyn.xml?",
-]
-
-# Ricoh web status endpoint
-_RICOH_XML_URLS = [
-    "/web/guest/en/websys/webArch/getStatus.cgi",
+    "/info_suppliesStatus.html",
 ]
 
 
@@ -607,24 +613,96 @@ def _parse_hp_consumable_xml(data: bytes) -> list[TonerLevel]:
     return toners
 
 
+# Regex: color from GIF filename, then percentage in next <td>
+_HP_HTML_TONER_RE = re.compile(
+    r'<img\s+src="(Black|Cyan|Magenta|Yellow)_Toner\.gif"'
+    r'.*?'
+    r'(\d+)\s*%',
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Fallback: any percentage near a color keyword in the HTML
+_HP_HTML_COLOR_PCT_RE = re.compile(
+    r'(?:'
+    r'(?P<color1>black|cyan|magenta|yellow|'
+    r'[чЧ]ерн\w*|[гГ]олуб\w*|[пП]урпурн\w*|[мМ]алинов\w*|[жЖ]елт\w*)'
+    r'.{1,300}?(?P<pct1>\d{1,3})\s*%'
+    r')',
+    re.IGNORECASE | re.DOTALL,
+)
+
+_HTML_COLOR_MAP: dict[str, str] = {
+    "black": "black", "cyan": "cyan", "magenta": "magenta", "yellow": "yellow",
+    "черн": "black", "голуб": "cyan", "пурпурн": "magenta", "малинов": "magenta", "желт": "yellow",
+}
+
+
+def _parse_hp_supplies_html(data: bytes) -> list[TonerLevel]:
+    """Parse older HP EWS /info_suppliesStatus.html for toner levels."""
+    text = data.decode("utf-8", errors="replace")
+    toners: list[TonerLevel] = []
+    seen_colors: set[str] = set()
+
+    # Primary: match GIF image pattern (most reliable)
+    for m in _HP_HTML_TONER_RE.finditer(text):
+        color = m.group(1).lower()
+        pct = int(m.group(2))
+        if color not in seen_colors:
+            seen_colors.add(color)
+            toners.append(TonerLevel(
+                description=f"{color} cartridge",
+                color=color,
+                level_pct=max(0, min(100, pct)),
+                max_capacity=100,
+                current_level=max(0, min(100, pct)),
+            ))
+
+    if toners:
+        return toners
+
+    # Fallback: regex for color keyword near percentage
+    for m in _HP_HTML_COLOR_PCT_RE.finditer(text):
+        raw_color = m.group("color1").lower()
+        pct = int(m.group("pct1"))
+        if pct > 100:
+            continue
+        color = None
+        for prefix, canonical in _HTML_COLOR_MAP.items():
+            if raw_color.startswith(prefix):
+                color = canonical
+                break
+        if color and color not in seen_colors:
+            seen_colors.add(color)
+            toners.append(TonerLevel(
+                description=f"{color} cartridge",
+                color=color,
+                level_pct=pct,
+                max_capacity=100,
+                current_level=pct,
+            ))
+
+    return toners
+
+
 def _get_toners_via_http(ip: str) -> list[TonerLevel]:
     """Try to scrape toner data from printer's web interface (HP EWS, etc.)."""
-    # Try HP XML endpoints
-    for path in _HP_XML_URLS:
+    for path in _HP_URLS:
         data = _http_get(ip, path)
-        if data:
+        if not data:
+            continue
+
+        # Try XML parser first (newer HP models)
+        if b"<" in data[:100] and (b"ConsumableInfo" in data or b"consumable" in data.lower()):
             toners = _parse_hp_consumable_xml(data)
             if toners:
-                logger.info("%s: got %d toner(s) via HTTP (HP EWS)", ip, len(toners))
+                logger.info("%s: got %d toner(s) via HTTP XML (%s)", ip, len(toners), path)
                 return toners
 
-    # Try generic approach: parse any XML that contains supply-related keywords
-    for path in ("/DevMgmt/ProductUsageDyn.xml",):
-        data = _http_get(ip, path)
-        if data:
-            toners = _parse_hp_consumable_xml(data)
+        # Try HTML parser (older HP models like CM2320, CP1525, CP2025)
+        if b"Toner.gif" in data or b"toner" in data.lower() or b"cartridge" in data.lower():
+            toners = _parse_hp_supplies_html(data)
             if toners:
-                logger.info("%s: got %d toner(s) via HTTP (generic XML)", ip, len(toners))
+                logger.info("%s: got %d toner(s) via HTTP HTML (%s)", ip, len(toners), path)
                 return toners
 
     return []
