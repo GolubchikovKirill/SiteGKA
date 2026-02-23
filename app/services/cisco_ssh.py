@@ -58,10 +58,20 @@ class CiscoSSH:
         self.shell: paramiko.Channel | None = None
 
     def connect(self) -> bool:
-        strategies = [
-            ("password", self._connect_password),
-            ("keyboard-interactive", self._connect_keyboard_interactive),
-        ]
+        allowed = self._query_auth_methods()
+        logger.info("SSH to %s: server allows auth methods: %s", self.ip, allowed)
+
+        strategies: list[tuple[str, callable]] = []
+        if "password" in allowed:
+            strategies.append(("password", self._connect_password))
+        if "keyboard-interactive" in allowed:
+            strategies.append(("keyboard-interactive", self._connect_keyboard_interactive))
+        if not strategies:
+            strategies = [
+                ("password", self._connect_password),
+                ("keyboard-interactive", self._connect_keyboard_interactive),
+            ]
+
         for name, method in strategies:
             logger.info("SSH to %s: trying %s auth", self.ip, name)
             if method():
@@ -69,6 +79,23 @@ class CiscoSSH:
                 return True
             logger.warning("SSH to %s: %s auth failed", self.ip, name)
         return False
+
+    def _query_auth_methods(self) -> list[str]:
+        """Ask the server which auth methods it supports."""
+        try:
+            transport = paramiko.Transport((self.ip, self.port))
+            transport.connect()
+            try:
+                transport.auth_none(self.username)
+            except paramiko.BadAuthenticationType as e:
+                return list(e.allowed_types)
+            except paramiko.AuthenticationException:
+                return ["password", "keyboard-interactive"]
+            finally:
+                transport.close()
+        except Exception as e:
+            logger.debug("SSH auth query to %s failed: %s", self.ip, e)
+        return ["password", "keyboard-interactive"]
 
     def _connect_password(self) -> bool:
         try:
@@ -100,6 +127,7 @@ class CiscoSSH:
             password = self.password
 
             def _ki_handler(_title, _instructions, prompt_list):
+                logger.debug("KI prompts from %s: %s", self.ip, prompt_list)
                 return [password] * len(prompt_list)
 
             transport.auth_interactive(self.username, _ki_handler)
