@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { X } from "lucide-react";
+import { X, AlertCircle } from "lucide-react";
 import type { Printer } from "../client";
 
 interface Props {
@@ -7,9 +7,10 @@ interface Props {
   onSave: (data: { store_name: string; model: string; ip_address: string; snmp_community: string }) => void;
   onClose: () => void;
   loading: boolean;
+  error?: string | null;
 }
 
-export default function PrinterForm({ printer, onSave, onClose, loading }: Props) {
+export default function PrinterForm({ printer, onSave, onClose, loading, error }: Props) {
   const [storeName, setStoreName] = useState(printer?.store_name ?? "");
   const [model, setModel] = useState(printer?.model ?? "");
   const [ipAddress, setIpAddress] = useState(printer?.ip_address ?? "");
@@ -36,6 +37,13 @@ export default function PrinterForm({ printer, onSave, onClose, loading }: Props
             <X className="h-5 w-5 text-gray-500" />
           </button>
         </div>
+
+        {error && (
+          <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">

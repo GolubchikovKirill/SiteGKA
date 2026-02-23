@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [showForm, setShowForm] = useState(false);
   const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
+  const [formError, setFormError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["printers", search],
@@ -43,21 +44,38 @@ export default function Dashboard() {
     },
   });
 
+  const extractError = (err: unknown): string => {
+    if (err && typeof err === "object" && "response" in err) {
+      const resp = (err as { response?: { data?: { detail?: string }; status?: number } }).response;
+      const detail = resp?.data?.detail;
+      if (detail === "Printer with this IP already exists") return "Принтер с таким IP уже существует";
+      if (detail === "Printer with this IP already exists") return detail;
+      if (resp?.status === 409) return "Принтер с таким IP уже существует";
+      if (detail) return detail;
+    }
+    return "Не удалось сохранить принтер";
+  };
+
   const createMut = useMutation({
     mutationFn: createPrinter,
     onSuccess: () => {
+      setFormError(null);
       queryClient.invalidateQueries({ queryKey: ["printers"] });
       setShowForm(false);
     },
+    onError: (err) => setFormError(extractError(err)),
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...rest }: { id: string; store_name: string; model: string; ip_address: string; snmp_community?: string }) =>
       updatePrinter(id, rest),
     onSuccess: () => {
+      setFormError(null);
       queryClient.invalidateQueries({ queryKey: ["printers"] });
       setEditingPrinter(null);
+      setShowForm(false);
     },
+    onError: (err) => setFormError(extractError(err)),
   });
 
   const deleteMut = useMutation({
@@ -76,7 +94,7 @@ export default function Dashboard() {
   const online = printers.filter((p) => p.is_online === true).length;
   const offline = printers.filter((p) => p.is_online === false).length;
   const lowToner = printers.filter((p) => {
-    const levels = [p.toner_black, p.toner_cyan, p.toner_magenta, p.toner_yellow].filter((l): l is number => l !== null);
+    const levels = [p.toner_black, p.toner_cyan, p.toner_magenta, p.toner_yellow].filter((l): l is number => l !== null && l >= 0);
     return levels.some((l) => l < 15);
   }).length;
 
@@ -99,7 +117,7 @@ export default function Dashboard() {
           </button>
           {isSuperuser && (
             <button
-              onClick={() => { setEditingPrinter(null); setShowForm(true); }}
+              onClick={() => { setEditingPrinter(null); setFormError(null); setShowForm(true); }}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
             >
               <Plus className="h-4 w-4" />
@@ -146,7 +164,7 @@ export default function Dashboard() {
               key={printer.id}
               printer={printer}
               onPoll={(id) => pollOneMut.mutate(id)}
-              onEdit={(p) => { setEditingPrinter(p); setShowForm(true); }}
+              onEdit={(p) => { setEditingPrinter(p); setFormError(null); setShowForm(true); }}
               onDelete={handleDelete}
               isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
               isSuperuser={isSuperuser}
@@ -160,8 +178,10 @@ export default function Dashboard() {
         <PrinterForm
           printer={editingPrinter}
           loading={createMut.isPending || updateMut.isPending}
-          onClose={() => { setShowForm(false); setEditingPrinter(null); }}
+          error={formError}
+          onClose={() => { setShowForm(false); setEditingPrinter(null); setFormError(null); }}
           onSave={(formData) => {
+            setFormError(null);
             if (editingPrinter) {
               updateMut.mutate({ id: editingPrinter.id, ...formData });
             } else {

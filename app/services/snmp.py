@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import warnings
 from dataclasses import dataclass, field
 
@@ -35,7 +36,7 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
     SnmpEngine,
     UdpTransportTarget,
 )
-from pysnmp.hlapi.asyncio.cmdgen import getCmd, nextCmd  # noqa: E402
+from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -143,30 +144,45 @@ class PrinterStatus:
     vendor: str | None = None
 
 
+# Regex patterns for cartridge model numbers ending with a color code.
+# Matches: TK-5240K, TN-247BK, W2210A (HP doesn't use this pattern, but others do)
+# The letter must follow a digit to avoid false positives.
+_SUFFIX_COLOR_RE: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\d+bk\b", re.IGNORECASE), "black"),
+    (re.compile(r"\d+k\b", re.IGNORECASE), "black"),
+    (re.compile(r"\d+c\b", re.IGNORECASE), "cyan"),
+    (re.compile(r"\d+m\b", re.IGNORECASE), "magenta"),
+    (re.compile(r"\d+y\b", re.IGNORECASE), "yellow"),
+]
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def _detect_color(description: str) -> str | None:
-    # Pad with spaces for word-boundary matching on short abbreviations
     desc = " " + description.lower() + " "
     for keyword, color in COLOR_KEYWORDS.items():
         if keyword in desc:
+            return color
+    for pattern, color in _SUFFIX_COLOR_RE:
+        if pattern.search(description):
             return color
     return None
 
 
 def _is_toner_supply(description: str, supply_type: int | None) -> bool:
     """Return True if the supply is toner/ink, not a drum or maintenance kit."""
+    desc_lower = description.lower()
+    if any(kw in desc_lower for kw in NON_TONER_KEYWORDS):
+        return False
     if supply_type is not None and supply_type != 0:
         return supply_type in (SUPPLY_TYPE_TONER, SUPPLY_TYPE_INK, SUPPLY_TYPE_DEVELOPER)
-    desc_lower = description.lower()
-    return not any(kw in desc_lower for kw in NON_TONER_KEYWORDS)
+    return True
 
 
 def _detect_vendor(sys_descr: str) -> str | None:
     d = sys_descr.lower()
     if "brother" in d:
         return "brother"
-    if "hewlett" in d or " hp " in d or "laserjet" in d or "officejet" in d:
+    if "hewlett" in d or re.search(r"\bhp\b", d) or "laserjet" in d or "officejet" in d:
         return "hp"
     if "ricoh" in d or "aficio" in d or "savin" in d or "gestetner" in d or "lanier" in d:
         return "ricoh"
@@ -227,7 +243,7 @@ async def _snmp_walk(
     oid: str,
 ) -> list[tuple[str, str]]:
     results: list[tuple[str, str]] = []
-    async for error_indication, error_status, _error_index, var_binds in nextCmd(
+    async for error_indication, error_status, _error_index, var_binds in walkCmd(
         engine, community, target, ContextData(),
         ObjectType(ObjectIdentity(oid)),
         lexicographicMode=False,
@@ -286,8 +302,10 @@ async def _get_standard_toners(
 
         # RFC 3805 §4.4: negative values have special meaning
         # -3 = "some remaining", -2 = "unknown", -1 = "no restriction"
-        if cur_val < 0:
-            pct = None
+        if cur_val == -3:
+            pct = -3
+        elif cur_val < 0:
+            pct = -2
         elif max_val > 0:
             pct = max(0, min(100, round(cur_val / max_val * 100)))
         else:
