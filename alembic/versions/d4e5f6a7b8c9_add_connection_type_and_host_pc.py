@@ -17,11 +17,50 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _drop_unique_on_ip(conn):
+    """Find and drop any unique constraint or unique index on printer.ip_address."""
+    # Try dropping unique constraints by looking them up in pg_constraint
+    result = conn.execute(sa.text("""
+        SELECT con.conname
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        WHERE rel.relname = 'printer'
+          AND con.contype = 'u'
+          AND EXISTS (
+              SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid = rel.oid
+                AND a.attnum = ANY(con.conkey)
+                AND a.attname = 'ip_address'
+          )
+    """))
+    for row in result:
+        conn.execute(sa.text(f'ALTER TABLE printer DROP CONSTRAINT "{row[0]}"'))
+        return
+
+    # Fallback: drop unique indexes on ip_address
+    result = conn.execute(sa.text("""
+        SELECT i.relname
+        FROM pg_index idx
+        JOIN pg_class t ON t.oid = idx.indrelid
+        JOIN pg_class i ON i.oid = idx.indexrelid
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(idx.indkey)
+        WHERE t.relname = 'printer'
+          AND idx.indisunique = true
+          AND a.attname = 'ip_address'
+          AND NOT idx.indisprimary
+    """))
+    for row in result:
+        conn.execute(sa.text(f'DROP INDEX IF EXISTS "{row[0]}"'))
+        return
+
+
 def upgrade() -> None:
     op.add_column('printer', sa.Column('connection_type', sa.String(length=10), nullable=False, server_default='ip'))
     op.add_column('printer', sa.Column('host_pc', sa.String(length=255), nullable=True))
     op.alter_column('printer', 'ip_address', existing_type=sa.String(length=45), nullable=True)
-    op.drop_constraint('printer_ip_address_key', 'printer', type_='unique')
+    conn = op.get_bind()
+    _drop_unique_on_ip(conn)
 
 
 def downgrade() -> None:
