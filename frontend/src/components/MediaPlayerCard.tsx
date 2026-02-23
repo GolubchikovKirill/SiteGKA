@@ -104,34 +104,51 @@ function IconbitControls({ playerId }: { playerId: string }) {
 
   const posStr = fmtTime(ibStatus.position);
   const durStr = fmtTime(ibStatus.duration);
-  const progress = ibStatus.duration && ibStatus.duration > 0 && ibStatus.position != null
-    ? Math.min(100, (ibStatus.position / ibStatus.duration) * 100)
+  const hasProgress = ibStatus.duration != null && ibStatus.duration > 0 && ibStatus.position != null;
+  const progress = hasProgress
+    ? Math.min(100, ((ibStatus.position ?? 0) / (ibStatus.duration ?? 1)) * 100)
     : null;
 
   const stateLabel = ibStatus.state === "paused" ? "На паузе" : null;
+  const isPlaying = ibStatus.is_playing && ibStatus.now_playing;
 
   return (
     <div className="mt-1 space-y-2">
       {/* Now playing */}
       <div className="space-y-1">
         <div className="flex items-center gap-1.5 text-xs">
-          <Volume2 className="h-3 w-3 text-purple-400 shrink-0" />
-          {ibStatus.is_playing && ibStatus.now_playing ? (
-            <span className="text-purple-700 font-medium truncate" title={ibStatus.now_playing}>
-              {ibStatus.now_playing.length > 35 ? ibStatus.now_playing.slice(0, 35) + "..." : ibStatus.now_playing}
+          {isPlaying ? (
+            <div className="flex items-end gap-[2px] h-3 w-3 shrink-0" title="Воспроизводится">
+              <span className="w-[3px] bg-purple-500 rounded-sm animate-eq1" />
+              <span className="w-[3px] bg-purple-500 rounded-sm animate-eq2" />
+              <span className="w-[3px] bg-purple-500 rounded-sm animate-eq3" />
+            </div>
+          ) : (
+            <Volume2 className="h-3 w-3 text-gray-300 shrink-0" />
+          )}
+          {isPlaying ? (
+            <span className="text-purple-700 font-medium truncate" title={ibStatus.now_playing!}>
+              {ibStatus.now_playing!.length > 35 ? ibStatus.now_playing!.slice(0, 35) + "..." : ibStatus.now_playing}
             </span>
           ) : (
             <span className="text-gray-400 italic">Не воспроизводится</span>
           )}
           {stateLabel && <span className="text-[10px] text-amber-600 bg-amber-50 px-1 py-0.5 rounded">{stateLabel}</span>}
         </div>
-        {progress != null && (
+        {/* Progress bar — real progress or animated placeholder */}
+        {isPlaying && (
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+              {progress != null ? (
+                <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+              ) : (
+                <div className="h-full bg-purple-400 rounded-full animate-progress-sweep" />
+              )}
             </div>
-            {posStr && durStr && (
+            {posStr && durStr ? (
               <span className="text-[10px] text-gray-400 shrink-0">{posStr} / {durStr}</span>
+            ) : (
+              <span className="text-[10px] text-purple-400 shrink-0">играет</span>
             )}
           </div>
         )}
