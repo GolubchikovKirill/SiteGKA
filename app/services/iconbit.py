@@ -55,39 +55,59 @@ def _post(url: str, **kwargs) -> httpx.Response | None:
         return None
 
 
+def _parse_now_playing(html: str) -> str | None:
+    """Extract now-playing track from HTML (main page or /now endpoint)."""
+    for pattern in [
+        r"[Сс]ейчас\s+играет[:\s]*<[^>]*>([^<]+)",
+        r"[Nn]ow\s+[Pp]laying[:\s]*<[^>]*>([^<]+)",
+        r"playing[:\s]*<b>(.*?)</b>",
+        r"<b>(.*?)</b>",
+    ]:
+        match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+        if match:
+            track = match.group(1).strip()
+            if track and track.lower() not in ("", "none", "нет", "nothing", "-"):
+                return track
+    clean = re.sub(r"<[^>]+>", "", html).strip()
+    if clean and len(clean) < 200 and clean.lower() not in ("", "none", "нет", "nothing", "-"):
+        parts = clean.split("\n")
+        for part in parts:
+            part = part.strip()
+            if part and "." in part and len(part) > 3:
+                return part
+    return None
+
+
 def get_status(ip: str) -> IconbitStatus:
     """Fetch current playback status and file list."""
     status = IconbitStatus()
     base = _base_url(ip)
 
-    now_resp = _get(f"{base}/now")
-    if now_resp and now_resp.status_code == 200:
-        text = now_resp.text.strip()
-        logger.debug("Iconbit /now raw response for %s: %r", ip, text[:300])
-        # Try <b> tag first, fall back to full body text
-        match = re.search(r"<b>(.*?)</b>", text, re.IGNORECASE | re.DOTALL)
-        track = match.group(1).strip() if match else ""
-        if not track:
-            clean = re.sub(r"<[^>]+>", "", text).strip()
-            if clean:
-                track = clean
-        if track and track.lower() not in ("", "none", "нет", "nothing"):
-            status.now_playing = track
-            status.is_playing = True
-    elif now_resp:
-        logger.warning("Iconbit /now for %s returned status %s", ip, now_resp.status_code)
-
     main_resp = _get(base)
+    main_html = ""
     if main_resp and main_resp.status_code == 200:
-        html = main_resp.text
-        file_matches = re.findall(r'delete\?file=([^"&]+)', html, re.IGNORECASE)
+        main_html = main_resp.text
+        file_matches = re.findall(r'delete\?file=([^"&]+)', main_html, re.IGNORECASE)
         status.files = [f.strip() for f in file_matches if f.strip()]
 
         space_match = re.search(
-            r"(\d+[\.,]?\d*\s*[GMKT]B)\s+available", html, re.IGNORECASE
+            r"(\d+[\.,]?\d*\s*[GMKT]B)\s+available", main_html, re.IGNORECASE
         )
         if space_match:
             status.free_space = space_match.group(1)
+
+    now_resp = _get(f"{base}/now")
+    if now_resp and now_resp.status_code == 200:
+        track = _parse_now_playing(now_resp.text)
+        if track:
+            status.now_playing = track
+            status.is_playing = True
+
+    if not status.now_playing and main_html:
+        track = _parse_now_playing(main_html)
+        if track:
+            status.now_playing = track
+            status.is_playing = True
 
     return status
 
