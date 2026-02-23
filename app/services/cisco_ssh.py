@@ -257,20 +257,21 @@ def get_switch_info(ip: str, username: str, password: str,
 def get_access_points(ip: str, username: str, password: str,
                       enable_password: str = "", port: int = 22,
                       vlan: int = 20) -> list[APInfo]:
-    """Discover access points on the given VLAN."""
+    """Discover access points on the given VLAN using CDP as primary source."""
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
         return []
 
     try:
-        mac_output = ssh.execute(f"show mac address-table vlan {vlan}")
-        aps = _parse_mac_table(mac_output, vlan)
+        cdp_output = ssh.execute("show cdp neighbors detail")
+        aps = _parse_cdp_access_points(cdp_output, vlan)
+        logger.info("CDP found %d access points on %s vlan %d", len(aps), ip, vlan)
 
         if not aps:
             return []
 
-        cdp_output = ssh.execute("show cdp neighbors detail")
-        _enrich_cdp(aps, cdp_output)
+        mac_output = ssh.execute(f"show mac address-table vlan {vlan}")
+        _enrich_mac_from_table(aps, mac_output)
 
         poe_output = ssh.execute("show power inline")
         _enrich_poe(aps, poe_output)
@@ -337,30 +338,75 @@ def poe_cycle_ap(ip: str, username: str, password: str,
         ssh.close()
 
 
-def _parse_mac_table(output: str, vlan: int) -> list[APInfo]:
-    """Parse 'show mac address-table vlan X' output."""
-    aps: list[APInfo] = []
-    seen_macs: set[str] = set()
+_AP_PLATFORM_PATTERNS = re.compile(
+    r"AIR-|[Aa]ironet|[Cc]9120|[Cc]9130|[Cc]9115|[Cc]9105|[Cc]1560"
+    r"|[Cc]isco\s+AP|[Ww]ireless|Trans-Bridge",
+)
 
-    for line in output.split("\n"):
+
+def _parse_cdp_access_points(cdp_output: str, vlan: int) -> list[APInfo]:
+    """Extract only access points from CDP neighbors detail output."""
+    aps: list[APInfo] = []
+    entries = re.split(r"-{5,}", cdp_output)
+
+    for entry in entries:
+        platform_m = re.search(r"Platform:\s*(.+?)(?:,|$)", entry, re.MULTILINE)
+        cap_m = re.search(r"Capabilities:\s*(.+)", entry, re.MULTILINE)
+
+        is_ap = False
+        platform = ""
+        if platform_m:
+            platform = platform_m.group(1).strip()
+            if _AP_PLATFORM_PATTERNS.search(platform):
+                is_ap = True
+        if cap_m:
+            caps = cap_m.group(1).strip()
+            if "Trans-Bridge" in caps:
+                is_ap = True
+
+        if not is_ap:
+            continue
+
+        local_port_m = re.search(r"Interface:\s*(\S+),", entry)
+        name_m = re.search(r"Device ID:\s*(.+)", entry)
+        ip_m = re.search(r"IP address:\s*(\d+\.\d+\.\d+\.\d+)", entry)
+
+        local_port = local_port_m.group(1).strip() if local_port_m else ""
+        cdp_name = name_m.group(1).strip() if name_m else None
+        ap_ip = ip_m.group(1) if ip_m else None
+
+        aps.append(APInfo(
+            mac_address="",
+            port=local_port,
+            vlan=vlan,
+            ip_address=ap_ip,
+            cdp_name=cdp_name,
+            cdp_platform=platform,
+        ))
+
+    return aps
+
+
+def _enrich_mac_from_table(aps: list[APInfo], mac_output: str) -> None:
+    """Fill in MAC addresses for APs from the MAC address table."""
+    port_to_mac: dict[str, str] = {}
+    for line in mac_output.split("\n"):
         m = re.match(
-            r"\s*(\d+)\s+"
+            r"\s*\d+\s+"
             r"([0-9a-fA-F]{4}\.[0-9a-fA-F]{4}\.[0-9a-fA-F]{4})\s+"
             r"\S+\s+"
             r"(\S+)",
             line,
         )
-        if m and int(m.group(1)) == vlan:
-            mac = m.group(2).lower()
-            port_name = m.group(3)
-            if mac not in seen_macs and not port_name.startswith(("Po", "Vl", "CPU")):
-                seen_macs.add(mac)
-                aps.append(APInfo(
-                    mac_address=_format_mac(mac),
-                    port=port_name,
-                    vlan=vlan,
-                ))
-    return aps
+        if m:
+            mac = _format_mac(m.group(1).lower())
+            port_key = _normalize_port(m.group(2))
+            port_to_mac[port_key] = mac
+
+    for ap in aps:
+        port_key = _normalize_port(ap.port)
+        if port_key in port_to_mac:
+            ap.mac_address = port_to_mac[port_key]
 
 
 def _format_mac(cisco_mac: str) -> str:
@@ -369,29 +415,6 @@ def _format_mac(cisco_mac: str) -> str:
     if len(raw) == 12:
         return ":".join(raw[i:i + 2] for i in range(0, 12, 2))
     return cisco_mac
-
-
-def _enrich_cdp(aps: list[APInfo], cdp_output: str) -> None:
-    """Enrich AP list with CDP neighbor info."""
-    entries = re.split(r"-{5,}", cdp_output)
-    cdp_by_port: dict[str, dict] = {}
-
-    for entry in entries:
-        port_m = re.search(r"Interface:\s*(\S+),", entry)
-        name_m = re.search(r"Device ID:\s*(.+)", entry)
-        plat_m = re.search(r"Platform:\s*(.+?)(?:,|$)", entry)
-        if port_m:
-            port_key = _normalize_port(port_m.group(1))
-            cdp_by_port[port_key] = {
-                "name": name_m.group(1).strip() if name_m else None,
-                "platform": plat_m.group(1).strip() if plat_m else None,
-            }
-
-    for ap in aps:
-        port_key = _normalize_port(ap.port)
-        if port_key in cdp_by_port:
-            ap.cdp_name = cdp_by_port[port_key].get("name")
-            ap.cdp_platform = cdp_by_port[port_key].get("platform")
 
 
 def _enrich_poe(aps: list[APInfo], poe_output: str) -> None:
