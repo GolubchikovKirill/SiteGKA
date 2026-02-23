@@ -24,6 +24,7 @@ import asyncio
 import logging
 import re
 import socket
+import urllib.error
 import urllib.request
 import warnings
 import xml.etree.ElementTree as ET
@@ -523,7 +524,7 @@ async def _get_ricoh_toners(
 
 # ── HTTP-based toner scraping (for printers with SNMP disabled) ────────────
 
-_HTTP_TIMEOUT = 5
+_HTTP_TIMEOUT = 8
 
 # HP EWS endpoints (ordered by reliability)
 _HP_URLS = [
@@ -531,19 +532,32 @@ _HP_URLS = [
     "/info_suppliesStatus.html",
 ]
 
+import ssl as _ssl
+
+_SSL_CTX = _ssl.create_default_context()
+_SSL_CTX.check_hostname = False
+_SSL_CTX.verify_mode = _ssl.CERT_NONE
+
 
 def _http_get(ip: str, path: str, timeout: float = _HTTP_TIMEOUT) -> bytes | None:
     for scheme in ("http", "https"):
+        url = f"{scheme}://{ip}{path}"
         try:
-            url = f"{scheme}://{ip}{path}"
             req = urllib.request.Request(url, headers={"User-Agent": "InfraScope/1.0"})
-            import ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-                return resp.read()
-        except Exception:
+            with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
+                data = resp.read()
+                logger.info("HTTP %s => %d bytes", url, len(data))
+                return data
+        except urllib.error.HTTPError as e:
+            logger.info("HTTP %s => %d %s", url, e.code, e.reason)
+            if scheme == "http" and e.code in (301, 302, 308):
+                continue
+            break
+        except urllib.error.URLError as e:
+            logger.warning("HTTP %s => URLError: %s", url, e.reason)
+            continue
+        except Exception as e:
+            logger.warning("HTTP %s => %s: %s", url, type(e).__name__, e)
             continue
     return None
 
@@ -689,6 +703,7 @@ def _get_toners_via_http(ip: str) -> list[TonerLevel]:
     for path in _HP_URLS:
         data = _http_get(ip, path)
         if not data:
+            logger.info("%s: HTTP %s returned no data", ip, path)
             continue
 
         # Try XML parser first (newer HP models)
