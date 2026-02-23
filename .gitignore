@@ -11,8 +11,9 @@ wheels/
 # Environment
 .env
 
-# SSL certificates
-certs/
+# SSL certificates (keep directory, ignore contents)
+certs/*
+!certs/.gitkeep
 
 # IDE
 .idea/
