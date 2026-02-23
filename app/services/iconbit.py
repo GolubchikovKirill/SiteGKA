@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 ICONBIT_PORT = 8081
 TIMEOUT = 8
 
+AUTH_VARIANTS = [("Admin", "Admin"), ("admin", "admin")]
+
 
 @dataclass
 class IconbitStatus:
@@ -37,8 +39,28 @@ def _base_url(ip: str) -> str:
     return f"http://{ip}:{ICONBIT_PORT}"
 
 
-def _auth() -> tuple[str, str]:
-    return ("admin", "admin")
+def _try_get(url: str, **kwargs) -> httpx.Response | None:
+    """Try GET with each auth variant, return first successful response."""
+    for creds in AUTH_VARIANTS:
+        try:
+            resp = httpx.get(url, auth=creds, timeout=TIMEOUT, follow_redirects=True, **kwargs)
+            if resp.status_code != 401:
+                return resp
+        except Exception:
+            continue
+    return None
+
+
+def _try_post(url: str, **kwargs) -> httpx.Response | None:
+    """Try POST with each auth variant, return first successful response."""
+    for creds in AUTH_VARIANTS:
+        try:
+            resp = httpx.post(url, auth=creds, follow_redirects=True, **kwargs)
+            if resp.status_code != 401:
+                return resp
+        except Exception:
+            continue
+    return None
 
 
 def get_status(ip: str) -> IconbitStatus:
@@ -46,116 +68,61 @@ def get_status(ip: str) -> IconbitStatus:
     status = IconbitStatus()
     base = _base_url(ip)
 
-    try:
-        now_resp = httpx.get(
-            f"{base}/now", auth=_auth(), timeout=TIMEOUT, follow_redirects=True
-        )
-        if now_resp.status_code == 200:
-            text = now_resp.text.strip()
-            match = re.search(r"<b>(.*?)</b>", text, re.IGNORECASE | re.DOTALL)
-            if match:
-                track = match.group(1).strip()
-                if track and track.lower() not in ("", "none", "нет"):
-                    status.now_playing = track
-                    status.is_playing = True
-    except Exception as e:
-        logger.debug("Iconbit /now failed for %s: %s", ip, e)
+    now_resp = _try_get(f"{base}/now")
+    if now_resp and now_resp.status_code == 200:
+        text = now_resp.text.strip()
+        match = re.search(r"<b>(.*?)</b>", text, re.IGNORECASE | re.DOTALL)
+        if match:
+            track = match.group(1).strip()
+            if track and track.lower() not in ("", "none", "нет"):
+                status.now_playing = track
+                status.is_playing = True
 
-    try:
-        main_resp = httpx.get(
-            base, auth=_auth(), timeout=TIMEOUT, follow_redirects=True
-        )
-        if main_resp.status_code == 200:
-            html = main_resp.text
-            file_matches = re.findall(
-                r'delete\?file=([^"&]+)', html, re.IGNORECASE
-            )
-            status.files = [f.strip() for f in file_matches if f.strip()]
+    main_resp = _try_get(base)
+    if main_resp and main_resp.status_code == 200:
+        html = main_resp.text
+        file_matches = re.findall(r'delete\?file=([^"&]+)', html, re.IGNORECASE)
+        status.files = [f.strip() for f in file_matches if f.strip()]
 
-            space_match = re.search(
-                r"(\d+[\.,]?\d*\s*[GMKT]B)\s+available", html, re.IGNORECASE
-            )
-            if space_match:
-                status.free_space = space_match.group(1)
-    except Exception as e:
-        logger.debug("Iconbit main page failed for %s: %s", ip, e)
+        space_match = re.search(
+            r"(\d+[\.,]?\d*\s*[GMKT]B)\s+available", html, re.IGNORECASE
+        )
+        if space_match:
+            status.free_space = space_match.group(1)
 
     return status
 
 
 def play(ip: str) -> bool:
-    """Start playback. Returns True on success."""
-    try:
-        resp = httpx.get(
-            f"{_base_url(ip)}/play",
-            auth=_auth(),
-            timeout=TIMEOUT,
-            follow_redirects=True,
-        )
-        return resp.status_code in (200, 302)
-    except Exception as e:
-        logger.warning("Iconbit play failed for %s: %s", ip, e)
-        return False
+    resp = _try_get(f"{_base_url(ip)}/play")
+    return resp is not None and resp.status_code in (200, 302)
 
 
 def stop(ip: str) -> bool:
-    """Stop playback. Returns True on success."""
-    try:
-        resp = httpx.get(
-            f"{_base_url(ip)}/stop",
-            auth=_auth(),
-            timeout=TIMEOUT,
-            follow_redirects=True,
-        )
-        return resp.status_code in (200, 302)
-    except Exception as e:
-        logger.warning("Iconbit stop failed for %s: %s", ip, e)
-        return False
+    resp = _try_get(f"{_base_url(ip)}/stop")
+    return resp is not None and resp.status_code in (200, 302)
 
 
 def play_file(ip: str, filename: str) -> bool:
-    """Play a specific file by name via /playlink."""
-    try:
-        resp = httpx.get(
-            f"{_base_url(ip)}/playlink",
-            params={"link": filename},
-            auth=_auth(),
-            timeout=TIMEOUT,
-            follow_redirects=True,
-        )
-        return resp.status_code in (200, 302)
-    except Exception as e:
-        logger.warning("Iconbit play_file failed for %s: %s", ip, e)
-        return False
+    resp = _try_get(f"{_base_url(ip)}/playlink", params={"link": filename})
+    return resp is not None and resp.status_code in (200, 302)
 
 
 def delete_file(ip: str, filename: str) -> bool:
-    """Delete a file from the device."""
-    try:
-        resp = httpx.get(
-            f"{_base_url(ip)}/delete",
-            params={"file": filename},
-            auth=_auth(),
-            timeout=TIMEOUT,
-            follow_redirects=True,
-        )
-        return resp.status_code in (200, 302)
-    except Exception as e:
-        logger.warning("Iconbit delete_file failed for %s: %s", ip, e)
-        return False
+    resp = _try_get(f"{_base_url(ip)}/delete", params={"file": filename})
+    return resp is not None and resp.status_code in (200, 302)
 
 
 def upload_file(ip: str, filename: str, content: bytes) -> bool:
-    """Upload a media file to the device."""
-    try:
-        resp = httpx.post(
-            f"{_base_url(ip)}/upload",
-            files={"file": (filename, content)},
-            auth=_auth(),
-            timeout=60,
-            follow_redirects=True,
-        )
-        return resp.status_code in (200, 302)
-    except Exception as e:
-        logger.warning("Iconbit upload failed for %s: %s", ip, e)
-        return False
+    resp = _try_post(f"{_base_url(ip)}/upload", files={"file": (filename, content)}, timeout=60)
+    return resp is not None and resp.status_code in (200, 302)
+
+
+def delete_all_files(ip: str) -> bool:
+    """Delete all files from the device."""
+    status = get_status(ip)
+    ok = True
+    for f in status.files:
+        if not delete_file(ip, f):
+            ok = False
+    return ok

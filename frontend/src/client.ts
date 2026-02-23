@@ -365,3 +365,13 @@ export async function iconbitBulkPlayFile(filename: string) {
   const { data } = await api.post("/media-players/iconbit/bulk-play-file", { filename });
   return data as { success: number; failed: number };
 }
+
+export async function iconbitBulkReplace(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post("/media-players/iconbit/bulk-replace", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120_000,
+  });
+  return data as { success: number; failed: number; file: string };
+}

@@ -103,19 +103,18 @@ export default function MediaPlayerForm({ player, onSave, onClose, loading, erro
 
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">
-              {isNettop ? "Имя хоста в сети" : "IP-адрес"}
+              {isNettop ? "IP-адрес или hostname" : "IP-адрес"}
             </label>
             <input
               required
               value={ipAddress}
               onChange={(e) => setIpAddress(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder={isNettop ? "PC-STORE-A1" : "192.168.1.100"}
-              {...(!isNettop && {
-                pattern: "^(\\d{1,3}\\.){3}\\d{1,3}$",
-                title: "Введите корректный IPv4 адрес",
-              })}
+              placeholder={isNettop ? "10.10.98.50" : "192.168.1.100"}
             />
+            {isNettop && (
+              <p className="text-[11px] text-gray-400">IP-адрес надёжнее для Docker-сети</p>
+            )}
           </div>
 
           <div className="space-y-1.5">

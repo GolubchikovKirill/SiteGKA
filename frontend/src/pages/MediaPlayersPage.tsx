@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload } from "lucide-react";
+import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace } from "lucide-react";
 import {
   getMediaPlayers,
   pollAllMediaPlayers,
@@ -11,8 +11,7 @@ import {
   iconbitBulkPlay,
   iconbitBulkStop,
   iconbitBulkUpload,
-  iconbitBulkPlayFile,
-  iconbitBulkDeleteFile,
+  iconbitBulkReplace,
   type MediaPlayer,
   type DeviceType,
 } from "../client";
@@ -42,6 +41,7 @@ export default function MediaPlayersPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
+  const replaceFileRef = useRef<HTMLInputElement>(null);
 
   const deviceTypeParam = activeFilter === "all" ? undefined : activeFilter;
   const showIconbitBulk = activeFilter === "iconbit";
@@ -131,9 +131,25 @@ export default function MediaPlayersPage() {
     },
   });
 
+  const bulkReplaceMut = useMutation({
+    mutationFn: iconbitBulkReplace,
+    onSuccess: (res) => {
+      showBulkResult(res);
+      queryClient.invalidateQueries({ queryKey: ["iconbit-status"] });
+    },
+  });
+
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) bulkUploadMut.mutate(file);
+    e.target.value = "";
+  };
+
+  const handleBulkReplace = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && confirm(`Заменить плейлист на всех Iconbit на "${file.name}"?\nСтарые файлы будут удалены.`)) {
+      bulkReplaceMut.mutate(file);
+    }
     e.target.value = "";
   };
 
@@ -141,7 +157,7 @@ export default function MediaPlayersPage() {
   const total = players.length;
   const online = players.filter((p) => p.is_online === true).length;
   const offline = players.filter((p) => p.is_online === false).length;
-  const bulkBusy = bulkPlayMut.isPending || bulkStopMut.isPending || bulkUploadMut.isPending;
+  const bulkBusy = bulkPlayMut.isPending || bulkStopMut.isPending || bulkUploadMut.isPending || bulkReplaceMut.isPending;
 
   return (
     <div className="space-y-6">
@@ -211,32 +227,42 @@ export default function MediaPlayersPage() {
 
       {/* Iconbit bulk controls */}
       {showIconbitBulk && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-gray-700 mr-1">Все Iconbit:</span>
-          <button
-            onClick={() => bulkPlayMut.mutate()}
-            disabled={bulkBusy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 transition"
-          >
-            <Play className="h-3.5 w-3.5" /> Play все
-          </button>
-          <button
-            onClick={() => bulkStopMut.mutate()}
-            disabled={bulkBusy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-40 transition"
-          >
-            <Square className="h-3.5 w-3.5" /> Stop все
-          </button>
-          <button
-            onClick={() => bulkFileRef.current?.click()}
-            disabled={bulkBusy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-100 disabled:opacity-40 transition"
-          >
-            <Upload className="h-3.5 w-3.5" /> {bulkUploadMut.isPending ? "Загрузка..." : "Загрузить на все"}
-          </button>
-          <input ref={bulkFileRef} type="file" accept="audio/*,video/*" className="hidden" onChange={handleBulkUpload} />
+        <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4 space-y-3">
+          <div className="text-sm font-semibold text-purple-800">Управление всеми Iconbit</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => replaceFileRef.current?.click()}
+              disabled={bulkBusy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-40 transition"
+            >
+              <Replace className="h-4 w-4" /> {bulkReplaceMut.isPending ? "Замена..." : "Заменить плейлист на всех"}
+            </button>
+            <input ref={replaceFileRef} type="file" accept="audio/*,video/*" className="hidden" onChange={handleBulkReplace} />
+            <button
+              onClick={() => bulkPlayMut.mutate()}
+              disabled={bulkBusy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 transition"
+            >
+              <Play className="h-3.5 w-3.5" /> Play все
+            </button>
+            <button
+              onClick={() => bulkStopMut.mutate()}
+              disabled={bulkBusy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-40 transition"
+            >
+              <Square className="h-3.5 w-3.5" /> Stop все
+            </button>
+            <button
+              onClick={() => bulkFileRef.current?.click()}
+              disabled={bulkBusy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-100 disabled:opacity-40 transition"
+            >
+              <Upload className="h-3.5 w-3.5" /> {bulkUploadMut.isPending ? "..." : "Добавить файл на все"}
+            </button>
+            <input ref={bulkFileRef} type="file" accept="audio/*,video/*" className="hidden" onChange={handleBulkUpload} />
+          </div>
           {bulkMsg && (
-            <span className="text-sm text-gray-600 bg-gray-100 rounded-lg px-3 py-1.5">{bulkMsg}</span>
+            <div className="text-sm text-purple-700 bg-purple-100 rounded-lg px-3 py-1.5 w-fit">{bulkMsg}</div>
           )}
         </div>
       )}

@@ -20,6 +20,7 @@ from app.schemas import (
 )
 from app.services.device_poll import poll_device_sync
 from app.services.iconbit import (
+    delete_all_files as iconbit_delete_all,
     delete_file as iconbit_delete_file,
     get_status as iconbit_get_status,
     play as iconbit_play,
@@ -424,3 +425,32 @@ async def iconbit_bulk_play_file(
         ok = await asyncio.to_thread(iconbit_play_file, p.ip_address, filename)
         results.append(ok)
     return {"success": sum(results), "failed": len(results) - sum(results), "file": filename}
+
+
+@router.post("/iconbit/bulk-replace")
+async def iconbit_bulk_replace(
+    session: SessionDep,
+    current_user: CurrentUser,
+    file: UploadFile = ...,
+) -> dict:
+    """Replace playlist on all Iconbit: delete old files, upload new, start playback."""
+    players = _get_all_iconbits(session)
+    if not players:
+        return {"success": 0, "failed": 0}
+
+    content = await file.read()
+    fname = file.filename or "upload.mp3"
+    success = 0
+    failed = 0
+    for p in players:
+        try:
+            await asyncio.to_thread(iconbit_delete_all, p.ip_address)
+            uploaded = await asyncio.to_thread(iconbit_upload_file, p.ip_address, fname, content)
+            if uploaded:
+                await asyncio.to_thread(iconbit_play, p.ip_address)
+                success += 1
+            else:
+                failed += 1
+        except Exception:
+            failed += 1
+    return {"success": success, "failed": failed, "file": fname}
