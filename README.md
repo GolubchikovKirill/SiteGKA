@@ -6,9 +6,11 @@
 
 - [Возможности](#возможности)
 - [Стек технологий](#стек-технологий)
-- [Быстрый старт (Docker)](#быстрый-старт-docker)
+- [Быстрый старт](#быстрый-старт)
+- [Ручная установка](#ручная-установка)
 - [Настройка HTTPS](#настройка-https)
 - [Локальный домен](#локальный-домен)
+- [Безопасность](#безопасность)
 - [Разработка](#разработка)
 - [Переменные окружения](#переменные-окружения)
 - [Настройка SNMP на принтерах](#настройка-snmp-на-принтерах)
@@ -32,55 +34,65 @@
 - **Redis-кеширование** — кеш списков принтеров, результатов сканирования, прогресса сканирования
 - **Управление пользователями** — JWT-аутентификация с поддержкой отзыва токенов (jti + Redis blacklist), роли admin/user
 - **Два типа принтеров** — картриджные (SNMP) и этикетки/Zebra (TCP-порт 9100)
-- **HTTPS** — SSL через mkcert, автоматический редирект HTTP → HTTPS
+- **HTTPS** — автоматические самоподписанные сертификаты или доверенные через mkcert
 - **Локальный домен** — `infrascope.local` вместо localhost
+- **Rate limiting** — защита от брутфорса на эндпоинте логина (5 запросов/минута)
+- **Argon2id** — хеширование паролей по стандарту OWASP
 - **Swagger UI** — интерактивная документация API по адресу `/docs`
 
 ---
 
 ## Стек технологий
 
-| Слой       | Технология                                                              |
-|------------|-------------------------------------------------------------------------|
-| Backend    | Python 3.14, FastAPI, SQLModel, PostgreSQL 17, Alembic, pysnmp-lextudio |
-| Frontend   | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query             |
-| Кеш        | Redis 7 (alpine)                                                        |
-| Инфра      | Docker Compose, Nginx (SSL termination), GitHub Actions CI/CD           |
+| Слой           | Технология                                                              |
+|----------------|-------------------------------------------------------------------------|
+| Backend        | Python 3.14, FastAPI, SQLModel, PostgreSQL 17, Alembic, pysnmp-lextudio |
+| Frontend       | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query             |
+| Кеш            | Redis 7 (alpine)                                                        |
+| Безопасность   | Argon2id, JWT (jti blacklist), slowapi rate limiting                     |
+| Инфра          | Docker Compose, Nginx (SSL termination), GitHub Actions CI/CD           |
 
 ---
 
-## Быстрый старт (Docker)
+## Быстрый старт
+
+После `git clone` достаточно запустить один скрипт — он автоматически создаст `.env` с безопасными паролями, настроит SSL, домен и запустит Docker.
 
 ### Требования
 
 - Docker 24+ и Docker Compose v2
 - Порты **80** и **443** свободны на хосте
 
-### Установка
+### Linux / macOS
 
 ```bash
-# 1. Клонировать репозиторий
 git clone https://github.com/GolubchikovKirill/SiteGKA.git
 cd SiteGKA
-
-# 2. Создать файл окружения
-cp .env.example .env
-
-# 3. Заполнить обязательные значения в .env:
-#    SECRET_KEY — сгенерировать:
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-#    POSTGRES_PASSWORD — надёжный пароль для БД
-#    FIRST_SUPERUSER_PASSWORD — пароль первого администратора
-#    SCAN_SUBNET — подсети для сканера (например: 10.10.98.0/24, 10.10.99.0/24)
-
-# 4. Настроить SSL (см. раздел «Настройка HTTPS»)
-
-# 5. Запустить стек
-docker compose up -d --build
-
-# Приложение доступно на https://localhost (или https://infrascope.local)
-# API документация: https://localhost/docs
+./setup.sh
 ```
+
+### Windows (PowerShell от администратора)
+
+```powershell
+git clone https://github.com/GolubchikovKirill/SiteGKA.git
+cd SiteGKA
+.\setup.ps1
+```
+
+### Что делает скрипт
+
+1. Проверяет, что Docker установлен
+2. Создаёт `.env` с автосгенерированными безопасными паролями (`SECRET_KEY`, `POSTGRES_PASSWORD`, пароль администратора)
+3. Если установлен [mkcert](https://github.com/FiloSottile/mkcert) — создаёт доверенные SSL-сертификаты. Если нет — Nginx автоматически сгенерирует самоподписанные при первом запуске
+4. Настраивает локальный домен `infrascope.local` в файле hosts
+5. Спрашивает подсети для сканера принтеров
+6. Собирает и запускает все Docker-контейнеры
+7. Показывает URL и пароль администратора
+
+После запуска приложение доступно:
+- `https://infrascope.local`
+- `https://localhost`
+- API документация: `https://localhost/docs`
 
 ### Обновление
 
@@ -98,16 +110,44 @@ docker compose down -v       # + удалить данные БД и Redis
 
 ---
 
+## Ручная установка
+
+Если скрипт не подходит, можно настроить вручную:
+
+```bash
+# 1. Клонировать репозиторий
+git clone https://github.com/GolubchikovKirill/SiteGKA.git
+cd SiteGKA
+
+# 2. Создать файл окружения
+cp .env.example .env
+
+# 3. Заполнить обязательные значения в .env:
+#    SECRET_KEY — сгенерировать:
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+#    POSTGRES_PASSWORD — надёжный пароль для БД
+#    FIRST_SUPERUSER_PASSWORD — пароль администратора (мин. 8 символов, буквы + цифры)
+#    SCAN_SUBNET — подсети для сканера (например: 10.10.98.0/24, 10.10.99.0/24)
+
+# 4. (Опционально) Настроить SSL — см. раздел «Настройка HTTPS»
+
+# 5. Запустить
+docker compose up -d --build
+```
+
+> Если SSL-сертификаты не созданы вручную — Nginx автоматически сгенерирует самоподписанные при первом запуске. Браузер покажет предупреждение, но HTTPS будет работать.
+
+---
+
 ## Настройка HTTPS
 
-Приложение использует HTTPS с локально доверенными сертификатами через [mkcert](https://github.com/FiloSottile/mkcert).
+HTTPS работает из коробки — при первом запуске Nginx автоматически генерирует самоподписанные сертификаты. Для доверенных сертификатов (без предупреждений в браузере) используйте [mkcert](https://github.com/FiloSottile/mkcert).
 
 ### macOS
 
 ```bash
 brew install mkcert
 mkcert -install
-mkdir -p certs
 mkcert -cert-file certs/cert.pem -key-file certs/key.pem infrascope.local localhost 127.0.0.1 ::1
 ```
 
@@ -116,7 +156,6 @@ mkcert -cert-file certs/cert.pem -key-file certs/key.pem infrascope.local localh
 ```bash
 sudo apt install mkcert
 mkcert -install
-mkdir -p certs
 mkcert -cert-file certs/cert.pem -key-file certs/key.pem infrascope.local localhost 127.0.0.1 ::1
 ```
 
@@ -125,21 +164,22 @@ mkcert -cert-file certs/cert.pem -key-file certs/key.pem infrascope.local localh
 ```powershell
 choco install mkcert
 mkcert -install
-mkdir certs
-cd certs
-mkcert -cert-file cert.pem -key-file key.pem infrascope.local localhost 127.0.0.1 ::1
-cd ..
+mkcert -cert-file certs/cert.pem -key-file certs/key.pem infrascope.local localhost 127.0.0.1 ::1
 ```
 
-После `mkcert -install` браузер будет доверять сертификатам без предупреждений.
+После создания сертификатов перезапустите контейнеры:
 
-> Папка `certs/` добавлена в `.gitignore` — сертификаты генерируются на каждой машине отдельно.
+```bash
+docker compose restart frontend
+```
+
+> Папка `certs/` включена в `.gitignore` — сертификаты генерируются на каждой машине отдельно.
 
 ---
 
 ## Локальный домен
 
-Вместо `localhost` приложение доступно по адресу `infrascope.local`. Для этого нужно добавить запись в файл hosts.
+Вместо `localhost` приложение доступно по адресу `infrascope.local`. Скрипты `setup.sh` / `setup.ps1` настраивают это автоматически. Для ручной настройки:
 
 ### macOS / Linux
 
@@ -154,6 +194,24 @@ Add-Content C:\Windows\System32\drivers\etc\hosts "127.0.0.1 infrascope.local"
 ```
 
 При развёртывании на сервере в локальной сети — на каждой клиентской машине добавьте `<IP-сервера> infrascope.local` в файл hosts, или пропишите запись в локальном DNS.
+
+---
+
+## Безопасность
+
+| Мера                         | Реализация                                                    |
+|------------------------------|---------------------------------------------------------------|
+| Хеширование паролей          | Argon2id (time_cost=3, memory=64MB, parallelism=4)            |
+| Аутентификация               | JWT с jti для отзыва токенов, blacklist в Redis               |
+| Rate limiting                | 5 запросов/минуту на `/auth/login` (slowapi + Redis)          |
+| Авторизация                  | Роли admin/user, все мутации — admin only                     |
+| Валидация входных данных     | Pydantic: email, IP, длина строк, формат портов/подсетей      |
+| Пароли                       | Мин. 8 символов, буквы + цифры, макс. 128 символов            |
+| JWT payload                  | Только `sub` (user ID), `exp`, `jti` — без чувствительных данных |
+| HTTPS                        | TLS 1.2/1.3, автоматический HTTP → HTTPS редирект             |
+| CORS                         | Whitelist origin из `.env`                                    |
+| Секреты                      | `.env` и `certs/` в `.gitignore`                              |
+| Миграция хешей               | Автоматический rehash bcrypt → Argon2id при логине             |
 
 ---
 
@@ -180,20 +238,20 @@ npm run dev
 
 ## Переменные окружения
 
-Файл `.env` (создаётся из `.env.example`):
+Файл `.env` (создаётся из `.env.example` или автоматически скриптом `setup.sh`/`setup.ps1`):
 
 | Переменная                  | Обязательно | Описание                                                      |
 |-----------------------------|:-----------:|---------------------------------------------------------------|
-| `SECRET_KEY`                | ✅           | JWT-секрет. Генерировать: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `SECRET_KEY`                | ✅           | JWT-секрет (автогенерируется скриптом setup)                  |
 | `ENVIRONMENT`               |             | `production` или `development` (default: `production`)        |
 | `POSTGRES_SERVER`           |             | Хост БД (default: `db`)                                       |
 | `POSTGRES_PORT`             |             | Порт БД (default: `5432`)                                     |
 | `POSTGRES_USER`             |             | Пользователь БД (default: `postgres`)                         |
-| `POSTGRES_PASSWORD`         | ✅           | Пароль БД                                                     |
+| `POSTGRES_PASSWORD`         | ✅           | Пароль БД (автогенерируется скриптом setup)                   |
 | `POSTGRES_DB`               |             | Имя БД (default: `infrascope`)                                |
 | `REDIS_URL`                 |             | URL Redis (default: `redis://redis:6379/0`)                   |
 | `FIRST_SUPERUSER_EMAIL`     |             | Email администратора (default: `admin@infrascope.dev`)        |
-| `FIRST_SUPERUSER_PASSWORD`  | ✅           | Пароль первого администратора                                 |
+| `FIRST_SUPERUSER_PASSWORD`  | ✅           | Пароль первого администратора (автогенерируется скриптом setup)|
 | `DOMAIN`                    |             | Локальный домен (default: `infrascope.local`)                 |
 | `SCAN_SUBNET`               |             | Подсети для сканера, через запятую (например: `10.10.98.0/24, 10.10.99.0/24`) |
 | `SCAN_PORTS`                |             | Порты для сканирования (default: `9100,631,80,443`)           |
@@ -272,15 +330,16 @@ npm run dev
 
 ```
 ├── app/
-│   ├── main.py              # FastAPI entrypoint, lifespan, logging
+│   ├── main.py              # FastAPI entrypoint, lifespan, rate limiting
 │   ├── models.py            # SQLModel: User, Printer (mac_address, mac_status)
-│   ├── schemas.py           # Pydantic: запросы/ответы, ScanRequest, DiscoveredDevice
-│   ├── crud.py              # CRUD операции
+│   ├── schemas.py           # Pydantic: валидация, ScanRequest, DiscoveredDevice
+│   ├── crud.py              # CRUD + auto-rehash паролей
 │   ├── core/
 │   │   ├── config.py        # Настройки (pydantic-settings, DOMAIN, SCAN_SUBNET)
 │   │   ├── db.py            # Engine, init_db
 │   │   ├── redis.py         # Redis-клиент (async)
-│   │   └── security.py      # JWT (jti + Redis blacklist) + bcrypt
+│   │   ├── limiter.py       # Rate limiter (slowapi + Redis)
+│   │   └── security.py      # JWT (jti + Redis blacklist) + Argon2id
 │   ├── services/
 │   │   ├── snmp.py          # SNMP: poll_printer, get_snmp_mac (ifPhysAddress)
 │   │   ├── scanner.py       # Сканер сети: TCP-проба, SNMP-идентификация, ARP
@@ -288,7 +347,7 @@ npm run dev
 │   └── api/
 │       ├── deps.py          # Auth-зависимости FastAPI
 │       └── routes/
-│           ├── auth.py      # Регистрация, логин, logout
+│           ├── auth.py      # Логин (rate limited), logout
 │           ├── users.py     # Управление пользователями
 │           ├── printers.py  # CRUD + poll + MAC-верификация + авто-relocate
 │           └── scanner.py   # Сканер: запуск, прогресс, результаты
@@ -309,12 +368,15 @@ npm run dev
 │   │       ├── Login.tsx           # Страница входа
 │   │       ├── Dashboard.tsx       # Главная: принтеры, статистика
 │   │       └── Users.tsx           # Управление пользователями (admin)
-│   ├── Dockerfile           # Multi-stage: Node build → Nginx
-│   └── nginx.conf           # HTTPS, SPA-роутинг, проксирование /api
+│   ├── Dockerfile              # Multi-stage: Node build → Nginx + auto-SSL
+│   ├── docker-entrypoint.sh    # Автогенерация SSL при отсутствии сертификатов
+│   └── nginx.conf              # HTTPS, SPA-роутинг, проксирование /api
 ├── alembic/                 # Миграции базы данных
-├── certs/                   # SSL-сертификаты (не в git)
+├── certs/                   # SSL-сертификаты (авто или mkcert, не в git)
 ├── scripts/
 │   └── prestart.sh          # Миграции + seed при старте контейнера
+├── setup.sh                 # Скрипт установки для Linux/macOS
+├── setup.ps1                # Скрипт установки для Windows
 ├── Dockerfile               # Backend: Python 3.14 + uv (multi-stage)
 ├── docker-compose.yml       # Production-стек (HTTP + HTTPS)
 ├── docker-compose.prod.yml  # Linux-override: network_mode: host для ARP/MAC
@@ -330,12 +392,11 @@ npm run dev
 
 ### Аутентификация
 
-| Метод  | Путь                        | Описание               | Доступ   |
-|--------|-----------------------------|------------------------|----------|
-| `POST` | `/api/v1/auth/register`     | Регистрация            | Публично |
-| `POST` | `/api/v1/auth/login`        | Вход (получить JWT)    | Публично |
-| `POST` | `/api/v1/auth/logout`       | Выход (отзыв токена)   | Auth     |
-| `POST` | `/api/v1/auth/test-token`   | Проверить токен        | Auth     |
+| Метод  | Путь                        | Описание                      | Доступ   |
+|--------|-----------------------------|-------------------------------|----------|
+| `POST` | `/api/v1/auth/login`        | Вход (rate limited: 5/мин)    | Публично |
+| `POST` | `/api/v1/auth/logout`       | Выход (отзыв токена)          | Auth     |
+| `POST` | `/api/v1/auth/test-token`   | Проверить токен               | Auth     |
 
 ### Пользователи
 
@@ -345,6 +406,7 @@ npm run dev
 | `PATCH`  | `/api/v1/users/me`            | Обновить профиль     | Auth   |
 | `PATCH`  | `/api/v1/users/me/password`   | Сменить пароль       | Auth   |
 | `GET`    | `/api/v1/users/`              | Список пользователей | Admin  |
+| `POST`   | `/api/v1/users/`              | Создать пользователя | Admin  |
 | `GET`    | `/api/v1/users/{id}`          | Пользователь по ID   | Admin  |
 | `PATCH`  | `/api/v1/users/{id}`          | Изменить пользователя| Admin  |
 | `DELETE` | `/api/v1/users/{id}`          | Удалить пользователя | Admin  |
@@ -366,8 +428,11 @@ npm run dev
 | Метод  | Путь                        | Описание                              | Доступ |
 |--------|-----------------------------|---------------------------------------|--------|
 | `POST` | `/api/v1/scanner/scan`      | Запустить сканирование подсети        | Admin  |
-| `GET`  | `/api/v1/scanner/progress`  | Прогресс текущего сканирования        | Auth   |
+| `GET`  | `/api/v1/scanner/status`    | Прогресс текущего сканирования        | Auth   |
 | `GET`  | `/api/v1/scanner/results`   | Результаты последнего сканирования    | Auth   |
+| `POST` | `/api/v1/scanner/add`       | Добавить найденный принтер            | Admin  |
+| `POST` | `/api/v1/scanner/update-ip` | Обновить IP принтера (DHCP)           | Admin  |
+| `GET`  | `/api/v1/scanner/settings`  | Настройки сканера по умолчанию        | Auth   |
 
 ### Система
 
@@ -410,6 +475,7 @@ InfraScope работает на macOS, Linux и Windows через Docker.
 | SNMP MAC (ifPhysAddress) | ✅             | ✅                | ✅                |
 | ARP MAC (из таблицы)     | ⚠️ Docker VM  | ✅ (host network) | ⚠️ Docker VM     |
 | `network_mode: host`     | ❌ не работает | ✅                | ❌ не работает    |
+| Скрипт установки         | `./setup.sh`  | `./setup.sh`     | `.\setup.ps1`    |
 
 > На macOS/Windows Docker Desktop запускает контейнеры внутри VM — ARP таблица хоста недоступна. MAC-адреса определяются через SNMP (работает везде).
 
@@ -458,7 +524,7 @@ GitHub Actions запускается при каждом push/PR в `main`:
 ValueError: SECRET_KEY must be set to a secure value in production
 ```
 
-Сгенерируйте ключ:
+Используйте скрипт `setup.sh` / `setup.ps1` — он автоматически генерирует безопасный ключ. Или вручную:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -466,16 +532,20 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ### HTTPS не работает / предупреждение в браузере
 
-1. Убедитесь, что выполнили `mkcert -install` (требует sudo/admin)
-2. Перезапустите браузер после установки CA
-3. Проверьте, что файлы `certs/cert.pem` и `certs/key.pem` существуют
-4. Без `mkcert -install` HTTPS работает, но браузер покажет предупреждение — его можно пропустить
+1. HTTPS работает из коробки с самоподписанными сертификатами — браузер покажет предупреждение, но можно продолжить
+2. Для доверенных сертификатов установите mkcert (см. [Настройка HTTPS](#настройка-https))
+3. После `mkcert -install` перезапустите браузер
+
+### Ошибка 429 Too Many Requests на логине
+
+Rate limiting — 5 попыток в минуту. Подождите 60 секунд и попробуйте снова.
 
 ### Сканер не находит устройства
 
 1. Проверьте `SCAN_SUBNET` в `.env` — должна совпадать с подсетью принтеров
 2. Формат: CIDR через запятую, например `10.10.98.0/24, 10.10.99.0/24`
-3. Убедитесь, что принтеры доступны по сети из Docker-контейнера
+3. Максимум 10 подсетей, минимальная маска /16
+4. Убедитесь, что принтеры доступны по сети из Docker-контейнера
 
 ### Пересборка и перезапуск
 
