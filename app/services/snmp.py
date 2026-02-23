@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import socket
 import warnings
 from dataclasses import dataclass, field
 
@@ -50,10 +51,12 @@ OID_PRINTER_STATUS_BASE = "1.3.6.1.2.1.25.3.5.1.1"
 # ── Printer MIB (RFC 3805) — marker supply OIDs ────────────────────────────
 # Walk from base WITHOUT device index so we catch all hrDeviceIndex values.
 # Some printers use index 1, others use 2 — walking the base handles both.
-OID_MARKER_DESCR = "1.3.6.1.2.1.43.11.1.1.6"   # prtMarkerSuppliesDescription
-OID_MARKER_TYPE  = "1.3.6.1.2.1.43.11.1.1.5"   # prtMarkerSuppliesType
-OID_MARKER_MAX   = "1.3.6.1.2.1.43.11.1.1.8"   # prtMarkerSuppliesMaxCapacity
-OID_MARKER_LEVEL = "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
+OID_MARKER_DESCR      = "1.3.6.1.2.1.43.11.1.1.6"   # prtMarkerSuppliesDescription
+OID_MARKER_TYPE       = "1.3.6.1.2.1.43.11.1.1.5"   # prtMarkerSuppliesType
+OID_MARKER_MAX        = "1.3.6.1.2.1.43.11.1.1.8"   # prtMarkerSuppliesMaxCapacity
+OID_MARKER_LEVEL      = "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
+OID_MARKER_COLORANT_IDX = "1.3.6.1.2.1.43.11.1.1.3" # prtMarkerSuppliesColorantIndex
+OID_COLORANT_VALUE    = "1.3.6.1.2.1.43.12.1.1.4"   # prtMarkerColorantValue
 
 # RFC 3805 prtMarkerSuppliesType values
 SUPPLY_TYPE_TONER     = 3
@@ -118,8 +121,8 @@ NON_TONER_KEYWORDS: frozenset[str] = frozenset({
     "belt", "transfer", "roller", "cleaner", "filter",
 })
 
-SNMP_TIMEOUT = 3
-SNMP_RETRIES = 1
+SNMP_TIMEOUT = 5
+SNMP_RETRIES = 2
 
 
 @dataclass
@@ -219,6 +222,21 @@ def _extract_supply_key(oid: str) -> str:
 
 # ── SNMP primitives ────────────────────────────────────────────────────────
 
+def _decode_snmp_value(val) -> str:
+    """Decode SNMP value, handling UTF-8 encoded OctetStrings correctly."""
+    if hasattr(val, "asOctets"):
+        raw = val.asOctets()
+        try:
+            return raw.decode("utf-8")
+        except (UnicodeDecodeError, ValueError):
+            pass
+        try:
+            return raw.decode("latin-1")
+        except (UnicodeDecodeError, ValueError):
+            pass
+    return str(val)
+
+
 async def _snmp_get(
     engine: SnmpEngine,
     target: UdpTransportTarget,
@@ -232,7 +250,7 @@ async def _snmp_get(
     if error_indication or error_status:
         return None
     for _oid, val in var_binds:
-        return str(val)
+        return _decode_snmp_value(val)
     return None
 
 
@@ -251,7 +269,7 @@ async def _snmp_walk(
         if error_indication or error_status:
             break
         for oid_result, val in var_binds:
-            results.append((str(oid_result), str(val)))
+            results.append((str(oid_result), _decode_snmp_value(val)))
     return results
 
 
@@ -267,19 +285,35 @@ async def _get_standard_toners(
     if not descriptions:
         return []
 
-    # Fetch type, max, level — correlate by OID key (hrDeviceIndex.supplyIndex)
-    # rather than by list position, which breaks if walks return different counts.
     types_raw = await _snmp_walk(engine, target, comm, OID_MARKER_TYPE)
     max_raw   = await _snmp_walk(engine, target, comm, OID_MARKER_MAX)
     level_raw = await _snmp_walk(engine, target, comm, OID_MARKER_LEVEL)
 
+    # Colorant-based color detection (Ricoh, some Canon/Xerox):
+    # prtMarkerSuppliesColorantIndex links supply → colorant index
+    # prtMarkerColorantValue gives the actual color name ("black", "cyan", etc.)
+    colorant_idx_raw = await _snmp_walk(engine, target, comm, OID_MARKER_COLORANT_IDX)
+    colorant_val_raw = await _snmp_walk(engine, target, comm, OID_COLORANT_VALUE)
+
     types_map = {_extract_supply_key(oid): val for oid, val in types_raw}
     max_map   = {_extract_supply_key(oid): val for oid, val in max_raw}
     level_map = {_extract_supply_key(oid): val for oid, val in level_raw}
+    colorant_idx_map = {_extract_supply_key(oid): val for oid, val in colorant_idx_raw}
+
+    # Build colorant index → color name lookup
+    # OID: .43.12.1.1.4.{deviceIdx}.{colorantIdx} → value is color name
+    colorant_by_idx: dict[str, str] = {}
+    for oid_c, color_name in colorant_val_raw:
+        parts = oid_c.rsplit(".", 2)
+        if len(parts) >= 3:
+            device_idx = parts[-2]
+            colorant_idx = parts[-1]
+            colorant_by_idx[f"{device_idx}.{colorant_idx}"] = color_name.lower().strip()
 
     toners: list[TonerLevel] = []
     for oid_d, desc in descriptions:
         key = _extract_supply_key(oid_d)
+        device_idx = key.split(".")[0] if "." in key else "1"
 
         supply_type: int | None = None
         try:
@@ -300,8 +334,6 @@ async def _get_standard_toners(
         except (ValueError, TypeError):
             cur_val = 0
 
-        # RFC 3805 §4.4: negative values have special meaning
-        # -3 = "some remaining", -2 = "unknown", -1 = "no restriction"
         if cur_val == -3:
             pct = -3
         elif cur_val < 0:
@@ -311,9 +343,24 @@ async def _get_standard_toners(
         else:
             pct = None
 
+        # Color detection: try description first, then colorant OID
+        color = _detect_color(desc)
+        if not color:
+            ci = colorant_idx_map.get(key)
+            if ci:
+                colorant_key = f"{device_idx}.{ci}"
+                colorant_color = colorant_by_idx.get(colorant_key, "")
+                if colorant_color:
+                    color = _detect_color(colorant_color)
+                    if not color and colorant_color in ("black", "cyan", "magenta", "yellow"):
+                        color = colorant_color
+        if not color and len(descriptions) == 1:
+            # Monochrome printer with single supply — assume black
+            color = "black"
+
         toners.append(TonerLevel(
             description=desc,
-            color=_detect_color(desc),
+            color=color,
             level_pct=pct,
             max_capacity=max_val,
             current_level=cur_val,
@@ -351,6 +398,28 @@ async def _get_brother_toners(
     return toners
 
 
+# ── TCP fallback ───────────────────────────────────────────────────────────
+
+_TCP_FALLBACK_PORTS = (80, 443, 9100, 631)
+_TCP_TIMEOUT = 2.0
+
+
+def _tcp_port_open(ip: str, port: int, timeout: float = _TCP_TIMEOUT) -> bool:
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except (OSError, TimeoutError):
+        return False
+
+
+def _tcp_reachable(ip: str) -> bool:
+    """Check if any common printer port is open (HTTP, HTTPS, JetDirect, IPP)."""
+    for port in _TCP_FALLBACK_PORTS:
+        if _tcp_port_open(ip, port):
+            return True
+    return False
+
+
 # ── Main poller ────────────────────────────────────────────────────────────
 
 async def _poll_printer_async(ip_address: str, community: str = "public") -> PrinterStatus:
@@ -363,16 +432,27 @@ async def _poll_printer_async(ip_address: str, community: str = "public") -> Pri
 
     comm = CommunityData(community)
 
-    # Basic reachability: sysDescr (OID present on every SNMP-capable device)
     sys_descr = await _snmp_get(engine, target, comm, OID_SYS_DESCR)
     if sys_descr is None:
-        logger.debug("%s: no SNMP response (offline or wrong community)", ip_address)
+        # SNMP failed — try TCP ports as fallback before marking offline
+        reachable = await asyncio.to_thread(_tcp_reachable, ip_address)
+        if reachable:
+            logger.info(
+                "%s: SNMP not responding but TCP port open — online without toner data",
+                ip_address,
+            )
+            return PrinterStatus(
+                is_online=True,
+                status="online (no SNMP)",
+                sys_description=None,
+                vendor=None,
+            )
+        logger.debug("%s: no SNMP response and no open TCP ports", ip_address)
         return PrinterStatus(is_online=False, status="offline")
 
     vendor = _detect_vendor(sys_descr)
     logger.debug("Polling %s — vendor: %s, descr: %.60s", ip_address, vendor or "unknown", sys_descr)
 
-    # Printer status: walk instead of get to handle any hrDeviceIndex
     status_text = "unknown"
     status_rows = await _snmp_walk(engine, target, comm, OID_PRINTER_STATUS_BASE)
     if status_rows:
