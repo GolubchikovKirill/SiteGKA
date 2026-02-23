@@ -267,6 +267,7 @@ export async function createMediaPlayer(player: {
   name: string;
   model: string;
   ip_address: string;
+  mac_address?: string;
 }) {
   const { data } = await api.post<MediaPlayer>("/media-players/", player);
   return data;
@@ -290,5 +291,29 @@ export async function pollAllMediaPlayers(device_type?: DeviceType) {
   const params: Record<string, string> = {};
   if (device_type) params.device_type = device_type;
   const { data } = await api.post<MediaPlayersResponse>("/media-players/poll-all", null, { params });
+  return data;
+}
+
+// ── Iconbit control ──
+
+export interface IconbitStatus {
+  now_playing: string | null;
+  is_playing: boolean;
+  files: string[];
+  free_space: string | null;
+}
+
+export async function getIconbitStatus(playerId: string) {
+  const { data } = await api.get<IconbitStatus>(`/media-players/${playerId}/iconbit/status`);
+  return data;
+}
+
+export async function iconbitPlay(playerId: string) {
+  const { data } = await api.post(`/media-players/${playerId}/iconbit/play`);
+  return data;
+}
+
+export async function iconbitStop(playerId: string) {
+  const { data } = await api.post(`/media-players/${playerId}/iconbit/stop`);
   return data;
 }

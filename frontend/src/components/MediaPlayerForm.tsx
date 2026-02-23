@@ -4,7 +4,7 @@ import type { MediaPlayer, DeviceType } from "../client";
 
 interface Props {
   player?: MediaPlayer | null;
-  onSave: (data: { device_type: DeviceType; name: string; model: string; ip_address: string }) => void;
+  onSave: (data: { device_type: DeviceType; name: string; model: string; ip_address: string; mac_address?: string }) => void;
   onClose: () => void;
   loading: boolean;
   error?: string | null;
@@ -16,32 +16,23 @@ const DEVICE_TYPES: { value: DeviceType; label: string; icon: typeof Monitor }[]
   { value: "twix", label: "Twix", icon: Music },
 ];
 
-const DEFAULT_MODELS: Record<DeviceType, string> = {
-  nettop: "",
-  iconbit: "Iconbit",
-  twix: "Twix",
-};
-
 export default function MediaPlayerForm({ player, onSave, onClose, loading, error }: Props) {
   const [deviceType, setDeviceType] = useState<DeviceType>(player?.device_type ?? "nettop");
   const [name, setName] = useState(player?.name ?? "");
   const [model, setModel] = useState(player?.model ?? "");
   const [ipAddress, setIpAddress] = useState(player?.ip_address ?? "");
+  const [macAddress, setMacAddress] = useState(player?.mac_address ?? "");
 
-  const handleTypeChange = (type: DeviceType) => {
-    setDeviceType(type);
-    if (!player && !model) {
-      setModel(DEFAULT_MODELS[type]);
-    }
-  };
+  const isNettop = deviceType === "nettop";
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     onSave({
       device_type: deviceType,
       name: name.trim(),
-      model: model.trim(),
+      model: isNettop ? "Неттоп" : model.trim(),
       ip_address: ipAddress.trim(),
+      mac_address: macAddress.trim() || undefined,
     });
   };
 
@@ -73,7 +64,7 @@ export default function MediaPlayerForm({ player, onSave, onClose, loading, erro
                   <button
                     key={value}
                     type="button"
-                    onClick={() => handleTypeChange(value)}
+                    onClick={() => setDeviceType(value)}
                     className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium transition ${
                       deviceType === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
                     }`}
@@ -87,37 +78,53 @@ export default function MediaPlayerForm({ player, onSave, onClose, loading, erro
           )}
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Название / Локация</label>
+            <label className="block text-sm font-medium text-gray-700">Магазин</label>
             <input
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Магазин A1 — касса"
+              placeholder="A1"
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Модель</label>
-            <input
-              required
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder={deviceType === "nettop" ? "Intel NUC" : "Iconbit XDS74K"}
-            />
-          </div>
+          {!isNettop && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">Модель</label>
+              <input
+                required
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder={deviceType === "iconbit" ? "Iconbit XDS74K" : "Twix"}
+              />
+            </div>
+          )}
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">IP-адрес</label>
+            <label className="block text-sm font-medium text-gray-700">
+              {isNettop ? "Имя хоста в сети" : "IP-адрес"}
+            </label>
             <input
               required
               value={ipAddress}
               onChange={(e) => setIpAddress(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="192.168.1.100"
-              pattern="^(\d{1,3}\.){3}\d{1,3}$"
-              title="Введите корректный IPv4 адрес"
+              placeholder={isNettop ? "PC-STORE-A1" : "192.168.1.100"}
+              {...(!isNettop && {
+                pattern: "^(\\d{1,3}\\.){3}\\d{1,3}$",
+                title: "Введите корректный IPv4 адрес",
+              })}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-gray-700">MAC-адрес</label>
+            <input
+              value={macAddress}
+              onChange={(e) => setMacAddress(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="aa:bb:cc:dd:ee:ff"
             />
           </div>
 

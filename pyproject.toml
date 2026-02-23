@@ -10,6 +10,7 @@ dependencies = [
     "asyncpg>=0.30",
     "bcrypt>=4.2",
     "fastapi>=0.129.0",
+    "httpx>=0.28",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.7",
     "pydantic[email]>=2.10",

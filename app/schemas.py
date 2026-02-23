@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime
 
@@ -86,7 +87,6 @@ _IP_PATTERN = r"^(\d{1,3}\.){3}\d{1,3}$"
 
 
 def _validate_ip(v: str) -> str:
-    import re
     if not re.match(_IP_PATTERN, v):
         raise ValueError("Invalid IP address format")
     parts = v.split(".")
@@ -321,11 +321,29 @@ class ScanResults(BaseModel):
 # ── MediaPlayer schemas ─────────────────────────────────────────
 
 
+_HOSTNAME_PATTERN = r"^[a-zA-Z0-9]([a-zA-Z0-9\-\.]{0,253}[a-zA-Z0-9])?$"
+
+
+def _validate_ip_or_hostname(v: str) -> str:
+    v = v.strip()
+    if not v or len(v) > 255:
+        raise ValueError("Address must be 1-255 characters")
+    if re.match(_IP_PATTERN, v):
+        parts = v.split(".")
+        if any(int(p) > 255 for p in parts):
+            raise ValueError("IP address octets must be 0-255")
+        return v
+    if re.match(_HOSTNAME_PATTERN, v):
+        return v
+    raise ValueError("Must be a valid IP address or hostname")
+
+
 class MediaPlayerCreate(BaseModel):
     device_type: str
     name: str
-    model: str
+    model: str = ""
     ip_address: str
+    mac_address: str | None = None
 
     @field_validator("device_type")
     @classmethod
@@ -346,20 +364,28 @@ class MediaPlayerCreate(BaseModel):
     @classmethod
     def validate_model(cls, v: str) -> str:
         v = v.strip()
-        if not v or len(v) > 255:
-            raise ValueError("model must be 1-255 characters")
+        if len(v) > 255:
+            raise ValueError("model must be <= 255 characters")
         return v
 
     @field_validator("ip_address")
     @classmethod
     def validate_ip(cls, v: str) -> str:
-        return _validate_ip(v)
+        return _validate_ip_or_hostname(v)
+
+    @model_validator(mode="after")
+    def set_default_model(self) -> "MediaPlayerCreate":
+        if not self.model:
+            defaults = {"nettop": "Неттоп", "iconbit": "Iconbit", "twix": "Twix"}
+            self.model = defaults.get(self.device_type, self.device_type)
+        return self
 
 
 class MediaPlayerUpdate(BaseModel):
     name: str | None = None
     model: str | None = None
     ip_address: str | None = None
+    mac_address: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -375,15 +401,15 @@ class MediaPlayerUpdate(BaseModel):
     def validate_model(cls, v: str | None) -> str | None:
         if v is not None:
             v = v.strip()
-            if not v or len(v) > 255:
-                raise ValueError("model must be 1-255 characters")
+            if len(v) > 255:
+                raise ValueError("model must be <= 255 characters")
         return v
 
     @field_validator("ip_address")
     @classmethod
     def validate_ip(cls, v: str | None) -> str | None:
         if v is not None:
-            return _validate_ip(v)
+            return _validate_ip_or_hostname(v)
         return v
 
 

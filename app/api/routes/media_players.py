@@ -19,6 +19,7 @@ from app.schemas import (
     Message,
 )
 from app.services.device_poll import poll_device_sync
+from app.services.iconbit import get_status as iconbit_get_status, play as iconbit_play, stop as iconbit_stop
 
 logger = logging.getLogger(__name__)
 
@@ -225,3 +226,48 @@ async def poll_all_players(
 
     await _invalidate_cache()
     return MediaPlayersPublic(data=all_players, count=len(all_players))
+
+
+# ── Iconbit control ──────────────────────────────────────────────
+
+
+@router.get("/{player_id}/iconbit/status")
+async def iconbit_status(player_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> dict:
+    player = session.get(MediaPlayer, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Media player not found")
+    if player.device_type != "iconbit":
+        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    result = await asyncio.to_thread(iconbit_get_status, player.ip_address)
+    return {
+        "now_playing": result.now_playing,
+        "is_playing": result.is_playing,
+        "files": result.files,
+        "free_space": result.free_space,
+    }
+
+
+@router.post("/{player_id}/iconbit/play")
+async def iconbit_play_action(player_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> dict:
+    player = session.get(MediaPlayer, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Media player not found")
+    if player.device_type != "iconbit":
+        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    ok = await asyncio.to_thread(iconbit_play, player.ip_address)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Failed to start playback")
+    return {"status": "playing"}
+
+
+@router.post("/{player_id}/iconbit/stop")
+async def iconbit_stop_action(player_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> dict:
+    player = session.get(MediaPlayer, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Media player not found")
+    if player.device_type != "iconbit":
+        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    ok = await asyncio.to_thread(iconbit_stop, player.ip_address)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Failed to stop playback")
+    return {"status": "stopped"}
