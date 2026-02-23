@@ -366,6 +366,91 @@ async def poll_device(address: str, community: str = "public") -> DeviceStatus:
     return status
 
 
+def _check_arp_for_mac(target_mac: str) -> str | None:
+    """Check current ARP table for a MAC address (no scanning)."""
+    import subprocess
+    target_mac = target_mac.lower().strip()
+
+    try:
+        with open("/proc/net/arp") as f:
+            for line in f.readlines()[1:]:
+                parts = line.split()
+                if len(parts) >= 4 and parts[3].lower() == target_mac:
+                    return parts[0]
+    except (FileNotFoundError, PermissionError):
+        pass
+
+    try:
+        out = subprocess.run(
+            ["ip", "neigh"], capture_output=True, text=True, timeout=5,
+        ).stdout
+        for line in out.strip().split("\n"):
+            if target_mac in line.lower():
+                parts = line.split()
+                if parts:
+                    return parts[0]
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+async def _async_ping(ip: str) -> None:
+    """Fire-and-forget async ping to populate ARP cache."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ping", "-c", "1", "-W", "1", ip,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await asyncio.wait_for(proc.wait(), timeout=2)
+    except (OSError, asyncio.TimeoutError):
+        pass
+
+
+async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str | None:
+    """Find a device's current IP by its MAC address.
+
+    1. Checks existing ARP table first (instant).
+    2. If not found, does an async parallel ping sweep of known subnets
+       to populate ARP cache, then rechecks.
+    """
+    target = mac.lower().strip()
+
+    # Quick check — maybe it's already in ARP
+    ip = await asyncio.to_thread(_check_arp_for_mac, target)
+    if ip:
+        logger.info("MAC %s found in ARP cache at %s", target, ip)
+        return ip
+
+    # Ping sweep all subnets in parallel
+    if subnets is None:
+        raw = os.environ.get("SCAN_SUBNET", "")
+        subnets = [s.strip() for s in raw.split(",") if s.strip()]
+
+    hosts: list[str] = []
+    for subnet_str in subnets:
+        try:
+            net = ipaddress.IPv4Network(subnet_str, strict=False)
+            hosts.extend(str(h) for h in net.hosts())
+        except ValueError:
+            continue
+
+    if not hosts:
+        return None
+
+    # Ping up to 510 hosts concurrently (~2 sec)
+    batch_size = 255
+    for i in range(0, len(hosts), batch_size):
+        batch = hosts[i:i + batch_size]
+        await asyncio.gather(*[_async_ping(h) for h in batch])
+
+    # Recheck ARP table
+    ip = await asyncio.to_thread(_check_arp_for_mac, target)
+    if ip:
+        logger.info("MAC %s discovered at %s after ping sweep", target, ip)
+    return ip
+
+
 def poll_device_sync(address: str, community: str = "public") -> DeviceStatus:
     """Synchronous wrapper for poll_device.
 

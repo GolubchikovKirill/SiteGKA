@@ -287,6 +287,11 @@ export async function pollMediaPlayer(id: string) {
   return data;
 }
 
+export async function rediscoverMediaPlayers() {
+  const { data } = await api.post<MediaPlayersResponse>("/media-players/rediscover");
+  return data;
+}
+
 export async function pollAllMediaPlayers(device_type?: DeviceType) {
   const params: Record<string, string> = {};
   if (device_type) params.device_type = device_type;

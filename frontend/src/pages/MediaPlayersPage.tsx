@@ -1,10 +1,11 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace } from "lucide-react";
+import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace, Radar } from "lucide-react";
 import {
   getMediaPlayers,
   pollAllMediaPlayers,
   pollMediaPlayer,
+  rediscoverMediaPlayers,
   createMediaPlayer,
   updateMediaPlayer,
   deleteMediaPlayer,
@@ -53,6 +54,11 @@ export default function MediaPlayersPage() {
 
   const pollAllMut = useMutation({
     mutationFn: () => pollAllMediaPlayers(deviceTypeParam),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media-players"] }),
+  });
+
+  const rediscoverMut = useMutation({
+    mutationFn: rediscoverMediaPlayers,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media-players"] }),
   });
 
@@ -175,6 +181,15 @@ export default function MediaPlayersPage() {
           >
             <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
             {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
+          </button>
+          <button
+            onClick={() => rediscoverMut.mutate()}
+            disabled={rediscoverMut.isPending}
+            className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition"
+            title="Найти устройства с изменившимся IP по MAC-адресу"
+          >
+            <Radar className={`h-4 w-4 ${rediscoverMut.isPending ? "animate-ping" : ""}`} />
+            {rediscoverMut.isPending ? "Поиск..." : "Переоткрыть"}
           </button>
           {isSuperuser && (
             <button

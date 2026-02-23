@@ -18,7 +18,7 @@ from app.schemas import (
     MediaPlayerUpdate,
     Message,
 )
-from app.services.device_poll import poll_device_sync
+from app.services.device_poll import find_device_by_mac, poll_device_sync
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
     delete_file as iconbit_delete_file,
@@ -158,6 +158,20 @@ def _poll_one(player: MediaPlayer) -> tuple[str, object | None]:
         return player.ip_address, None
 
 
+def _apply_poll_result(player: MediaPlayer, result) -> None:
+    """Apply poll results to a player model."""
+    if result is None or not result.is_online:
+        player.is_online = False
+    else:
+        player.is_online = True
+        player.hostname = result.hostname
+        player.os_info = result.os_info
+        player.uptime = result.uptime
+        player.open_ports = ",".join(str(p) for p in result.open_ports) if result.open_ports else None
+        if result.mac_address and not player.mac_address:
+            player.mac_address = result.mac_address
+
+
 @router.post("/{player_id}/poll", response_model=MediaPlayerPublic)
 async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> MediaPlayer:
     player = session.get(MediaPlayer, player_id)
@@ -165,17 +179,16 @@ async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_
         raise HTTPException(status_code=404, detail="Media player not found")
 
     _, result = await asyncio.to_thread(_poll_one, player)
+    _apply_poll_result(player, result)
 
-    if result is None:
-        player.is_online = False
-    else:
-        player.is_online = result.is_online
-        player.hostname = result.hostname
-        player.os_info = result.os_info
-        player.uptime = result.uptime
-        player.open_ports = ",".join(str(p) for p in result.open_ports) if result.open_ports else None
-        if result.mac_address and not player.mac_address:
-            player.mac_address = result.mac_address
+    # If offline and MAC is known, try to find new IP
+    if not player.is_online and player.mac_address:
+        new_ip = await find_device_by_mac(player.mac_address)
+        if new_ip and new_ip != player.ip_address:
+            logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+            player.ip_address = new_ip
+            _, result = await asyncio.to_thread(_poll_one, player)
+            _apply_poll_result(player, result)
 
     player.last_polled_at = datetime.now(UTC)
     session.add(player)
@@ -210,20 +223,28 @@ async def poll_all_players(
                 result = None
             results[ip] = result
 
+    # Apply results and collect offline devices with MAC for rediscovery
+    offline_with_mac: list[MediaPlayer] = []
     for player in players:
         result = results.get(player.ip_address)
-        if result is None:
-            player.is_online = False
-        else:
-            player.is_online = result.is_online
-            player.hostname = result.hostname
-            player.os_info = result.os_info
-            player.uptime = result.uptime
-            player.open_ports = ",".join(str(p) for p in result.open_ports) if result.open_ports else None
-            if result.mac_address and not player.mac_address:
-                player.mac_address = result.mac_address
+        _apply_poll_result(player, result)
+        if not player.is_online and player.mac_address:
+            offline_with_mac.append(player)
         player.last_polled_at = datetime.now(UTC)
         session.add(player)
+
+    # Try to rediscover offline devices by MAC (one sweep for all)
+    if offline_with_mac:
+        logger.info("Trying MAC rediscovery for %d offline devices...", len(offline_with_mac))
+        for player in offline_with_mac:
+            new_ip = await find_device_by_mac(player.mac_address)
+            if new_ip and new_ip != player.ip_address:
+                logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+                player.ip_address = new_ip
+                _, result = await asyncio.to_thread(_poll_one, player)
+                _apply_poll_result(player, result)
+                player.last_polled_at = datetime.now(UTC)
+                session.add(player)
 
     session.commit()
 
@@ -233,6 +254,40 @@ async def poll_all_players(
     all_players = session.exec(result_statement).all()
 
     await _invalidate_cache()
+    return MediaPlayersPublic(data=all_players, count=len(all_players))
+
+
+# ── Rediscovery ──────────────────────────────────────────────────
+
+
+@router.post("/rediscover", response_model=MediaPlayersPublic)
+async def rediscover_devices(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> MediaPlayersPublic:
+    """Find devices that changed IP by scanning subnets for known MACs."""
+    players = session.exec(select(MediaPlayer).where(MediaPlayer.mac_address.isnot(None))).all()
+    if not players:
+        return MediaPlayersPublic(data=[], count=0)
+
+    updated = 0
+    for player in players:
+        new_ip = await find_device_by_mac(player.mac_address)
+        if new_ip and new_ip != player.ip_address:
+            logger.info("Rediscovery: %s moved %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+            player.ip_address = new_ip
+            updated += 1
+            _, result = await asyncio.to_thread(_poll_one, player)
+            _apply_poll_result(player, result)
+            player.last_polled_at = datetime.now(UTC)
+            session.add(player)
+
+    if updated:
+        session.commit()
+        await _invalidate_cache()
+
+    logger.info("Rediscovery complete: %d/%d devices updated", updated, len(players))
+    all_players = session.exec(select(MediaPlayer)).all()
     return MediaPlayersPublic(data=all_players, count=len(all_players))
 
 
