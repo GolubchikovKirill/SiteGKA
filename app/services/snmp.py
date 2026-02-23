@@ -24,7 +24,9 @@ import asyncio
 import logging
 import re
 import socket
+import urllib.request
 import warnings
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
@@ -82,8 +84,6 @@ _NON_CONSUMABLE_SUPPLY_TYPES: frozenset[int] = frozenset({
 })
 
 # ── Brother proprietary OIDs ────────────────────────────────────────────────
-# Returns toner remaining as integer percentage (0-100).
-# Last OID segment: 1=Black, 2=Cyan, 3=Magenta, 4=Yellow
 BROTHER_TONER_BASE = "1.3.6.1.4.1.2435.2.3.9.4.2.1.5.5.10.0.1"
 BROTHER_COLOR_MAP: dict[str, str] = {
     "1": "black",
@@ -91,6 +91,11 @@ BROTHER_COLOR_MAP: dict[str, str] = {
     "3": "magenta",
     "4": "yellow",
 }
+
+# ── Ricoh proprietary OIDs ─────────────────────────────────────────────────
+# Ricoh private MIB: more precise toner levels than standard MIB on some models
+RICOH_SUPPLY_LEVEL = "1.3.6.1.4.1.367.3.2.1.2.24.1.1.5"  # remaining level (%)
+RICOH_SUPPLY_DESCR = "1.3.6.1.4.1.367.3.2.1.2.24.1.1.3"  # supply description
 
 PRINTER_STATUS_MAP: dict[int, str] = {
     1: "other",
@@ -461,6 +466,170 @@ async def _get_brother_toners(
     return toners
 
 
+async def _get_ricoh_toners(
+    engine: SnmpEngine,
+    target: UdpTransportTarget,
+    comm: CommunityData,
+    standard_toners: list[TonerLevel],
+) -> list[TonerLevel]:
+    """Try Ricoh proprietary OIDs to get precise levels when standard MIB returns -3."""
+    level_raw = await _snmp_walk(engine, target, comm, RICOH_SUPPLY_LEVEL)
+    if not level_raw:
+        return standard_toners
+
+    descr_raw = await _snmp_walk(engine, target, comm, RICOH_SUPPLY_DESCR)
+    descr_map = {oid.rsplit(".", 1)[-1]: val for oid, val in descr_raw}
+
+    ricoh_toners: list[TonerLevel] = []
+    for oid, val in level_raw:
+        idx = oid.rsplit(".", 1)[-1]
+        desc = descr_map.get(idx, "")
+        try:
+            pct = max(0, min(100, int(val)))
+        except (ValueError, TypeError):
+            continue
+
+        color = _detect_color(desc)
+        if not color and len(level_raw) == 1:
+            color = "black"
+
+        ricoh_toners.append(TonerLevel(
+            description=desc or f"{color or 'unknown'} toner",
+            color=color,
+            level_pct=pct,
+            max_capacity=100,
+            current_level=pct,
+        ))
+
+    if ricoh_toners:
+        logger.info(
+            "Ricoh proprietary OIDs returned %d toner(s) with precise levels",
+            len(ricoh_toners),
+        )
+        return ricoh_toners
+    return standard_toners
+
+
+# ── HTTP-based toner scraping (for printers with SNMP disabled) ────────────
+
+_HTTP_TIMEOUT = 5
+
+# HP EWS endpoints that return supply data as XML
+_HP_XML_URLS = [
+    "/DevMgmt/ConsumableConfigDyn.xml",
+    "/DevMgmt/ConsumableConfigDyn.xml?",
+]
+
+# Ricoh web status endpoint
+_RICOH_XML_URLS = [
+    "/web/guest/en/websys/webArch/getStatus.cgi",
+]
+
+
+def _http_get(ip: str, path: str, timeout: float = _HTTP_TIMEOUT) -> bytes | None:
+    for scheme in ("http", "https"):
+        try:
+            url = f"{scheme}://{ip}{path}"
+            req = urllib.request.Request(url, headers={"User-Agent": "InfraScope/1.0"})
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                return resp.read()
+        except Exception:
+            continue
+    return None
+
+
+def _parse_hp_consumable_xml(data: bytes) -> list[TonerLevel]:
+    """Parse HP EWS ConsumableConfigDyn.xml for toner levels."""
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        return []
+
+    toners: list[TonerLevel] = []
+
+    for elem in root.iter():
+        tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+        if tag != "ConsumableInfo":
+            continue
+
+        color = None
+        pct = None
+        desc = ""
+        is_consumable = False
+
+        for child in elem.iter():
+            ctag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            text = (child.text or "").strip()
+            if not text:
+                continue
+
+            if ctag == "ConsumableLabelCode":
+                lc = text.lower()
+                if lc in ("black", "cyan", "magenta", "yellow"):
+                    color = lc
+                    is_consumable = True
+                elif "black" in lc:
+                    color = "black"
+                    is_consumable = True
+            elif ctag == "MarkerColor":
+                if not color:
+                    mc = text.lower()
+                    for c in ("black", "cyan", "magenta", "yellow"):
+                        if c in mc:
+                            color = c
+                            is_consumable = True
+                            break
+            elif ctag == "ConsumablePercentageLevelRemaining":
+                try:
+                    pct = max(0, min(100, int(text)))
+                except (ValueError, TypeError):
+                    pass
+            elif ctag in ("ConsumableTypeEnum", "ConsumableType"):
+                t = text.lower()
+                if "ink" in t or "toner" in t or "colorant" in t or "printcolorant" in t:
+                    is_consumable = True
+            elif ctag == "ProductNumber":
+                desc = text
+
+        if is_consumable and pct is not None and color:
+            toners.append(TonerLevel(
+                description=desc or f"{color} toner",
+                color=color,
+                level_pct=pct,
+                max_capacity=100,
+                current_level=pct,
+            ))
+
+    return toners
+
+
+def _get_toners_via_http(ip: str) -> list[TonerLevel]:
+    """Try to scrape toner data from printer's web interface (HP EWS, etc.)."""
+    # Try HP XML endpoints
+    for path in _HP_XML_URLS:
+        data = _http_get(ip, path)
+        if data:
+            toners = _parse_hp_consumable_xml(data)
+            if toners:
+                logger.info("%s: got %d toner(s) via HTTP (HP EWS)", ip, len(toners))
+                return toners
+
+    # Try generic approach: parse any XML that contains supply-related keywords
+    for path in ("/DevMgmt/ProductUsageDyn.xml",):
+        data = _http_get(ip, path)
+        if data:
+            toners = _parse_hp_consumable_xml(data)
+            if toners:
+                logger.info("%s: got %d toner(s) via HTTP (generic XML)", ip, len(toners))
+                return toners
+
+    return []
+
+
 # ── TCP fallback ───────────────────────────────────────────────────────────
 
 _TCP_FALLBACK_PORTS = (80, 443, 9100, 631)
@@ -499,19 +668,32 @@ async def _poll_printer_async(ip_address: str, community: str = "public") -> Pri
     if sys_descr is None:
         # SNMP failed — try TCP ports as fallback before marking offline
         reachable = await asyncio.to_thread(_tcp_reachable, ip_address)
-        if reachable:
-            logger.info(
-                "%s: SNMP not responding but TCP port open — online without toner data",
-                ip_address,
-            )
-            return PrinterStatus(
-                is_online=True,
-                status="online (no SNMP)",
-                sys_description=None,
-                vendor=None,
-            )
-        logger.debug("%s: no SNMP response and no open TCP ports", ip_address)
-        return PrinterStatus(is_online=False, status="offline")
+        if not reachable:
+            logger.debug("%s: no SNMP response and no open TCP ports", ip_address)
+            return PrinterStatus(is_online=False, status="offline")
+
+        # TCP port open — try to get toner data via HTTP
+        http_toners = await asyncio.to_thread(_get_toners_via_http, ip_address)
+        result = PrinterStatus(
+            is_online=True,
+            status="online (HTTP)" if http_toners else "online (no SNMP)",
+            toners=http_toners,
+            sys_description=None,
+            vendor=None,
+        )
+        for toner in http_toners:
+            match toner.color:
+                case "black":
+                    result.toner_black = toner.level_pct
+                case "cyan":
+                    result.toner_cyan = toner.level_pct
+                case "magenta":
+                    result.toner_magenta = toner.level_pct
+                case "yellow":
+                    result.toner_yellow = toner.level_pct
+        if not http_toners:
+            logger.info("%s: SNMP unavailable, HTTP scraping found no toner data", ip_address)
+        return result
 
     vendor = _detect_vendor(sys_descr)
     logger.debug("Polling %s — vendor: %s, descr: %.60s", ip_address, vendor or "unknown", sys_descr)
@@ -527,16 +709,32 @@ async def _poll_printer_async(ip_address: str, community: str = "public") -> Pri
     # Strategy 1: standard Printer MIB (RFC 3805)
     toners = await _get_standard_toners(engine, target, comm)
 
-    # Strategy 2: vendor-specific fallback
+    # Strategy 2: Ricoh proprietary OIDs — try to get precise levels
+    # when standard MIB returns -3 ("some remaining") for all supplies
+    if toners and vendor == "ricoh":
+        all_imprecise = all(t.level_pct in (-3, -2, None) for t in toners)
+        if all_imprecise:
+            logger.debug("%s: Ricoh standard MIB returns imprecise levels, trying proprietary OIDs", ip_address)
+            toners = await _get_ricoh_toners(engine, target, comm, toners)
+
+    # Strategy 3: vendor-specific SNMP fallback
     if not toners:
         if vendor == "brother":
             logger.debug("%s: standard MIB empty, trying Brother proprietary OIDs", ip_address)
             toners = await _get_brother_toners(engine, target, comm)
 
+    # Strategy 4: HTTP scraping (HP EWS XML, works even with restricted SNMP)
+    if not toners:
+        logger.debug("%s: no SNMP toner data, trying HTTP scraping", ip_address)
+        toners = await asyncio.to_thread(_get_toners_via_http, ip_address)
+
+    # Strategy 5: HTTP fallback even when SNMP gives data but no toners found
+    if not toners:
+        toners = await asyncio.to_thread(_get_toners_via_http, ip_address)
+
     if not toners:
         logger.info(
-            "%s (%s): no toner data — printer may not support Printer MIB "
-            "or SNMP community is restricted",
+            "%s (%s): no toner data via SNMP or HTTP",
             ip_address, vendor or "unknown",
         )
 
