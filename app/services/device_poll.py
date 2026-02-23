@@ -257,44 +257,57 @@ def _netbios_parse_response(data: bytes) -> str | None:
 def _netbios_resolve(name: str, subnets: list[str] | None = None) -> str | None:
     """Resolve a Windows hostname via NetBIOS name query.
 
-    Sends queries to broadcast addresses of known subnets.
+    Uses unicast queries to each IP in known subnets (broadcasts
+    don't cross Docker bridge networks).  UDP is connectionless, so
+    we blast packets to all hosts and wait for the first response.
     """
     if subnets is None:
         raw = os.environ.get("SCAN_SUBNET", "")
         subnets = [s.strip() for s in raw.split(",") if s.strip()]
 
-    broadcast_addrs = []
+    targets: list[str] = []
     for subnet_str in subnets:
         try:
             net = ipaddress.IPv4Network(subnet_str, strict=False)
-            broadcast_addrs.append(str(net.broadcast_address))
+            targets.extend(str(h) for h in net.hosts())
         except ValueError:
             continue
 
-    if not broadcast_addrs:
-        broadcast_addrs = ["255.255.255.255"]
+    if not targets:
+        return None
 
     packet = _netbios_query_packet(name)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(False)
 
-    for bcast in broadcast_addrs:
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sock.settimeout(2.0)
-            sock.sendto(packet, (bcast, 137))
-            data, _ = sock.recvfrom(1024)
-            sock.close()
-            ip = _netbios_parse_response(data)
-            if ip:
-                logger.info("NetBIOS resolved %s -> %s (via %s)", name, ip, bcast)
-                return ip
-        except (socket.timeout, OSError):
-            pass
-        finally:
+    try:
+        for ip in targets:
             try:
-                sock.close()
-            except Exception:
+                sock.sendto(packet, (ip, 137))
+            except OSError:
                 pass
+
+        logger.debug("NetBIOS: sent query for '%s' to %d hosts", name, len(targets))
+
+        import select as _select
+        import time
+        end = time.monotonic() + 3.0
+        while time.monotonic() < end:
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
+            ready, _, _ = _select.select([sock], [], [], min(remaining, 0.5))
+            if ready:
+                try:
+                    data, (resp_ip, _) = sock.recvfrom(1024)
+                    parsed_ip = _netbios_parse_response(data)
+                    if parsed_ip:
+                        logger.info("NetBIOS resolved %s -> %s (unicast from %s)", name, parsed_ip, resp_ip)
+                        return parsed_ip
+                except OSError:
+                    pass
+    finally:
+        sock.close()
 
     return None
 

@@ -1,20 +1,24 @@
 """Client for Iconbit media player HTTP API (port 8081).
 
-The device exposes a minimal HTML-based interface with Basic Auth.
-Endpoints:
-  GET /now        – currently playing track name (HTML fragment)
-  GET /play       – start playback (302 redirect)
-  GET /stop       – stop playback (302 redirect)
-  GET /           – main page with file list table
-  GET /delete?file=NAME  – delete a file
-  GET /playlink?link=URL – play a URL/stream
-  POST /upload    – upload a media file (multipart)
+Supports two firmware variants:
+  New firmware: GET /now returns currently playing track (HTML).
+  Old firmware: GET /status.xml returns XML with <state>, <file>, <position>, <duration>.
+
+Common endpoints:
+  GET /play, /play?file=X, /play?url=X – start playback
+  GET /stop – stop playback
+  GET /delete?file=X – delete a file
+  POST / (multipart) – upload file (old fw)
+  POST /upload (multipart) – upload file (new fw)
+  GET /send?key=X&arg=Y – remote control (old fw)
+  GET /screen.png – live screenshot (old fw)
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 import httpx
@@ -31,6 +35,9 @@ AUTH_CREDS = ("admin", "admin")
 class IconbitStatus:
     now_playing: str | None = None
     is_playing: bool = False
+    state: str | None = None  # "playing", "paused", "idle"
+    position: int | None = None  # seconds
+    duration: int | None = None  # seconds
     files: list[str] = field(default_factory=list)
     free_space: str | None = None
 
@@ -55,26 +62,44 @@ def _post(url: str, **kwargs) -> httpx.Response | None:
         return None
 
 
-def _parse_now_playing(html: str) -> str | None:
-    """Extract now-playing track from HTML (main page or /now endpoint)."""
-    for pattern in [
-        r"[Сс]ейчас\s+играет[:\s]*<[^>]*>([^<]+)",
-        r"[Nn]ow\s+[Pp]laying[:\s]*<[^>]*>([^<]+)",
-        r"playing[:\s]*<b>(.*?)</b>",
-        r"<b>(.*?)</b>",
-    ]:
-        match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
-        if match:
-            track = match.group(1).strip()
-            if track and track.lower() not in ("", "none", "нет", "nothing", "-"):
-                return track
-    clean = re.sub(r"<[^>]+>", "", html).strip()
-    if clean and len(clean) < 200 and clean.lower() not in ("", "none", "нет", "nothing", "-"):
-        parts = clean.split("\n")
-        for part in parts:
-            part = part.strip()
-            if part and "." in part and len(part) > 3:
-                return part
+def _parse_status_xml(text: str) -> dict | None:
+    """Parse /status.xml response."""
+    try:
+        root = ET.fromstring(text)
+        return {
+            "state": (root.findtext("state") or "").strip().lower(),
+            "file": (root.findtext("file") or "").strip(),
+            "position": int(root.findtext("position") or 0),
+            "duration": int(root.findtext("duration") or 0),
+        }
+    except Exception:
+        return None
+
+
+def _parse_now_html(text: str) -> str | None:
+    """Extract track name from /now HTML response."""
+    match = re.search(r"<b>(.*?)</b>", text, re.IGNORECASE | re.DOTALL)
+    if match:
+        track = match.group(1).strip()
+        if track and track.lower() not in ("", "none", "нет", "nothing", "-"):
+            return track
+    clean = re.sub(r"<[^>]+>", "", text).strip()
+    if clean and len(clean) < 200 and clean.lower() not in ("", "none", "нет"):
+        return clean
+    return None
+
+
+def _parse_free_space(html: str) -> str | None:
+    """Extract free space from main page HTML."""
+    m = re.search(r"[Дд]оступно\s+(\d+[\.,]?\d*\s*[GMKT]B)\s*/\s*(\d+[\.,]?\d*\s*[GMKT]B)", html, re.IGNORECASE)
+    if m:
+        return f"{m.group(1)} / {m.group(2)}"
+    m = re.search(r"(\d+[\.,]?\d*\s*[GMKT]B)\s*/\s*(\d+[\.,]?\d*\s*[GMKT]B)", html, re.IGNORECASE)
+    if m:
+        return f"{m.group(1)} / {m.group(2)}"
+    m = re.search(r"(\d+[\.,]?\d*\s*[GMKT]B)\s+available", html, re.IGNORECASE)
+    if m:
+        return m.group(1)
     return None
 
 
@@ -83,31 +108,35 @@ def get_status(ip: str) -> IconbitStatus:
     status = IconbitStatus()
     base = _base_url(ip)
 
+    # 1. Main page — file list and free space
     main_resp = _get(base)
-    main_html = ""
     if main_resp and main_resp.status_code == 200:
-        main_html = main_resp.text
-        file_matches = re.findall(r'delete\?file=([^"&]+)', main_html, re.IGNORECASE)
+        html = main_resp.text
+        file_matches = re.findall(r'delete\?file=([^"&\']+)', html, re.IGNORECASE)
         status.files = [f.strip() for f in file_matches if f.strip()]
+        status.free_space = _parse_free_space(html)
 
-        space_match = re.search(
-            r"(\d+[\.,]?\d*\s*[GMKT]B)\s+available", main_html, re.IGNORECASE
-        )
-        if space_match:
-            status.free_space = space_match.group(1)
+    # 2. Try /status.xml first (old firmware, more info)
+    xml_resp = _get(f"{base}/status.xml")
+    if xml_resp and xml_resp.status_code == 200:
+        parsed = _parse_status_xml(xml_resp.text)
+        if parsed:
+            status.state = parsed["state"]
+            status.is_playing = parsed["state"] in ("playing", "paused")
+            if parsed["file"]:
+                status.now_playing = parsed["file"]
+            status.position = parsed["position"]
+            status.duration = parsed["duration"]
+            return status
 
+    # 3. Fallback: /now (new firmware)
     now_resp = _get(f"{base}/now")
     if now_resp and now_resp.status_code == 200:
-        track = _parse_now_playing(now_resp.text)
+        track = _parse_now_html(now_resp.text)
         if track:
             status.now_playing = track
             status.is_playing = True
-
-    if not status.now_playing and main_html:
-        track = _parse_now_playing(main_html)
-        if track:
-            status.now_playing = track
-            status.is_playing = True
+            status.state = "playing"
 
     return status
 
@@ -123,6 +152,10 @@ def stop(ip: str) -> bool:
 
 
 def play_file(ip: str, filename: str) -> bool:
+    # Old fw: /play?file=X, New fw: /playlink?link=X — try both
+    resp = _get(f"{_base_url(ip)}/play", params={"file": filename})
+    if resp and resp.status_code in (200, 302):
+        return True
     resp = _get(f"{_base_url(ip)}/playlink", params={"link": filename})
     return resp is not None and resp.status_code in (200, 302)
 
@@ -133,6 +166,10 @@ def delete_file(ip: str, filename: str) -> bool:
 
 
 def upload_file(ip: str, filename: str, content: bytes) -> bool:
+    # Old fw: POST to /, New fw: POST to /upload
+    resp = _post(f"{_base_url(ip)}/", files={"file": (filename, content)}, timeout=60)
+    if resp and resp.status_code in (200, 302):
+        return True
     resp = _post(f"{_base_url(ip)}/upload", files={"file": (filename, content)}, timeout=60)
     return resp is not None and resp.status_code in (200, 302)
 

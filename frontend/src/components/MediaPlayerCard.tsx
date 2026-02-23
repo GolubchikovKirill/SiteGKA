@@ -92,17 +92,48 @@ function IconbitControls({ playerId }: { playerId: string }) {
 
   if (!ibStatus) return null;
 
+  const fmtTime = (sec: number | null) => {
+    if (sec == null || sec <= 0) return null;
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return h > 0
+      ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      : `${m}:${String(s).padStart(2, "0")}`;
+  };
+
+  const posStr = fmtTime(ibStatus.position);
+  const durStr = fmtTime(ibStatus.duration);
+  const progress = ibStatus.duration && ibStatus.duration > 0 && ibStatus.position != null
+    ? Math.min(100, (ibStatus.position / ibStatus.duration) * 100)
+    : null;
+
+  const stateLabel = ibStatus.state === "paused" ? "На паузе" : null;
+
   return (
     <div className="mt-1 space-y-2">
       {/* Now playing */}
-      <div className="flex items-center gap-1.5 text-xs">
-        <Volume2 className="h-3 w-3 text-purple-400 shrink-0" />
-        {ibStatus.is_playing && ibStatus.now_playing ? (
-          <span className="text-purple-700 font-medium truncate" title={ibStatus.now_playing}>
-            {ibStatus.now_playing.length > 35 ? ibStatus.now_playing.slice(0, 35) + "..." : ibStatus.now_playing}
-          </span>
-        ) : (
-          <span className="text-gray-400 italic">Не воспроизводится</span>
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5 text-xs">
+          <Volume2 className="h-3 w-3 text-purple-400 shrink-0" />
+          {ibStatus.is_playing && ibStatus.now_playing ? (
+            <span className="text-purple-700 font-medium truncate" title={ibStatus.now_playing}>
+              {ibStatus.now_playing.length > 35 ? ibStatus.now_playing.slice(0, 35) + "..." : ibStatus.now_playing}
+            </span>
+          ) : (
+            <span className="text-gray-400 italic">Не воспроизводится</span>
+          )}
+          {stateLabel && <span className="text-[10px] text-amber-600 bg-amber-50 px-1 py-0.5 rounded">{stateLabel}</span>}
+        </div>
+        {progress != null && (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            {posStr && durStr && (
+              <span className="text-[10px] text-gray-400 shrink-0">{posStr} / {durStr}</span>
+            )}
+          </div>
         )}
       </div>
 

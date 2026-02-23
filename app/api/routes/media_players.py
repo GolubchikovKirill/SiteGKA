@@ -305,6 +305,9 @@ async def iconbit_status(player_id: uuid.UUID, session: SessionDep, current_user
     return {
         "now_playing": result.now_playing,
         "is_playing": result.is_playing,
+        "state": result.state,
+        "position": result.position,
+        "duration": result.duration,
         "files": result.files,
         "free_space": result.free_space,
     }

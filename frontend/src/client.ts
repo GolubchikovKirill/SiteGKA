@@ -304,6 +304,9 @@ export async function pollAllMediaPlayers(device_type?: DeviceType) {
 export interface IconbitStatus {
   now_playing: string | null;
   is_playing: boolean;
+  state: string | null;
+  position: number | null;
+  duration: number | null;
   files: string[];
   free_space: string | null;
 }
