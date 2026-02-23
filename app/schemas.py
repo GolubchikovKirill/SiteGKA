@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
 
 class Token(BaseModel):
@@ -97,10 +97,12 @@ def _validate_ip(v: str) -> str:
 
 class PrinterCreate(BaseModel):
     printer_type: str = "laser"
+    connection_type: str = "ip"
     store_name: str
     model: str
-    ip_address: str
+    ip_address: str | None = None
     snmp_community: str = "public"
+    host_pc: str | None = None
 
     @field_validator("store_name")
     @classmethod
@@ -127,8 +129,10 @@ class PrinterCreate(BaseModel):
 
     @field_validator("ip_address")
     @classmethod
-    def validate_ip(cls, v: str) -> str:
-        return _validate_ip(v)
+    def validate_ip(cls, v: str | None) -> str | None:
+        if v is not None:
+            return _validate_ip(v)
+        return v
 
     @field_validator("printer_type")
     @classmethod
@@ -137,12 +141,37 @@ class PrinterCreate(BaseModel):
             raise ValueError("printer_type must be 'laser' or 'label'")
         return v
 
+    @field_validator("connection_type")
+    @classmethod
+    def validate_connection_type(cls, v: str) -> str:
+        if v not in ("ip", "usb"):
+            raise ValueError("connection_type must be 'ip' or 'usb'")
+        return v
+
+    @field_validator("host_pc")
+    @classmethod
+    def validate_host_pc(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if len(v) > 255:
+                raise ValueError("host_pc must be <= 255 characters")
+            if not v:
+                return None
+        return v
+
+    @model_validator(mode="after")
+    def check_ip_required_for_ip_type(self) -> "PrinterCreate":
+        if self.connection_type == "ip" and not self.ip_address:
+            raise ValueError("ip_address is required when connection_type is 'ip'")
+        return self
+
 
 class PrinterUpdate(BaseModel):
     store_name: str | None = None
     model: str | None = None
     ip_address: str | None = None
     snmp_community: str | None = None
+    host_pc: str | None = None
 
     @field_validator("store_name")
     @classmethod
@@ -169,17 +198,30 @@ class PrinterUpdate(BaseModel):
             return _validate_ip(v)
         return v
 
+    @field_validator("host_pc")
+    @classmethod
+    def validate_host_pc(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if len(v) > 255:
+                raise ValueError("host_pc must be <= 255 characters")
+            if not v:
+                return None
+        return v
+
 
 class PrinterPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     printer_type: str = "laser"
+    connection_type: str = "ip"
     store_name: str
     model: str
-    ip_address: str
+    ip_address: str | None = None
     mac_address: str | None = None
     mac_status: str | None = None
+    host_pc: str | None = None
     is_online: bool | None = None
     status: str | None = None
     toner_black: int | None = None
@@ -274,3 +316,95 @@ class ScanProgress(BaseModel):
 class ScanResults(BaseModel):
     progress: ScanProgress
     devices: list[DiscoveredDevice] = []
+
+
+# ── MediaPlayer schemas ─────────────────────────────────────────
+
+
+class MediaPlayerCreate(BaseModel):
+    device_type: str
+    name: str
+    model: str
+    ip_address: str
+
+    @field_validator("device_type")
+    @classmethod
+    def validate_device_type(cls, v: str) -> str:
+        if v not in ("nettop", "iconbit", "twix"):
+            raise ValueError("device_type must be 'nettop', 'iconbit', or 'twix'")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v or len(v) > 255:
+            raise ValueError("name must be 1-255 characters")
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, v: str) -> str:
+        v = v.strip()
+        if not v or len(v) > 255:
+            raise ValueError("model must be 1-255 characters")
+        return v
+
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip(cls, v: str) -> str:
+        return _validate_ip(v)
+
+
+class MediaPlayerUpdate(BaseModel):
+    name: str | None = None
+    model: str | None = None
+    ip_address: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v or len(v) > 255:
+                raise ValueError("name must be 1-255 characters")
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v or len(v) > 255:
+                raise ValueError("model must be 1-255 characters")
+        return v
+
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip(cls, v: str | None) -> str | None:
+        if v is not None:
+            return _validate_ip(v)
+        return v
+
+
+class MediaPlayerPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    device_type: str
+    name: str
+    model: str
+    ip_address: str
+    mac_address: str | None = None
+    is_online: bool | None = None
+    hostname: str | None = None
+    os_info: str | None = None
+    uptime: str | None = None
+    open_ports: str | None = None
+    last_polled_at: datetime | None = None
+    created_at: datetime
+
+
+class MediaPlayersPublic(BaseModel):
+    data: list[MediaPlayerPublic]
+    count: int

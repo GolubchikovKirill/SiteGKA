@@ -81,7 +81,7 @@ export default function Dashboard() {
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, ...rest }: { id: string; store_name: string; model: string; ip_address: string; snmp_community?: string }) =>
+    mutationFn: ({ id, ...rest }: { id: string; [key: string]: unknown }) =>
       updatePrinter(id, rest),
     onSuccess: () => {
       setFormError(null);

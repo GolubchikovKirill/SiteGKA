@@ -97,15 +97,18 @@ export async function deleteUser(id: string) {
 // ── Printers ──
 
 export type PrinterType = "laser" | "label";
+export type ConnectionType = "ip" | "usb";
 
 export interface Printer {
   id: string;
   printer_type: PrinterType;
+  connection_type: ConnectionType;
   store_name: string;
   model: string;
-  ip_address: string;
+  ip_address: string | null;
   mac_address: string | null;
   mac_status: string | null;
+  host_pc: string | null;
   is_online: boolean | null;
   status: string | null;
   toner_black: number | null;
@@ -130,10 +133,12 @@ export async function getPrinters(store_name?: string, printer_type: PrinterType
 
 export async function createPrinter(printer: {
   printer_type?: PrinterType;
+  connection_type?: ConnectionType;
   store_name: string;
   model: string;
-  ip_address: string;
+  ip_address?: string;
   snmp_community?: string;
+  host_pc?: string;
 }) {
   const { data } = await api.post<Printer>("/printers/", printer);
   return data;
@@ -221,5 +226,69 @@ export async function updatePrinterIp(printerId: string, newIp: string, newMac?:
   const params: Record<string, string> = { new_ip: newIp };
   if (newMac) params.new_mac = newMac;
   const { data } = await api.post<Printer>(`/scanner/update-ip/${printerId}`, null, { params });
+  return data;
+}
+
+// ── Media Players ──
+
+export type DeviceType = "nettop" | "iconbit" | "twix";
+
+export interface MediaPlayer {
+  id: string;
+  device_type: DeviceType;
+  name: string;
+  model: string;
+  ip_address: string;
+  mac_address: string | null;
+  is_online: boolean | null;
+  hostname: string | null;
+  os_info: string | null;
+  uptime: string | null;
+  open_ports: string | null;
+  last_polled_at: string | null;
+  created_at: string;
+}
+
+export interface MediaPlayersResponse {
+  data: MediaPlayer[];
+  count: number;
+}
+
+export async function getMediaPlayers(name?: string, device_type?: DeviceType) {
+  const params: Record<string, string> = {};
+  if (name) params.name = name;
+  if (device_type) params.device_type = device_type;
+  const { data } = await api.get<MediaPlayersResponse>("/media-players/", { params });
+  return data;
+}
+
+export async function createMediaPlayer(player: {
+  device_type: DeviceType;
+  name: string;
+  model: string;
+  ip_address: string;
+}) {
+  const { data } = await api.post<MediaPlayer>("/media-players/", player);
+  return data;
+}
+
+export async function updateMediaPlayer(id: string, player: Partial<MediaPlayer>) {
+  const { data } = await api.patch<MediaPlayer>(`/media-players/${id}`, player);
+  return data;
+}
+
+export async function deleteMediaPlayer(id: string) {
+  await api.delete(`/media-players/${id}`);
+}
+
+export async function pollMediaPlayer(id: string) {
+  const { data } = await api.post<MediaPlayer>(`/media-players/${id}/poll`);
+  return data;
+}
+
+export async function pollAllMediaPlayers(device_type?: DeviceType) {
+  const params: Record<string, string> = {};
+  if (device_type) params.device_type = device_type;
+  const { data } = await api.post<MediaPlayersResponse>("/media-players/poll-all", null, { params });
   return data;
 }

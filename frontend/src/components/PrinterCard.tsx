@@ -80,7 +80,9 @@ export default function PrinterCard({ printer, onPoll, onEdit, onDelete, isPolli
         </div>
 
         {/* IP + MAC */}
-        <div className="text-xs text-gray-400 font-mono">{printer.ip_address}</div>
+        {printer.ip_address && (
+          <div className="text-xs text-gray-400 font-mono">{printer.ip_address}</div>
+        )}
 
         {/* Toner levels */}
         <div className="space-y-1.5">
@@ -104,15 +106,17 @@ export default function PrinterCard({ printer, onPoll, onEdit, onDelete, isPolli
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />
             </button>
-            <a
-              href={`http://${printer.ip_address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition"
-              title="Веб-панель"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+            {printer.ip_address && (
+              <a
+                href={`http://${printer.ip_address}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition"
+                title="Веб-панель"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
             {isSuperuser && (
               <>
                 <button

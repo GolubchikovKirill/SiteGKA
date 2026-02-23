@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth";
-import { LogOut, Server, Printer, Users } from "lucide-react";
+import { LogOut, Server, Printer, Users, Monitor } from "lucide-react";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -9,6 +9,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { to: "/", label: "Принтеры", icon: Printer, visible: true },
+    { to: "/media-players", label: "Медиаплееры", icon: Monitor, visible: true },
     { to: "/users", label: "Пользователи", icon: Users, visible: isSuperuser },
   ];
 

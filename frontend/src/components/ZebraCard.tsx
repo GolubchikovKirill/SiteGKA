@@ -1,4 +1,4 @@
-import { RefreshCw, Pencil, Trash2, Tag, ExternalLink, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
+import { RefreshCw, Pencil, Trash2, Tag, ExternalLink, Usb, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
 import type { Printer } from "../client";
 
 interface Props {
@@ -11,6 +11,14 @@ interface Props {
 }
 
 function statusBadge(printer: Printer) {
+  if (printer.connection_type === "usb") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-violet-600">
+        <Usb className="h-3 w-3" />
+        USB
+      </span>
+    );
+  }
   if (printer.is_online === null) {
     return <span className="inline-flex items-center gap-1 text-xs text-gray-400"><span className="h-2 w-2 rounded-full bg-gray-300" />Не проверен</span>;
   }
@@ -56,6 +64,8 @@ function MacStatus({ printer }: { printer: Printer }) {
 }
 
 export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
+  const isUsb = printer.connection_type === "usb";
+
   const polledAt = printer.last_polled_at
     ? new Date(printer.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
@@ -66,8 +76,8 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-amber-50 p-2">
-              <Tag className="h-5 w-5 text-amber-600" />
+            <div className={`rounded-lg p-2 ${isUsb ? "bg-violet-50" : "bg-amber-50"}`}>
+              {isUsb ? <Usb className="h-5 w-5 text-violet-600" /> : <Tag className="h-5 w-5 text-amber-600" />}
             </div>
             <div>
               <div className="font-medium text-sm text-gray-900">{printer.model}</div>
@@ -77,32 +87,49 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
           {statusBadge(printer)}
         </div>
 
-        {/* IP */}
-        <div className="text-xs text-gray-400 font-mono">{printer.ip_address}</div>
+        {/* IP or Host PC */}
+        {isUsb ? (
+          printer.host_pc && (
+            <div className="text-xs text-gray-400">
+              <span className="text-gray-500">ПК:</span> {printer.host_pc}
+            </div>
+          )
+        ) : (
+          <div className="text-xs text-gray-400 font-mono">{printer.ip_address}</div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-100">
           <span className="text-[11px] text-gray-400">
-            {polledAt ? `Проверено: ${polledAt}` : "Ещё не проверялся"}
+            {isUsb
+              ? "Подключение: USB"
+              : polledAt ? `Проверено: ${polledAt}` : "Ещё не проверялся"
+            }
           </span>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => onPoll(printer.id)}
-              disabled={isPolling}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition disabled:opacity-40"
-              title="Проверить"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />
-            </button>
-            <a
-              href={`http://${printer.ip_address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition"
-              title="Веб-панель"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+            {!isUsb && (
+              <>
+                <button
+                  onClick={() => onPoll(printer.id)}
+                  disabled={isPolling}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition disabled:opacity-40"
+                  title="Проверить"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />
+                </button>
+                {printer.ip_address && (
+                  <a
+                    href={`http://${printer.ip_address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition"
+                    title="Веб-панель"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </>
+            )}
             {isSuperuser && (
               <>
                 <button
@@ -126,7 +153,7 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
       </div>
 
       {/* MAC verification status — below the card */}
-      {(printer.mac_address || printer.mac_status) && (
+      {!isUsb && (printer.mac_address || printer.mac_status) && (
         <div className={`px-5 py-2 border-t rounded-b-xl ${
           printer.mac_status === "mismatch"
             ? "bg-red-50 border-red-200"

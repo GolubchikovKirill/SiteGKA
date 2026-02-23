@@ -95,9 +95,10 @@ async def read_printers(
 
 @router.post("/", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
 async def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Printer:
-    existing = session.exec(select(Printer).where(Printer.ip_address == printer_in.ip_address)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Printer with this IP already exists")
+    if printer_in.connection_type == "ip" and printer_in.ip_address:
+        existing = session.exec(select(Printer).where(Printer.ip_address == printer_in.ip_address)).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Printer with this IP already exists")
     printer = Printer(**printer_in.model_dump())
     session.add(printer)
     session.commit()
@@ -120,7 +121,7 @@ async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in:
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
     update_data = printer_in.model_dump(exclude_unset=True)
-    if "ip_address" in update_data:
+    if "ip_address" in update_data and update_data["ip_address"] is not None:
         existing = session.exec(
             select(Printer).where(
                 Printer.ip_address == update_data["ip_address"],
@@ -153,6 +154,8 @@ async def delete_printer(session: SessionDep, printer_id: uuid.UUID) -> Message:
 
 
 def _poll_one(printer: Printer) -> tuple[str, object | None, str | None]:
+    if printer.connection_type == "usb" or not printer.ip_address:
+        return "", None, None
     ip = printer.ip_address
     try:
         if printer.printer_type == "label":
@@ -250,6 +253,9 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
 
+    if printer.connection_type == "usb" or not printer.ip_address:
+        raise HTTPException(status_code=400, detail="USB printers cannot be polled")
+
     if printer.printer_type == "label":
         online = await asyncio.to_thread(check_port, printer.ip_address)
         printer.is_online = online
@@ -315,9 +321,13 @@ async def poll_all_printers(
     current_user: CurrentUser,
     printer_type: str = Query(default="laser"),
 ) -> PrintersPublic:
-    printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
-    if not printers:
+    all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+    if not all_printers:
         return PrintersPublic(data=[], count=0)
+
+    printers = [p for p in all_printers if p.connection_type != "usb" and p.ip_address]
+    if not printers:
+        return PrintersPublic(data=all_printers, count=len(all_printers))
 
     printer_map = {p.ip_address: p for p in printers}
     poll_results = await asyncio.to_thread(_do_poll_all, printers)
@@ -393,8 +403,8 @@ async def poll_all_printers(
                     session.add(p)
 
     session.commit()
-    # Re-fetch to get updated data
-    printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+    # Re-fetch all printers (including USB) for the response
+    result_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
 
     await _invalidate_printer_cache()
-    return PrintersPublic(data=printers, count=len(printers))
+    return PrintersPublic(data=result_printers, count=len(result_printers))

@@ -3,6 +3,7 @@ import { useAuth } from "./auth";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import MediaPlayersPage from "./pages/MediaPlayersPage";
 import UsersPage from "./pages/Users";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -35,6 +36,7 @@ export default function App() {
             <Layout>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/media-players" element={<MediaPlayersPage />} />
                 <Route
                   path="/users"
                   element={
