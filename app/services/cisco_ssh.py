@@ -60,6 +60,10 @@ class CiscoSSH:
     def connect(self) -> bool:
         allowed = self._query_auth_methods()
         logger.info("SSH to %s: server allows auth methods: %s", self.ip, allowed)
+        logger.info(
+            "SSH to %s: using username=%r, password length=%d",
+            self.ip, self.username, len(self.password),
+        )
 
         strategies: list[tuple[str, callable]] = []
         if "password" in allowed:
