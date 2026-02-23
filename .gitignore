@@ -11,6 +11,9 @@ wheels/
 # Environment
 .env
 
+# SSL certificates
+certs/
+
 # IDE
 .idea/
 .vscode/

@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "infrascope"
 
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    SCAN_SUBNET: str = ""
+    SCAN_PORTS: str = "9100,631,80,443"
+
+    DOMAIN: str = "infrascope.local"
+
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     @computed_field

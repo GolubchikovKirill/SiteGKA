@@ -10,7 +10,7 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.core.db import engine
-from app.core.security import ALGORITHM
+from app.core.security import ALGORITHM, is_token_blacklisted
 from app.models import User
 from app.schemas import TokenPayload
 
@@ -26,7 +26,7 @@ SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
-def get_current_user(session: SessionDep, token: TokenDep) -> User:
+async def get_current_user(session: SessionDep, token: TokenDep) -> User:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         token_data = TokenPayload(**payload)
@@ -34,6 +34,12 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
+        )
+    jti = payload.get("jti")
+    if jti and await is_token_blacklisted(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
         )
     user = session.get(User, token_data.sub)
     if not user:

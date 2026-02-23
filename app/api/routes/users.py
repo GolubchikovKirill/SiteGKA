@@ -9,6 +9,7 @@ from app.models import User
 from app.schemas import (
     Message,
     UpdatePassword,
+    UserCreate,
     UserPublic,
     UsersPublic,
     UserUpdate,
@@ -30,9 +31,22 @@ def read_users(
 ) -> UsersPublic:
     count_statement = select(func.count()).select_from(User)
     count = session.exec(count_statement).one()
-    statement = select(User).offset(skip).limit(limit)
+    statement = select(User).offset(skip).limit(limit).order_by(User.created_at.desc())
     users = session.exec(statement).all()
     return UsersPublic(data=users, count=count)
+
+
+@router.post(
+    "/",
+    dependencies=[Depends(get_current_active_superuser)],
+    response_model=UserPublic,
+)
+def create_user_by_admin(session: SessionDep, user_in: UserCreate) -> User:
+    """Create a new user (admin only)."""
+    existing = crud.get_user_by_email(session=session, email=user_in.email)
+    if existing:
+        raise HTTPException(status_code=400, detail="A user with this email already exists")
+    return crud.create_user(session=session, user_create=user_in)
 
 
 @router.get("/me", response_model=UserPublic)

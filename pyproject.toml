@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.14",
+    "argon2-cffi>=25.1.0",
     "asyncpg>=0.30",
     "bcrypt>=4.2",
     "fastapi>=0.129.0",
@@ -15,6 +16,8 @@ dependencies = [
     "pyjwt[crypto]>=2.10",
     "pysnmp-lextudio>=6.0",
     "python-multipart>=0.0.18",
+    "redis>=5.0",
+    "slowapi>=0.1.9",
     "sqlmodel>=0.0.22",
     "uvicorn[standard]>=0.34",
 ]

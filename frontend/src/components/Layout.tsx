@@ -1,14 +1,16 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth";
-import { LogOut, Server, Printer, BarChart3 } from "lucide-react";
-
-const NAV_ITEMS = [
-  { to: "/", label: "Принтеры", icon: Printer },
-] as const;
+import { LogOut, Server, Printer, Users } from "lucide-react";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const isSuperuser = user?.is_superuser ?? false;
+
+  const navItems = [
+    { to: "/", label: "Принтеры", icon: Printer, visible: true },
+    { to: "/users", label: "Пользователи", icon: Users, visible: isSuperuser },
+  ];
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -36,23 +38,25 @@ export default function Layout({ children }: { children: ReactNode }) {
 
           {/* Navigation tabs */}
           <nav className="-mb-px flex gap-6">
-            {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end
-                className={({ isActive }) =>
-                  `inline-flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium transition ${
-                    isActive
-                      ? "border-blue-600 text-blue-600"
-                      : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-                  }`
-                }
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </NavLink>
-            ))}
+            {navItems
+              .filter((item) => item.visible)
+              .map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end
+                  className={({ isActive }) =>
+                    `inline-flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium transition ${
+                      isActive
+                        ? "border-blue-600 text-blue-600"
+                        : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                    }`
+                  }
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </NavLink>
+              ))}
           </nav>
         </div>
       </header>

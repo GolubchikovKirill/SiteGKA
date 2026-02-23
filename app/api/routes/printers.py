@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -7,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.redis import get_redis
 from app.models import Printer
 from app.schemas import (
     Message,
@@ -16,15 +19,15 @@ from app.schemas import (
     PrinterUpdate,
 )
 from app.services.ping import check_port
-from app.services.snmp import poll_printer
+from app.services.snmp import get_snmp_mac, poll_printer
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["printers"])
 
 MAX_POLL_WORKERS = 20
+CACHE_TTL = 30
 
-# Cyrillic ↔ Latin lookalikes for smart search
 _CYR_TO_LAT = str.maketrans("АВЕКМНОРСТХавекмнорстх", "ABEKMHOPCTXabekmhopctx")
 
 
@@ -33,7 +36,6 @@ def _normalize(text: str) -> str:
 
 
 def _search_filter(column, query: str):
-    """Build OR filter matching both original and normalized text."""
     normalized = _normalize(query)
     from sqlalchemy import or_, func as sa_func
     return or_(
@@ -42,8 +44,20 @@ def _search_filter(column, query: str):
     )
 
 
+async def _invalidate_printer_cache() -> None:
+    try:
+        r = await get_redis()
+        keys = []
+        async for key in r.scan_iter("printers:*"):
+            keys.append(key)
+        if keys:
+            await r.delete(*keys)
+    except Exception as e:
+        logger.warning("Cache invalidation failed: %s", e)
+
+
 @router.get("/", response_model=PrintersPublic)
-def read_printers(
+async def read_printers(
     session: SessionDep,
     current_user: CurrentUser,
     skip: int = Query(default=0, ge=0),
@@ -51,6 +65,15 @@ def read_printers(
     store_name: str | None = None,
     printer_type: str = Query(default="laser"),
 ) -> PrintersPublic:
+    cache_key = f"printers:{printer_type}:{store_name or ''}:{skip}:{limit}"
+    try:
+        r = await get_redis()
+        cached = await r.get(cache_key)
+        if cached:
+            return PrintersPublic(**json.loads(cached))
+    except Exception:
+        pass
+
     statement = select(Printer).where(Printer.printer_type == printer_type)
     count_stmt = select(func.count()).select_from(Printer).where(Printer.printer_type == printer_type)
     if store_name:
@@ -59,11 +82,19 @@ def read_printers(
         count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     printers = session.exec(statement.offset(skip).limit(limit).order_by(Printer.store_name)).all()
-    return PrintersPublic(data=printers, count=count)
+    result = PrintersPublic(data=printers, count=count)
+
+    try:
+        r = await get_redis()
+        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
+    except Exception:
+        pass
+
+    return result
 
 
 @router.post("/", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
-def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Printer:
+async def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Printer:
     existing = session.exec(select(Printer).where(Printer.ip_address == printer_in.ip_address)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Printer with this IP already exists")
@@ -71,6 +102,7 @@ def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Printer:
     session.add(printer)
     session.commit()
     session.refresh(printer)
+    await _invalidate_printer_cache()
     return printer
 
 
@@ -83,7 +115,7 @@ def read_printer(printer_id: uuid.UUID, session: SessionDep, current_user: Curre
 
 
 @router.patch("/{printer_id}", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
-def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in: PrinterUpdate) -> Printer:
+async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in: PrinterUpdate) -> Printer:
     printer = session.get(Printer, printer_id)
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
@@ -102,101 +134,267 @@ def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in: Print
     session.add(printer)
     session.commit()
     session.refresh(printer)
+    await _invalidate_printer_cache()
     return printer
 
 
 @router.delete("/{printer_id}", dependencies=[Depends(get_current_active_superuser)])
-def delete_printer(session: SessionDep, printer_id: uuid.UUID) -> Message:
+async def delete_printer(session: SessionDep, printer_id: uuid.UUID) -> Message:
     printer = session.get(Printer, printer_id)
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
     session.delete(printer)
     session.commit()
+    await _invalidate_printer_cache()
     return Message(message="Printer deleted")
 
 
-def _poll_one(printer: Printer) -> tuple[str, object | None]:
-    """Poll a single printer using the appropriate method for its type."""
+# ── Polling helpers ──────────────────────────────────────────────
+
+
+def _poll_one(printer: Printer) -> tuple[str, object | None, str | None]:
     ip = printer.ip_address
     try:
         if printer.printer_type == "label":
             online = check_port(ip)
-            return ip, {"is_online": online}
+            return ip, {"is_online": online}, None
         else:
-            return ip, poll_printer(ip, printer.snmp_community)
+            result = poll_printer(ip, printer.snmp_community)
+            current_mac = None
+            if result.is_online:
+                current_mac = get_snmp_mac(ip, printer.snmp_community)
+            return ip, result, current_mac
     except Exception as e:
         logger.warning("Poll failed for %s: %s", ip, e)
+        return ip, None, None
+
+
+def _probe_ip_for_mac(ip: str, community: str = "public") -> tuple[str, str | None]:
+    """Check if IP responds to SNMP and return its MAC."""
+    try:
+        mac = get_snmp_mac(ip, community)
+        return ip, mac
+    except Exception:
         return ip, None
 
 
-@router.post("/{printer_id}/poll", response_model=PrinterPublic)
-def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Printer:
-    """Poll a single printer and update its cached status."""
-    printer = session.get(Printer, printer_id)
-    if not printer:
-        raise HTTPException(status_code=404, detail="Printer not found")
-
-    if printer.printer_type == "label":
-        printer.is_online = check_port(printer.ip_address)
-        printer.status = "online" if printer.is_online else "offline"
-    else:
-        result = poll_printer(printer.ip_address, printer.snmp_community)
-        printer.is_online = result.is_online
-        printer.status = result.status
-        printer.toner_black = result.toner_black
-        printer.toner_cyan = result.toner_cyan
-        printer.toner_magenta = result.toner_magenta
-        printer.toner_yellow = result.toner_yellow
-
-    printer.last_polled_at = datetime.now(UTC)
-    session.add(printer)
-    session.commit()
-    session.refresh(printer)
-    return printer
+def _verify_mac(printer: Printer, current_mac: str | None) -> str | None:
+    """Compare stored MAC with detected MAC, auto-save on first detection."""
+    if current_mac is None:
+        return "unavailable"
+    if not printer.mac_address:
+        printer.mac_address = current_mac
+        return "verified"
+    if printer.mac_address.lower() == current_mac.lower():
+        return "verified"
+    return "mismatch"
 
 
-@router.post("/poll-all", response_model=PrintersPublic)
-def poll_all_printers(
-    session: SessionDep,
-    current_user: CurrentUser,
-    printer_type: str = Query(default="laser"),
-) -> PrintersPublic:
-    """Poll all printers of a given type in parallel."""
-    printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
-    if not printers:
-        return PrintersPublic(data=[], count=0)
-
-    printer_map = {p.ip_address: p for p in printers}
-
+def _do_poll_all(printers: list[Printer]) -> dict[str, tuple[object | None, str | None]]:
+    """Run all polls in a thread pool."""
+    results: dict[str, tuple[object | None, str | None]] = {}
     with ThreadPoolExecutor(max_workers=min(MAX_POLL_WORKERS, len(printers))) as pool:
         futures = {pool.submit(_poll_one, p): p.ip_address for p in printers}
         for future in as_completed(futures):
             ip = futures[future]
             try:
-                _, result = future.result()
+                _, result, mac = future.result()
             except Exception as e:
                 logger.warning("Poll failed for %s: %s", ip, e)
-                result = None
+                result, mac = None, None
+            results[ip] = (result, mac)
+    return results
 
-            p = printer_map[ip]
+
+async def _find_by_mac_in_scan_cache(mac: str) -> str | None:
+    """Look up MAC in last scan results from Redis. Returns new IP or None."""
+    try:
+        r = await get_redis()
+        data = await r.get("scan:results")
+        if not data:
+            return None
+        import json as _json
+        devices = _json.loads(data)
+        mac_lower = mac.lower()
+        for dev in devices:
+            if dev.get("mac") and dev["mac"].lower() == mac_lower:
+                return dev["ip"]
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_offline_printers(
+    offline_printers: list[Printer],
+    online_macs: dict[str, str],
+) -> dict[str, str]:
+    """For offline printers with known MAC, check if any online printer
+    reported the same MAC at a different IP (IP swap detection).
+    Returns {printer_ip: new_ip} mapping."""
+    reassigned: dict[str, str] = {}
+    mac_to_new_ip = {mac.lower(): ip for ip, mac in online_macs.items()}
+    for p in offline_printers:
+        if p.mac_address:
+            new_ip = mac_to_new_ip.get(p.mac_address.lower())
+            if new_ip and new_ip != p.ip_address:
+                reassigned[p.ip_address] = new_ip
+    return reassigned
+
+
+# ── Poll endpoints ───────────────────────────────────────────────
+
+
+@router.post("/{printer_id}/poll", response_model=PrinterPublic)
+async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Printer:
+    printer = session.get(Printer, printer_id)
+    if not printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    if printer.printer_type == "label":
+        online = await asyncio.to_thread(check_port, printer.ip_address)
+        printer.is_online = online
+        printer.status = "online" if online else "offline"
+        printer.mac_status = None
+    else:
+        _, result, current_mac = await asyncio.to_thread(_poll_one, printer)
+        if result is None or not result.is_online:
+            # Printer offline at stored IP — try to find by MAC
+            if printer.mac_address:
+                new_ip = await _find_by_mac_in_scan_cache(printer.mac_address)
+                if new_ip and new_ip != printer.ip_address:
+                    logger.info(
+                        "Printer %s (%s) found at new IP %s (was %s)",
+                        printer.store_name, printer.mac_address, new_ip, printer.ip_address,
+                    )
+                    conflict = session.exec(
+                        select(Printer).where(
+                            Printer.ip_address == new_ip,
+                            Printer.id != printer.id,
+                        )
+                    ).first()
+                    if not conflict:
+                        printer.ip_address = new_ip
+                        _, result, current_mac = await asyncio.to_thread(_poll_one, printer)
+
             if result is None:
-                p.is_online = False
-                p.status = "error"
-            elif isinstance(result, dict):
-                p.is_online = result["is_online"]
-                p.status = "online" if p.is_online else "offline"
+                printer.is_online = False
+                printer.status = "error"
+                printer.mac_status = "unavailable"
+            elif not result.is_online:
+                printer.is_online = False
+                printer.status = "offline"
+                printer.mac_status = "unavailable"
             else:
-                p.is_online = result.is_online
-                p.status = result.status
-                p.toner_black = result.toner_black
-                p.toner_cyan = result.toner_cyan
-                p.toner_magenta = result.toner_magenta
-                p.toner_yellow = result.toner_yellow
-            p.last_polled_at = datetime.now(UTC)
-            session.add(p)
+                printer.is_online = result.is_online
+                printer.status = result.status
+                printer.toner_black = result.toner_black
+                printer.toner_cyan = result.toner_cyan
+                printer.toner_magenta = result.toner_magenta
+                printer.toner_yellow = result.toner_yellow
+                printer.mac_status = _verify_mac(printer, current_mac)
+        else:
+            printer.is_online = result.is_online
+            printer.status = result.status
+            printer.toner_black = result.toner_black
+            printer.toner_cyan = result.toner_cyan
+            printer.toner_magenta = result.toner_magenta
+            printer.toner_yellow = result.toner_yellow
+            printer.mac_status = _verify_mac(printer, current_mac)
+
+    printer.last_polled_at = datetime.now(UTC)
+    session.add(printer)
+    session.commit()
+    session.refresh(printer)
+    await _invalidate_printer_cache()
+    return printer
+
+
+@router.post("/poll-all", response_model=PrintersPublic)
+async def poll_all_printers(
+    session: SessionDep,
+    current_user: CurrentUser,
+    printer_type: str = Query(default="laser"),
+) -> PrintersPublic:
+    printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+    if not printers:
+        return PrintersPublic(data=[], count=0)
+
+    printer_map = {p.ip_address: p for p in printers}
+    poll_results = await asyncio.to_thread(_do_poll_all, printers)
+
+    # Phase 1: apply poll results, collect online MACs and offline printers
+    online_macs: dict[str, str] = {}
+    offline_with_mac: list[Printer] = []
+
+    for ip, (result, current_mac) in poll_results.items():
+        p = printer_map[ip]
+        if result is None:
+            p.is_online = False
+            p.status = "error"
+            p.mac_status = "unavailable"
+            if p.mac_address:
+                offline_with_mac.append(p)
+        elif isinstance(result, dict):
+            p.is_online = result["is_online"]
+            p.status = "online" if p.is_online else "offline"
+            p.mac_status = None
+            if not p.is_online and p.mac_address:
+                offline_with_mac.append(p)
+        else:
+            p.is_online = result.is_online
+            p.status = result.status
+            p.toner_black = result.toner_black
+            p.toner_cyan = result.toner_cyan
+            p.toner_magenta = result.toner_magenta
+            p.toner_yellow = result.toner_yellow
+            p.mac_status = _verify_mac(p, current_mac)
+            if p.is_online and current_mac:
+                online_macs[ip] = current_mac
+            elif not p.is_online and p.mac_address:
+                offline_with_mac.append(p)
+        p.last_polled_at = datetime.now(UTC)
+        session.add(p)
+
+    # Phase 2: try to relocate offline printers by MAC
+    if offline_with_mac:
+        # Check scan cache for known MACs at new IPs
+        for p in offline_with_mac:
+            new_ip = await _find_by_mac_in_scan_cache(p.mac_address)
+            if new_ip and new_ip != p.ip_address:
+                conflict = session.exec(
+                    select(Printer).where(
+                        Printer.ip_address == new_ip,
+                        Printer.id != p.id,
+                    )
+                ).first()
+                if not conflict:
+                    old_ip = p.ip_address
+                    p.ip_address = new_ip
+                    # Re-poll at new IP
+                    _, new_result, new_mac = await asyncio.to_thread(_poll_one, p)
+                    if new_result and (isinstance(new_result, dict) and new_result.get("is_online") or hasattr(new_result, 'is_online') and new_result.is_online):
+                        if not isinstance(new_result, dict):
+                            p.is_online = True
+                            p.status = new_result.status
+                            p.toner_black = new_result.toner_black
+                            p.toner_cyan = new_result.toner_cyan
+                            p.toner_magenta = new_result.toner_magenta
+                            p.toner_yellow = new_result.toner_yellow
+                        else:
+                            p.is_online = new_result["is_online"]
+                            p.status = "online"
+                        p.mac_status = _verify_mac(p, new_mac)
+                        logger.info(
+                            "Auto-relocated %s: %s -> %s (MAC %s)",
+                            p.store_name, old_ip, new_ip, p.mac_address,
+                        )
+                    else:
+                        p.ip_address = old_ip
+                    session.add(p)
 
     session.commit()
-    for p in printers:
-        session.refresh(p)
+    # Re-fetch to get updated data
+    printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
 
+    await _invalidate_printer_cache()
     return PrintersPublic(data=printers, count=len(printers))

@@ -38,9 +38,60 @@ export async function login(email: string, password: string) {
   return data;
 }
 
+export async function logout() {
+  try {
+    await api.post("/auth/logout");
+  } catch {
+    // ignore errors on logout
+  }
+}
+
 export async function getMe() {
   const { data } = await api.post("/auth/test-token");
   return data;
+}
+
+// ── Users ──
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string | null;
+  is_active: boolean;
+  is_superuser: boolean;
+  created_at: string;
+}
+
+export interface UsersResponse {
+  data: User[];
+  count: number;
+}
+
+export async function getUsers() {
+  const { data } = await api.get<UsersResponse>("/users/");
+  return data;
+}
+
+export async function createUser(user: {
+  email: string;
+  password: string;
+  full_name?: string;
+  is_superuser?: boolean;
+}) {
+  const { data } = await api.post<User>("/users/", user);
+  return data;
+}
+
+export async function updateUser(
+  id: string,
+  user: { email?: string; password?: string; full_name?: string; is_superuser?: boolean; is_active?: boolean },
+) {
+  const { data } = await api.patch<User>(`/users/${id}`, user);
+  return data;
+}
+
+export async function deleteUser(id: string) {
+  await api.delete(`/users/${id}`);
 }
 
 // ── Printers ──
@@ -53,6 +104,8 @@ export interface Printer {
   store_name: string;
   model: string;
   ip_address: string;
+  mac_address: string | null;
+  mac_status: string | null;
   is_online: boolean | null;
   status: string | null;
   toner_black: number | null;
@@ -104,5 +157,69 @@ export async function pollAllPrinters(printer_type: PrinterType = "laser") {
   const { data } = await api.post<PrintersResponse>("/printers/poll-all", null, {
     params: { printer_type },
   });
+  return data;
+}
+
+// ── Scanner ──
+
+export interface DiscoveredDevice {
+  ip: string;
+  mac: string | null;
+  open_ports: number[];
+  hostname: string | null;
+  is_known: boolean;
+  known_printer_id: string | null;
+  ip_changed: boolean;
+  old_ip: string | null;
+}
+
+export interface ScanProgress {
+  status: "idle" | "running" | "done" | "error";
+  scanned: number;
+  total: number;
+  found: number;
+  message: string | null;
+}
+
+export interface ScanResultsResponse {
+  progress: ScanProgress;
+  devices: DiscoveredDevice[];
+}
+
+export async function startScan(subnet: string, ports: string = "9100,631,80,443") {
+  const { data } = await api.post<ScanProgress>("/scanner/scan", { subnet, ports });
+  return data;
+}
+
+export async function getScanStatus() {
+  const { data } = await api.get<ScanProgress>("/scanner/status");
+  return data;
+}
+
+export async function getScanResults() {
+  const { data } = await api.get<ScanResultsResponse>("/scanner/results");
+  return data;
+}
+
+export async function getScannerSettings() {
+  const { data } = await api.get<{ subnet: string; ports: string }>("/scanner/settings");
+  return data;
+}
+
+export async function addDiscoveredPrinter(printer: {
+  printer_type?: PrinterType;
+  store_name: string;
+  model: string;
+  ip_address: string;
+  snmp_community?: string;
+}) {
+  const { data } = await api.post<Printer>("/scanner/add", printer);
+  return data;
+}
+
+export async function updatePrinterIp(printerId: string, newIp: string, newMac?: string) {
+  const params: Record<string, string> = { new_ip: newIp };
+  if (newMac) params.new_mac = newMac;
+  const { data } = await api.post<Printer>(`/scanner/update-ip/${printerId}`, null, { params });
   return data;
 }

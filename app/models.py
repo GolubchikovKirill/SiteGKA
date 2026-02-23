@@ -21,9 +21,10 @@ class Printer(SQLModel, table=True):
     store_name: str = Field(max_length=255, index=True)
     model: str = Field(max_length=255)
     ip_address: str = Field(max_length=45, unique=True, index=True)
+    mac_address: str | None = Field(default=None, max_length=17)
+    mac_status: str | None = Field(default=None, max_length=20)
     snmp_community: str = Field(default="public", max_length=255)
 
-    # Cached status from last SNMP / TCP poll
     is_online: bool | None = Field(default=None)
     status: str | None = Field(default=None, max_length=50)
     toner_black: int | None = Field(default=None)

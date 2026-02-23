@@ -5,7 +5,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { login as apiLogin, getMe } from "./client";
+import { login as apiLogin, logout as apiLogout, getMe } from "./client";
 
 interface User {
   id: string;
@@ -47,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    apiLogout();
     localStorage.removeItem("access_token");
     setUser(null);
   };

@@ -431,3 +431,48 @@ def poll_printer(ip_address: str, community: str = "public") -> PrinterStatus:
             return pool.submit(asyncio.run, _poll_printer_async(ip_address, community)).result()
     else:
         return asyncio.run(_poll_printer_async(ip_address, community))
+
+
+OID_IF_PHYS_ADDR = "1.3.6.1.2.1.2.2.1.6"
+
+
+async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str | None:
+    """Query ifPhysAddress via SNMP to get MAC address."""
+    engine = SnmpEngine()
+    try:
+        target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+    except Exception:
+        return None
+
+    comm = CommunityData(community)
+    try:
+        async for err, _, _, vb in walkCmd(
+            engine, comm, target, ContextData(),
+            ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
+            lexicographicMode=False,
+        ):
+            if err:
+                break
+            for _, val in vb:
+                if hasattr(val, "asOctets"):
+                    octets = val.asOctets()
+                    if len(octets) == 6 and any(b != 0 for b in octets):
+                        return ":".join(f"{b:02x}" for b in octets)
+    except Exception:
+        pass
+    return None
+
+
+def get_snmp_mac(ip_address: str, community: str = "public") -> str | None:
+    """Synchronous wrapper for MAC address retrieval."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, _get_snmp_mac_async(ip_address, community)).result()
+    else:
+        return asyncio.run(_get_snmp_mac_async(ip_address, community))

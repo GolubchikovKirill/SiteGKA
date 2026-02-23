@@ -11,24 +11,37 @@ class Token(BaseModel):
 
 class TokenPayload(BaseModel):
     sub: str | None = None
+    jti: str | None = None
+
+
+def _validate_password_strength(v: str) -> str:
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    if len(v) > 128:
+        raise ValueError("Password must be at most 128 characters")
+    if v.isdigit() or v.isalpha():
+        raise ValueError("Password must contain both letters and numbers")
+    return v
 
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str | None = None
+    is_superuser: bool = False
 
-
-class UserRegister(BaseModel):
-    email: EmailStr
-    password: str
-    full_name: str | None = None
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
     password: str | None = None
     full_name: str | None = None
+    is_superuser: bool | None = None
+    is_active: bool | None = None
 
 
 class UserUpdateMe(BaseModel):
@@ -39,6 +52,11 @@ class UserUpdateMe(BaseModel):
 class UpdatePassword(BaseModel):
     current_password: str
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 class UserPublic(BaseModel):
@@ -84,6 +102,29 @@ class PrinterCreate(BaseModel):
     ip_address: str
     snmp_community: str = "public"
 
+    @field_validator("store_name")
+    @classmethod
+    def validate_store_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v or len(v) > 255:
+            raise ValueError("store_name must be 1-255 characters")
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, v: str) -> str:
+        v = v.strip()
+        if not v or len(v) > 255:
+            raise ValueError("model must be 1-255 characters")
+        return v
+
+    @field_validator("snmp_community")
+    @classmethod
+    def validate_community(cls, v: str) -> str:
+        if len(v) > 255:
+            raise ValueError("snmp_community must be <= 255 characters")
+        return v
+
     @field_validator("ip_address")
     @classmethod
     def validate_ip(cls, v: str) -> str:
@@ -103,6 +144,24 @@ class PrinterUpdate(BaseModel):
     ip_address: str | None = None
     snmp_community: str | None = None
 
+    @field_validator("store_name")
+    @classmethod
+    def validate_store_name(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v or len(v) > 255:
+                raise ValueError("store_name must be 1-255 characters")
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v or len(v) > 255:
+                raise ValueError("model must be 1-255 characters")
+        return v
+
     @field_validator("ip_address")
     @classmethod
     def validate_ip(cls, v: str | None) -> str | None:
@@ -119,6 +178,8 @@ class PrinterPublic(BaseModel):
     store_name: str
     model: str
     ip_address: str
+    mac_address: str | None = None
+    mac_status: str | None = None
     is_online: bool | None = None
     status: str | None = None
     toner_black: int | None = None
@@ -142,3 +203,74 @@ class PrinterStatusResponse(BaseModel):
     toner_magenta: int | None = None
     toner_yellow: int | None = None
     sys_description: str | None = None
+
+
+# ── Scanner schemas ──────────────────────────────────────────────
+
+
+class ScanRequest(BaseModel):
+    subnet: str
+    ports: str = "9100,631,80,443"
+
+    @field_validator("subnet")
+    @classmethod
+    def validate_subnet(cls, v: str) -> str:
+        import ipaddress
+        parts = [p.strip() for p in v.split(",") if p.strip()]
+        if not parts:
+            raise ValueError("At least one subnet is required")
+        if len(parts) > 10:
+            raise ValueError("Maximum 10 subnets allowed")
+        for part in parts:
+            try:
+                net = ipaddress.ip_network(part, strict=False)
+                if net.prefixlen < 16:
+                    raise ValueError(f"Subnet {part} too large (min /16)")
+            except ValueError as e:
+                if "too large" in str(e):
+                    raise
+                raise ValueError(f"Invalid subnet: {part} (expected CIDR, e.g. 10.10.98.0/24)")
+        return v
+
+    @field_validator("ports")
+    @classmethod
+    def validate_ports(cls, v: str) -> str:
+        parts = [p.strip() for p in v.split(",") if p.strip()]
+        if not parts:
+            raise ValueError("At least one port is required")
+        if len(parts) > 20:
+            raise ValueError("Maximum 20 ports allowed")
+        for part in parts:
+            try:
+                port = int(part)
+                if port < 1 or port > 65535:
+                    raise ValueError(f"Port {port} out of range (1-65535)")
+            except ValueError as e:
+                if "out of range" in str(e):
+                    raise
+                raise ValueError(f"Invalid port: {part} (must be integer)")
+        return v
+
+
+class DiscoveredDevice(BaseModel):
+    ip: str
+    mac: str | None = None
+    open_ports: list[int] = []
+    hostname: str | None = None
+    is_known: bool = False
+    known_printer_id: str | None = None
+    ip_changed: bool = False
+    old_ip: str | None = None
+
+
+class ScanProgress(BaseModel):
+    status: str  # "idle" | "running" | "done" | "error"
+    scanned: int = 0
+    total: int = 0
+    found: int = 0
+    message: str | None = None
+
+
+class ScanResults(BaseModel):
+    progress: ScanProgress
+    devices: list[DiscoveredDevice] = []

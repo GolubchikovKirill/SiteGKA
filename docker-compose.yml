@@ -17,6 +17,21 @@ services:
     networks:
       - internal
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 3
+      start_period: 5s
+      timeout: 3s
+    networks:
+      - internal
+
   backend:
     build:
       context: .
@@ -25,8 +40,11 @@ services:
     env_file: .env
     environment:
       POSTGRES_SERVER: db
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -44,6 +62,9 @@ services:
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-80}:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -52,6 +73,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   internal:

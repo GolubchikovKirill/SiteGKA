@@ -1,12 +1,20 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from sqlmodel import Session
 
 from app.api.main import api_router
 from app.core.config import settings
 from app.core.db import engine, init_db
+from app.core.limiter import limiter
+from app.core.redis import close_redis
+
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("app").setLevel(logging.INFO)
 
 
 @asynccontextmanager
@@ -14,6 +22,7 @@ async def lifespan(app: FastAPI):
     with Session(engine) as session:
         init_db(session)
     yield
+    await close_redis()
 
 
 app = FastAPI(
@@ -21,6 +30,17 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Слишком много попыток. Повторите позже."},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,

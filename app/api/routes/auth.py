@@ -1,20 +1,24 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app import crud
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import CurrentUser, SessionDep, TokenDep
 from app.core.config import settings
-from app.core.security import create_access_token
-from app.schemas import Token, UserCreate, UserPublic, UserRegister
+from app.core.security import ALGORITHM, blacklist_token, create_access_token
+from app.core.limiter import limiter
+from app.schemas import Token, UserPublic
+from app import crud
 
 router = APIRouter(tags=["auth"])
 
 
 @router.post("/login")
+@limiter.limit("5/minute")
 def login_access_token(
+    request: Request,
     session: SessionDep,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
@@ -28,22 +32,20 @@ def login_access_token(
     return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
 
 
-@router.post("/register", response_model=UserPublic)
-def register_user(session: SessionDep, user_in: UserRegister):
-    """Register a new user."""
-    user = crud.get_user_by_email(session=session, email=user_in.email)
-    if user:
-        raise HTTPException(
-            status_code=400,
-            detail="A user with this email already exists",
-        )
-    user_create = UserCreate(
-        email=user_in.email,
-        password=user_in.password,
-        full_name=user_in.full_name,
-    )
-    user = crud.create_user(session=session, user_create=user_create)
-    return user
+@router.post("/logout")
+async def logout(token: TokenDep) -> dict:
+    """Invalidate the current access token."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.InvalidTokenError:
+        return {"message": "ok"}
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if jti and exp:
+        ttl = int(exp - datetime.now(UTC).timestamp())
+        if ttl > 0:
+            await blacklist_token(jti, ttl)
+    return {"message": "ok"}
 
 
 @router.post("/test-token", response_model=UserPublic)

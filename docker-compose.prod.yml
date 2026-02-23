@@ -1,0 +1,26 @@
+# Optional override for Linux servers — enables MAC address resolution.
+# Without this overlay everything works (polling, scanning, SNMP) —
+# only ARP/MAC detection requires host network access.
+#
+# Linux only: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Does NOT work on macOS/Windows Docker Desktop.
+
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  backend:
+    network_mode: host
+    networks: !reset {}
+    environment:
+      POSTGRES_SERVER: "127.0.0.1"
+      REDIS_URL: "redis://127.0.0.1:6379/0"
+
+  frontend:
+    extra_hosts:
+      - "backend:host-gateway"

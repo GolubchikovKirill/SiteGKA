@@ -1,0 +1,130 @@
+import logging
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlmodel import select
+
+from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.config import settings
+from app.models import Printer
+from app.schemas import (
+    DiscoveredDevice,
+    PrinterCreate,
+    PrinterPublic,
+    ScanProgress,
+    ScanRequest,
+    ScanResults,
+)
+from app.services.scanner import get_scan_progress, get_scan_results, scan_subnet
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["scanner"])
+
+
+async def _run_scan(subnet: str, ports: str, known_printers: list[dict]) -> None:
+    try:
+        await scan_subnet(subnet, ports, known_printers)
+    except Exception as e:
+        logger.error("Scan failed: %s", e)
+
+
+@router.post(
+    "/scan",
+    response_model=ScanProgress,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+async def start_scan(
+    body: ScanRequest,
+    background_tasks: BackgroundTasks,
+    session: SessionDep,
+) -> dict:
+    """Start a network scan (runs in background)."""
+    printers = session.exec(select(Printer)).all()
+    known = [
+        {
+            "id": str(p.id),
+            "ip_address": p.ip_address,
+            "mac_address": p.mac_address,
+            "store_name": p.store_name,
+        }
+        for p in printers
+    ]
+    background_tasks.add_task(_run_scan, body.subnet, body.ports, known)
+    return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
+
+
+@router.get("/status", response_model=ScanProgress)
+async def scan_status(current_user: CurrentUser) -> dict:
+    """Get current scan progress."""
+    return await get_scan_progress()
+
+
+@router.get("/results", response_model=ScanResults)
+async def scan_results(current_user: CurrentUser) -> dict:
+    """Get results of the last scan."""
+    progress = await get_scan_progress()
+    devices = await get_scan_results()
+    return {"progress": progress, "devices": devices}
+
+
+@router.post(
+    "/add",
+    response_model=PrinterPublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def add_discovered_printer(
+    body: PrinterCreate,
+    session: SessionDep,
+) -> Printer:
+    """Add a discovered device as a monitored printer."""
+    existing = session.exec(select(Printer).where(Printer.ip_address == body.ip_address)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Printer with this IP already exists")
+    printer = Printer(**body.model_dump())
+    session.add(printer)
+    session.commit()
+    session.refresh(printer)
+    return printer
+
+
+@router.post(
+    "/update-ip/{printer_id}",
+    response_model=PrinterPublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def update_printer_ip(
+    printer_id: str,
+    session: SessionDep,
+    new_ip: str = "",
+    new_mac: str | None = None,
+) -> Printer:
+    """Update printer IP (when DHCP changed it)."""
+    import uuid
+
+    printer = session.get(Printer, uuid.UUID(printer_id))
+    if not printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+    if new_ip:
+        conflict = session.exec(
+            select(Printer).where(Printer.ip_address == new_ip, Printer.id != printer.id)
+        ).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Another printer already has this IP")
+        printer.ip_address = new_ip
+    if new_mac:
+        printer.mac_address = new_mac
+    printer.updated_at = datetime.now(UTC)
+    session.add(printer)
+    session.commit()
+    session.refresh(printer)
+    return printer
+
+
+@router.get("/settings")
+async def get_scanner_settings(current_user: CurrentUser) -> dict:
+    """Get default scanner settings."""
+    return {
+        "subnet": settings.SCAN_SUBNET,
+        "ports": settings.SCAN_PORTS,
+    }

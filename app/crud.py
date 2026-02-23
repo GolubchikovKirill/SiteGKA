@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
-from app.core.security import get_password_hash, verify_password
+from app.core.security import get_password_hash, needs_rehash, verify_password
 from app.models import User
 from app.schemas import UserCreate, UserUpdate
 
@@ -13,6 +13,7 @@ def create_user(*, session: Session, user_create: UserCreate) -> User:
         email=user_create.email,
         hashed_password=get_password_hash(user_create.password),
         full_name=user_create.full_name,
+        is_superuser=user_create.is_superuser,
     )
     session.add(db_obj)
     session.commit()
@@ -47,4 +48,8 @@ def authenticate(*, session: Session, email: str, password: str) -> User | None:
         return None
     if not verify_password(password, db_user.hashed_password):
         return None
+    if needs_rehash(db_user.hashed_password):
+        db_user.hashed_password = get_password_hash(password)
+        session.add(db_user)
+        session.commit()
     return db_user
