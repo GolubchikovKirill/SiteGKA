@@ -2,13 +2,18 @@
 
 Collects: online status, hostname, OS info, uptime, MAC address, open ports.
 Uses SNMP where available, with TCP port scan and ARP fallback.
+Supports NetBIOS name resolution for Windows hosts.
 """
 
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import os
+import re as _re
 import socket
+import struct
 import warnings
 from dataclasses import dataclass, field
 
@@ -187,21 +192,136 @@ def _get_mac_from_arp(ip: str) -> str | None:
     return None
 
 
+def _netbios_encode_name(name: str) -> bytes:
+    """Encode a NetBIOS name using first-level encoding (RFC 1001)."""
+    padded = name.upper().ljust(16, " ")[:16]
+    encoded = bytearray()
+    for ch in padded:
+        b = ord(ch)
+        encoded.append(0x41 + (b >> 4))
+        encoded.append(0x41 + (b & 0x0F))
+    return bytes([32]) + bytes(encoded) + b"\x00"
+
+
+def _netbios_query_packet(name: str) -> bytes:
+    """Build a NetBIOS Name Query Request packet."""
+    header = struct.pack(
+        ">HHHHHH",
+        0x0001,   # transaction id
+        0x0110,   # flags: recursion desired, broadcast
+        1, 0, 0, 0,  # 1 question, 0 answers
+    )
+    qname = _netbios_encode_name(name)
+    qtype_class = struct.pack(">HH", 0x0020, 0x0001)  # NB, IN
+    return header + qname + qtype_class
+
+
+def _netbios_parse_response(data: bytes) -> str | None:
+    """Parse IP address from a NetBIOS Name Query Response."""
+    if len(data) < 60:
+        return None
+    try:
+        ans_count = struct.unpack(">H", data[6:8])[0]
+        if ans_count == 0:
+            return None
+        offset = 12
+        # skip question name
+        while offset < len(data):
+            length = data[offset]
+            if length == 0:
+                offset += 1
+                break
+            offset += 1 + length
+        offset += 4  # qtype + qclass
+        # skip answer name (may be pointer)
+        if offset < len(data) and (data[offset] & 0xC0) == 0xC0:
+            offset += 2
+        else:
+            while offset < len(data):
+                length = data[offset]
+                if length == 0:
+                    offset += 1
+                    break
+                offset += 1 + length
+        # type(2) + class(2) + ttl(4) + rdlength(2) = 10
+        offset += 10
+        # rdata: flags(2) + ip(4)
+        offset += 2
+        if offset + 4 <= len(data):
+            return socket.inet_ntoa(data[offset:offset + 4])
+    except Exception:
+        pass
+    return None
+
+
+def _netbios_resolve(name: str, subnets: list[str] | None = None) -> str | None:
+    """Resolve a Windows hostname via NetBIOS name query.
+
+    Sends queries to broadcast addresses of known subnets.
+    """
+    if subnets is None:
+        raw = os.environ.get("SCAN_SUBNET", "")
+        subnets = [s.strip() for s in raw.split(",") if s.strip()]
+
+    broadcast_addrs = []
+    for subnet_str in subnets:
+        try:
+            net = ipaddress.IPv4Network(subnet_str, strict=False)
+            broadcast_addrs.append(str(net.broadcast_address))
+        except ValueError:
+            continue
+
+    if not broadcast_addrs:
+        broadcast_addrs = ["255.255.255.255"]
+
+    packet = _netbios_query_packet(name)
+
+    for bcast in broadcast_addrs:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.settimeout(2.0)
+            sock.sendto(packet, (bcast, 137))
+            data, _ = sock.recvfrom(1024)
+            sock.close()
+            ip = _netbios_parse_response(data)
+            if ip:
+                logger.info("NetBIOS resolved %s -> %s (via %s)", name, ip, bcast)
+                return ip
+        except (socket.timeout, OSError):
+            pass
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    return None
+
+
 def _resolve_host(address: str) -> str | None:
-    """Resolve hostname to IP. Returns the IP or None if resolution fails."""
-    import re as _re
+    """Resolve hostname to IP via DNS then NetBIOS fallback."""
     if _re.match(r"^(\d{1,3}\.){3}\d{1,3}$", address):
         return address
+
+    # 1. DNS
     try:
         return socket.gethostbyname(address)
     except socket.gaierror:
         pass
+
     if "." not in address:
         for suffix in [".local", ".lan"]:
             try:
                 return socket.gethostbyname(address + suffix)
             except socket.gaierror:
                 pass
+
+    # 2. NetBIOS (for Windows hostnames)
+    ip = _netbios_resolve(address)
+    if ip:
+        return ip
+
     logger.warning("Cannot resolve hostname: %s", address)
     return None
 
