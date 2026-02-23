@@ -58,6 +58,19 @@ class CiscoSSH:
         self.shell: paramiko.Channel | None = None
 
     def connect(self) -> bool:
+        strategies = [
+            ("password", self._connect_password),
+            ("keyboard-interactive", self._connect_keyboard_interactive),
+        ]
+        for name, method in strategies:
+            logger.info("SSH to %s: trying %s auth", self.ip, name)
+            if method():
+                logger.info("SSH to %s: %s auth succeeded", self.ip, name)
+                return True
+            logger.warning("SSH to %s: %s auth failed", self.ip, name)
+        return False
+
+    def _connect_password(self) -> bool:
         try:
             self.client = paramiko.SSHClient()
             self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -69,24 +82,62 @@ class CiscoSSH:
                 timeout=SSH_TIMEOUT,
                 look_for_keys=False,
                 allow_agent=False,
+                disabled_algorithms={"pubkeys": ["rsa-sha2-512", "rsa-sha2-256"]},
             )
-            self.shell = self.client.invoke_shell()
+            return self._post_connect()
+        except Exception as e:
+            logger.debug("SSH password connect to %s: %s", self.ip, e)
+            self.close()
+            return False
+
+    def _connect_keyboard_interactive(self) -> bool:
+        """Cisco often uses keyboard-interactive instead of standard password auth."""
+        try:
+            transport = paramiko.Transport((self.ip, self.port))
+            transport.connect()
+            transport.set_keepalive(30)
+
+            password = self.password
+
+            def _ki_handler(_title, _instructions, prompt_list):
+                return [password] * len(prompt_list)
+
+            transport.auth_interactive(self.username, _ki_handler)
+
+            self.client = paramiko.SSHClient()
+            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.client._transport = transport
+            self.shell = transport.open_session()
+            self.shell.get_pty()
+            self.shell.invoke_shell()
             self.shell.settimeout(CMD_TIMEOUT)
             self._recv_until_prompt()
 
-            self._send("enable")
-            output = self._recv_until_prompt()
-            if "assword" in output:
-                self._send(self.enable_password)
-                self._recv_until_prompt()
-
+            self._enter_enable()
             self._send("terminal length 0")
             self._recv_until_prompt()
             return True
         except Exception as e:
-            logger.warning("SSH connect to %s failed: %s", self.ip, e)
+            logger.debug("SSH keyboard-interactive to %s: %s", self.ip, e)
             self.close()
             return False
+
+    def _post_connect(self) -> bool:
+        """Open shell and enter privileged mode after successful transport auth."""
+        self.shell = self.client.invoke_shell()  # type: ignore[union-attr]
+        self.shell.settimeout(CMD_TIMEOUT)
+        self._recv_until_prompt()
+        self._enter_enable()
+        self._send("terminal length 0")
+        self._recv_until_prompt()
+        return True
+
+    def _enter_enable(self) -> None:
+        self._send("enable")
+        output = self._recv_until_prompt()
+        if "assword" in output:
+            self._send(self.enable_password)
+            self._recv_until_prompt()
 
     def close(self) -> None:
         try:
