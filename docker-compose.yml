@@ -41,6 +41,8 @@ services:
     environment:
       POSTGRES_SERVER: db
       REDIS_URL: redis://redis:6379/0
+    dns:
+      - ${DNS_SERVER:-8.8.8.8}
     depends_on:
       db:
         condition: service_healthy

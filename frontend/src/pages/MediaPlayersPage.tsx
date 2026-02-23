@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Plus, Search, Monitor, Music } from "lucide-react";
+import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload } from "lucide-react";
 import {
   getMediaPlayers,
   pollAllMediaPlayers,
@@ -8,6 +8,11 @@ import {
   createMediaPlayer,
   updateMediaPlayer,
   deleteMediaPlayer,
+  iconbitBulkPlay,
+  iconbitBulkStop,
+  iconbitBulkUpload,
+  iconbitBulkPlayFile,
+  iconbitBulkDeleteFile,
   type MediaPlayer,
   type DeviceType,
 } from "../client";
@@ -35,8 +40,11 @@ export default function MediaPlayersPage() {
   const [editingPlayer, setEditingPlayer] = useState<MediaPlayer | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const bulkFileRef = useRef<HTMLInputElement>(null);
 
   const deviceTypeParam = activeFilter === "all" ? undefined : activeFilter;
+  const showIconbitBulk = activeFilter === "iconbit";
 
   const { data, isLoading } = useQuery({
     queryKey: ["media-players", deviceTypeParam, search],
@@ -99,10 +107,41 @@ export default function MediaPlayersPage() {
     if (confirm("Удалить устройство?")) deleteMut.mutate(id);
   };
 
+  const showBulkResult = (res: { success: number; failed: number }) => {
+    setBulkMsg(`Успешно: ${res.success}, ошибок: ${res.failed}`);
+    setTimeout(() => setBulkMsg(null), 4000);
+    queryClient.invalidateQueries({ queryKey: ["iconbit-status"] });
+  };
+
+  const bulkPlayMut = useMutation({
+    mutationFn: iconbitBulkPlay,
+    onSuccess: showBulkResult,
+  });
+
+  const bulkStopMut = useMutation({
+    mutationFn: iconbitBulkStop,
+    onSuccess: showBulkResult,
+  });
+
+  const bulkUploadMut = useMutation({
+    mutationFn: iconbitBulkUpload,
+    onSuccess: (res) => {
+      showBulkResult(res);
+      queryClient.invalidateQueries({ queryKey: ["iconbit-status"] });
+    },
+  });
+
+  const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) bulkUploadMut.mutate(file);
+    e.target.value = "";
+  };
+
   const players = data?.data ?? [];
   const total = players.length;
   const online = players.filter((p) => p.is_online === true).length;
   const offline = players.filter((p) => p.is_online === false).length;
+  const bulkBusy = bulkPlayMut.isPending || bulkStopMut.isPending || bulkUploadMut.isPending;
 
   return (
     <div className="space-y-6">
@@ -169,6 +208,38 @@ export default function MediaPlayersPage() {
           </button>
         ))}
       </div>
+
+      {/* Iconbit bulk controls */}
+      {showIconbitBulk && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-gray-700 mr-1">Все Iconbit:</span>
+          <button
+            onClick={() => bulkPlayMut.mutate()}
+            disabled={bulkBusy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 transition"
+          >
+            <Play className="h-3.5 w-3.5" /> Play все
+          </button>
+          <button
+            onClick={() => bulkStopMut.mutate()}
+            disabled={bulkBusy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-40 transition"
+          >
+            <Square className="h-3.5 w-3.5" /> Stop все
+          </button>
+          <button
+            onClick={() => bulkFileRef.current?.click()}
+            disabled={bulkBusy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-100 disabled:opacity-40 transition"
+          >
+            <Upload className="h-3.5 w-3.5" /> {bulkUploadMut.isPending ? "Загрузка..." : "Загрузить на все"}
+          </button>
+          <input ref={bulkFileRef} type="file" accept="audio/*,video/*" className="hidden" onChange={handleBulkUpload} />
+          {bulkMsg && (
+            <span className="text-sm text-gray-600 bg-gray-100 rounded-lg px-3 py-1.5">{bulkMsg}</span>
+          )}
+        </div>
+      )}
 
       {/* Grid */}
       {isLoading ? (

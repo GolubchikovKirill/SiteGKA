@@ -111,3 +111,51 @@ def stop(ip: str) -> bool:
     except Exception as e:
         logger.warning("Iconbit stop failed for %s: %s", ip, e)
         return False
+
+
+def play_file(ip: str, filename: str) -> bool:
+    """Play a specific file by name via /playlink."""
+    try:
+        resp = httpx.get(
+            f"{_base_url(ip)}/playlink",
+            params={"link": filename},
+            auth=_auth(),
+            timeout=TIMEOUT,
+            follow_redirects=True,
+        )
+        return resp.status_code in (200, 302)
+    except Exception as e:
+        logger.warning("Iconbit play_file failed for %s: %s", ip, e)
+        return False
+
+
+def delete_file(ip: str, filename: str) -> bool:
+    """Delete a file from the device."""
+    try:
+        resp = httpx.get(
+            f"{_base_url(ip)}/delete",
+            params={"file": filename},
+            auth=_auth(),
+            timeout=TIMEOUT,
+            follow_redirects=True,
+        )
+        return resp.status_code in (200, 302)
+    except Exception as e:
+        logger.warning("Iconbit delete_file failed for %s: %s", ip, e)
+        return False
+
+
+def upload_file(ip: str, filename: str, content: bytes) -> bool:
+    """Upload a media file to the device."""
+    try:
+        resp = httpx.post(
+            f"{_base_url(ip)}/upload",
+            files={"file": (filename, content)},
+            auth=_auth(),
+            timeout=60,
+            follow_redirects=True,
+        )
+        return resp.status_code in (200, 302)
+    except Exception as e:
+        logger.warning("Iconbit upload failed for %s: %s", ip, e)
+        return False

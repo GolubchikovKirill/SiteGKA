@@ -317,3 +317,51 @@ export async function iconbitStop(playerId: string) {
   const { data } = await api.post(`/media-players/${playerId}/iconbit/stop`);
   return data;
 }
+
+export async function iconbitPlayFile(playerId: string, filename: string) {
+  const { data } = await api.post(`/media-players/${playerId}/iconbit/play-file`, { filename });
+  return data;
+}
+
+export async function iconbitDeleteFile(playerId: string, filename: string) {
+  const { data } = await api.post(`/media-players/${playerId}/iconbit/delete-file`, { filename });
+  return data;
+}
+
+export async function iconbitUpload(playerId: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post(`/media-players/${playerId}/iconbit/upload`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function iconbitBulkPlay() {
+  const { data } = await api.post("/media-players/iconbit/bulk-play");
+  return data as { success: number; failed: number };
+}
+
+export async function iconbitBulkStop() {
+  const { data } = await api.post("/media-players/iconbit/bulk-stop");
+  return data as { success: number; failed: number };
+}
+
+export async function iconbitBulkUpload(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post("/media-players/iconbit/bulk-upload", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data as { success: number; failed: number; file: string };
+}
+
+export async function iconbitBulkDeleteFile(filename: string) {
+  const { data } = await api.post("/media-players/iconbit/bulk-delete-file", { filename });
+  return data as { success: number; failed: number };
+}
+
+export async function iconbitBulkPlayFile(filename: string) {
+  const { data } = await api.post("/media-players/iconbit/bulk-play-file", { filename });
+  return data as { success: number; failed: number };
+}

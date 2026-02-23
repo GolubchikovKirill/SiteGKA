@@ -34,8 +34,8 @@ OID_SYS_NAME = "1.3.6.1.2.1.1.5.0"
 OID_SYS_UPTIME = "1.3.6.1.2.1.1.3.0"
 OID_IF_PHYS_ADDR = "1.3.6.1.2.1.2.2.1.6"
 
-SCAN_PORTS = [22, 80, 135, 139, 443, 445, 554, 3389, 8080, 8081, 9090]
-TCP_TIMEOUT = 1.5
+SCAN_PORTS = [22, 80, 135, 139, 443, 445, 554, 3389, 5405, 8080, 8081, 9090]
+TCP_TIMEOUT = 2.0
 
 
 @dataclass
@@ -187,9 +187,36 @@ def _get_mac_from_arp(ip: str) -> str | None:
     return None
 
 
-async def poll_device(ip: str, community: str = "public") -> DeviceStatus:
-    """Poll a network device for status information."""
+def _resolve_host(address: str) -> str | None:
+    """Resolve hostname to IP. Returns the IP or None if resolution fails."""
+    import re as _re
+    if _re.match(r"^(\d{1,3}\.){3}\d{1,3}$", address):
+        return address
+    try:
+        return socket.gethostbyname(address)
+    except socket.gaierror:
+        pass
+    if "." not in address:
+        for suffix in [".local", ".lan"]:
+            try:
+                return socket.gethostbyname(address + suffix)
+            except socket.gaierror:
+                pass
+    logger.warning("Cannot resolve hostname: %s", address)
+    return None
+
+
+async def poll_device(address: str, community: str = "public") -> DeviceStatus:
+    """Poll a network device for status information.
+
+    ``address`` can be an IP address or hostname.
+    """
     status = DeviceStatus()
+
+    ip = await asyncio.to_thread(_resolve_host, address)
+    if not ip:
+        status.is_online = False
+        return status
 
     ports_task = _scan_ports(ip)
     snmp_task = _get_snmp_info(ip, community)
@@ -207,6 +234,9 @@ async def poll_device(ip: str, community: str = "public") -> DeviceStatus:
         status.os_info = snmp_info.get("os_info")
         status.uptime = snmp_info.get("uptime")
 
+    if not status.hostname and ip != address:
+        status.hostname = address
+
     status.mac_address = mac
     if not mac:
         arp_mac = await asyncio.to_thread(_get_mac_from_arp, ip)
@@ -216,8 +246,11 @@ async def poll_device(ip: str, community: str = "public") -> DeviceStatus:
     return status
 
 
-def poll_device_sync(ip: str, community: str = "public") -> DeviceStatus:
-    """Synchronous wrapper for poll_device."""
+def poll_device_sync(address: str, community: str = "public") -> DeviceStatus:
+    """Synchronous wrapper for poll_device.
+
+    ``address`` can be an IP address or hostname.
+    """
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -226,6 +259,6 @@ def poll_device_sync(ip: str, community: str = "public") -> DeviceStatus:
     if loop and loop.is_running():
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, poll_device(ip, community)).result()
+            return pool.submit(asyncio.run, poll_device(address, community)).result()
     else:
-        return asyncio.run(poll_device(ip, community))
+        return asyncio.run(poll_device(address, community))

@@ -5,7 +5,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -19,7 +19,14 @@ from app.schemas import (
     Message,
 )
 from app.services.device_poll import poll_device_sync
-from app.services.iconbit import get_status as iconbit_get_status, play as iconbit_play, stop as iconbit_stop
+from app.services.iconbit import (
+    delete_file as iconbit_delete_file,
+    get_status as iconbit_get_status,
+    play as iconbit_play,
+    play_file as iconbit_play_file,
+    stop as iconbit_stop,
+    upload_file as iconbit_upload_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -271,3 +278,149 @@ async def iconbit_stop_action(player_id: uuid.UUID, session: SessionDep, current
     if not ok:
         raise HTTPException(status_code=502, detail="Failed to stop playback")
     return {"status": "stopped"}
+
+
+@router.post("/{player_id}/iconbit/play-file")
+async def iconbit_play_file_action(
+    player_id: uuid.UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+    filename: str = Body(embed=True),
+) -> dict:
+    player = session.get(MediaPlayer, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Media player not found")
+    if player.device_type != "iconbit":
+        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    ok = await asyncio.to_thread(iconbit_play_file, player.ip_address, filename)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Failed to play file")
+    return {"status": "playing", "file": filename}
+
+
+@router.post("/{player_id}/iconbit/delete-file")
+async def iconbit_delete_file_action(
+    player_id: uuid.UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+    filename: str = Body(embed=True),
+) -> dict:
+    player = session.get(MediaPlayer, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Media player not found")
+    if player.device_type != "iconbit":
+        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    ok = await asyncio.to_thread(iconbit_delete_file, player.ip_address, filename)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Failed to delete file")
+    return {"status": "deleted", "file": filename}
+
+
+@router.post("/{player_id}/iconbit/upload")
+async def iconbit_upload_action(
+    player_id: uuid.UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+    file: UploadFile = ...,
+) -> dict:
+    player = session.get(MediaPlayer, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Media player not found")
+    if player.device_type != "iconbit":
+        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    content = await file.read()
+    ok = await asyncio.to_thread(iconbit_upload_file, player.ip_address, file.filename or "upload.mp3", content)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Failed to upload file")
+    return {"status": "uploaded", "file": file.filename}
+
+
+# ── Bulk Iconbit operations ─────────────────────────────────────
+
+
+def _get_all_iconbits(session) -> list[MediaPlayer]:
+    return list(session.exec(select(MediaPlayer).where(MediaPlayer.device_type == "iconbit")).all())
+
+
+@router.post("/iconbit/bulk-play")
+async def iconbit_bulk_play(session: SessionDep, current_user: CurrentUser) -> dict:
+    """Start playback on all Iconbit devices."""
+    players = _get_all_iconbits(session)
+    if not players:
+        return {"success": 0, "failed": 0}
+
+    results = []
+    for p in players:
+        ok = await asyncio.to_thread(iconbit_play, p.ip_address)
+        results.append(ok)
+    return {"success": sum(results), "failed": len(results) - sum(results)}
+
+
+@router.post("/iconbit/bulk-stop")
+async def iconbit_bulk_stop(session: SessionDep, current_user: CurrentUser) -> dict:
+    """Stop playback on all Iconbit devices."""
+    players = _get_all_iconbits(session)
+    if not players:
+        return {"success": 0, "failed": 0}
+
+    results = []
+    for p in players:
+        ok = await asyncio.to_thread(iconbit_stop, p.ip_address)
+        results.append(ok)
+    return {"success": sum(results), "failed": len(results) - sum(results)}
+
+
+@router.post("/iconbit/bulk-upload")
+async def iconbit_bulk_upload(
+    session: SessionDep,
+    current_user: CurrentUser,
+    file: UploadFile = ...,
+) -> dict:
+    """Upload a media file to all Iconbit devices."""
+    players = _get_all_iconbits(session)
+    if not players:
+        return {"success": 0, "failed": 0}
+
+    content = await file.read()
+    fname = file.filename or "upload.mp3"
+    results = []
+    for p in players:
+        ok = await asyncio.to_thread(iconbit_upload_file, p.ip_address, fname, content)
+        results.append(ok)
+    return {"success": sum(results), "failed": len(results) - sum(results), "file": fname}
+
+
+@router.post("/iconbit/bulk-delete-file")
+async def iconbit_bulk_delete(
+    session: SessionDep,
+    current_user: CurrentUser,
+    filename: str = Body(embed=True),
+) -> dict:
+    """Delete a file from all Iconbit devices."""
+    players = _get_all_iconbits(session)
+    if not players:
+        return {"success": 0, "failed": 0}
+
+    results = []
+    for p in players:
+        ok = await asyncio.to_thread(iconbit_delete_file, p.ip_address, filename)
+        results.append(ok)
+    return {"success": sum(results), "failed": len(results) - sum(results), "file": filename}
+
+
+@router.post("/iconbit/bulk-play-file")
+async def iconbit_bulk_play_file(
+    session: SessionDep,
+    current_user: CurrentUser,
+    filename: str = Body(embed=True),
+) -> dict:
+    """Play a specific file on all Iconbit devices."""
+    players = _get_all_iconbits(session)
+    if not players:
+        return {"success": 0, "failed": 0}
+
+    results = []
+    for p in players:
+        ok = await asyncio.to_thread(iconbit_play_file, p.ip_address, filename)
+        results.append(ok)
+    return {"success": sum(results), "failed": len(results) - sum(results), "file": filename}
