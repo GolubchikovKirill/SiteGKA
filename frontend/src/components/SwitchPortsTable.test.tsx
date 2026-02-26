@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   setSwitchPortAdminState: vi.fn(),
   setSwitchPortDescription: vi.fn(),
   setSwitchPortVlan: vi.fn(),
+  setSwitchPortMode: vi.fn(),
   setSwitchPortPoe: vi.fn(),
 }));
 
@@ -16,6 +17,7 @@ vi.mock("../client", () => ({
   setSwitchPortAdminState: api.setSwitchPortAdminState,
   setSwitchPortDescription: api.setSwitchPortDescription,
   setSwitchPortVlan: api.setSwitchPortVlan,
+  setSwitchPortMode: api.setSwitchPortMode,
   setSwitchPortPoe: api.setSwitchPortPoe,
 }));
 
@@ -32,6 +34,10 @@ describe("SwitchPortsTable", () => {
           speed_mbps: 1000,
           duplex: null,
           vlan: 20,
+          port_mode: "access",
+          access_vlan: 20,
+          trunk_native_vlan: null,
+          trunk_allowed_vlans: null,
           poe_enabled: true,
           poe_power_w: 6.2,
           mac_count: null,

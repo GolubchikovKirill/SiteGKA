@@ -309,6 +309,17 @@ class SnmpSwitchProvider:
             )
         )
 
+    def set_mode(
+        self,
+        switch: NetworkSwitch,
+        port: str,
+        mode: str,
+        access_vlan: int | None = None,
+        native_vlan: int | None = None,
+        allowed_vlans: str | None = None,
+    ) -> None:
+        raise RuntimeError("Port mode changes are currently supported only via vendor CLI providers")
+
     def set_poe(self, switch: NetworkSwitch, port: str, action: str) -> None:
         idx = self._resolve_if_index(switch, port)
         community = self._rw_community(switch)

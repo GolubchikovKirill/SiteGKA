@@ -5,6 +5,7 @@ import {
   getSwitchPorts,
   setSwitchPortAdminState,
   setSwitchPortDescription,
+  setSwitchPortMode,
   setSwitchPortPoe,
   setSwitchPortVlan,
 } from "../client";
@@ -26,6 +27,9 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
   const [q, setQ] = useState("");
   const [descDraft, setDescDraft] = useState<Record<string, string>>({});
   const [vlanDraft, setVlanDraft] = useState<Record<string, string>>({});
+  const [modeDraft, setModeDraft] = useState<Record<string, "access" | "trunk">>({});
+  const [nativeVlanDraft, setNativeVlanDraft] = useState<Record<string, string>>({});
+  const [allowedVlansDraft, setAllowedVlansDraft] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -59,6 +63,16 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
       setSwitchPortPoe(sw.id, port, action),
     onSettled: refresh,
   });
+  const modeMut = useMutation({
+    mutationFn: (payload: {
+      port: string;
+      mode: "access" | "trunk";
+      access_vlan?: number;
+      native_vlan?: number;
+      allowed_vlans?: string;
+    }) => setSwitchPortMode(sw.id, payload.port, payload),
+    onSettled: refresh,
+  });
 
   const saveDescription = (row: SwitchPort) => {
     const draft = (descDraft[row.port] ?? row.description ?? "").trim();
@@ -68,6 +82,20 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
     const value = Number(vlanDraft[row.port] ?? row.vlan ?? 1);
     if (Number.isNaN(value) || value < 1 || value > 4094) return;
     vlanMut.mutate({ port: row.port, vlan: value });
+  };
+  const saveMode = (row: SwitchPort) => {
+    const mode = modeDraft[row.port] ?? (row.port_mode === "trunk" ? "trunk" : "access");
+    if (mode === "access") {
+      const accessVlan = Number(vlanDraft[row.port] ?? row.access_vlan ?? row.vlan ?? 1);
+      if (Number.isNaN(accessVlan) || accessVlan < 1 || accessVlan > 4094) return;
+      modeMut.mutate({ port: row.port, mode, access_vlan: accessVlan });
+      return;
+    }
+    const nativeVlanRaw = nativeVlanDraft[row.port] ?? String(row.trunk_native_vlan ?? "");
+    const nativeVlan = nativeVlanRaw ? Number(nativeVlanRaw) : undefined;
+    if (nativeVlan !== undefined && (Number.isNaN(nativeVlan) || nativeVlan < 1 || nativeVlan > 4094)) return;
+    const allowedVlans = (allowedVlansDraft[row.port] ?? row.trunk_allowed_vlans ?? "").trim() || undefined;
+    modeMut.mutate({ port: row.port, mode, native_vlan: nativeVlan, allowed_vlans: allowedVlans });
   };
 
   return (
@@ -99,7 +127,7 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                 <tr className="text-left text-slate-600">
                   <th className="px-3 py-2">Порт</th>
                   <th className="px-3 py-2">Admin/Oper</th>
-                  <th className="px-3 py-2">VLAN</th>
+                  <th className="px-3 py-2">Mode/VLAN</th>
                   <th className="px-3 py-2">Speed</th>
                   <th className="px-3 py-2">PoE</th>
                   <th className="px-3 py-2">Описание</th>
@@ -112,19 +140,52 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                     <td className="px-3 py-2 font-mono">{row.port}</td>
                     <td className="px-3 py-2">{formatStatus(row.admin_status)} / {formatStatus(row.oper_status)}</td>
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <input
-                          value={vlanDraft[row.port] ?? String(row.vlan ?? "")}
-                          onChange={(e) => setVlanDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
-                          className="app-input w-16 px-2 py-1 text-xs"
-                        />
+                      <div className="space-y-1">
+                        <div className="text-[11px] text-slate-500">
+                          current: {row.port_mode ?? "unknown"}
+                          {row.port_mode === "access" && (row.access_vlan ?? row.vlan) ? ` / VLAN ${row.access_vlan ?? row.vlan}` : ""}
+                          {row.port_mode === "trunk" && row.trunk_native_vlan ? ` / native ${row.trunk_native_vlan}` : ""}
+                        </div>
+                        {row.port_mode === "trunk" && row.trunk_allowed_vlans && (
+                          <div className="text-[11px] text-slate-500">allowed: {row.trunk_allowed_vlans}</div>
+                        )}
                         {isSuperuser && (
-                          <button
-                            onClick={() => saveVlan(row)}
-                            className="app-btn-secondary px-2 py-1 text-xs"
-                          >
-                            Save
-                          </button>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <select
+                              value={modeDraft[row.port] ?? (row.port_mode === "trunk" ? "trunk" : "access")}
+                              onChange={(e) =>
+                                setModeDraft((prev) => ({ ...prev, [row.port]: e.target.value as "access" | "trunk" }))
+                              }
+                              className="app-input px-2 py-1 text-xs"
+                            >
+                              <option value="access">access</option>
+                              <option value="trunk">trunk</option>
+                            </select>
+                            <input
+                              value={vlanDraft[row.port] ?? String(row.access_vlan ?? row.vlan ?? "")}
+                              onChange={(e) => setVlanDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
+                              placeholder="access vlan"
+                              className="app-input w-20 px-2 py-1 text-xs"
+                            />
+                            <input
+                              value={nativeVlanDraft[row.port] ?? String(row.trunk_native_vlan ?? "")}
+                              onChange={(e) => setNativeVlanDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
+                              placeholder="native"
+                              className="app-input w-20 px-2 py-1 text-xs"
+                            />
+                            <input
+                              value={allowedVlansDraft[row.port] ?? row.trunk_allowed_vlans ?? ""}
+                              onChange={(e) => setAllowedVlansDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
+                              placeholder="allowed vlans"
+                              className="app-input w-28 px-2 py-1 text-xs"
+                            />
+                            <button onClick={() => saveMode(row)} className="app-btn-secondary px-2 py-1 text-xs">
+                              Apply
+                            </button>
+                            <button onClick={() => saveVlan(row)} className="app-btn-secondary px-2 py-1 text-xs">
+                              Set VLAN
+                            </button>
+                          </div>
                         )}
                       </div>
                     </td>

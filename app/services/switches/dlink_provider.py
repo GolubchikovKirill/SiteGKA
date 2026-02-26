@@ -26,5 +26,16 @@ class DLinkSwitchProvider:
     def set_vlan(self, switch: NetworkSwitch, port: str, vlan: int) -> None:
         self.snmp_provider.set_vlan(switch, port, vlan)
 
+    def set_mode(
+        self,
+        switch: NetworkSwitch,
+        port: str,
+        mode: str,
+        access_vlan: int | None = None,
+        native_vlan: int | None = None,
+        allowed_vlans: str | None = None,
+    ) -> None:
+        self.snmp_provider.set_mode(switch, port, mode, access_vlan, native_vlan, allowed_vlans)
+
     def set_poe(self, switch: NetworkSwitch, port: str, action: str) -> None:
         self.snmp_provider.set_poe(switch, port, action)

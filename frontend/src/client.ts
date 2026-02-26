@@ -432,6 +432,10 @@ export interface SwitchPort {
   speed_mbps: number | null;
   duplex: string | null;
   vlan: number | null;
+  port_mode: string | null;
+  access_vlan: number | null;
+  trunk_native_vlan: number | null;
+  trunk_allowed_vlans: string | null;
   poe_enabled: boolean | null;
   poe_power_w: number | null;
   mac_count: number | null;
@@ -519,5 +523,20 @@ export async function setSwitchPortVlan(id: string, port: string, vlan: number) 
 export async function setSwitchPortPoe(id: string, port: string, action: "on" | "off" | "cycle") {
   const encoded = encodeURIComponent(port);
   const { data } = await api.post(`/switches/${id}/ports/${encoded}/poe`, { action });
+  return data as { message: string };
+}
+
+export async function setSwitchPortMode(
+  id: string,
+  port: string,
+  payload: {
+    mode: "access" | "trunk";
+    access_vlan?: number;
+    native_vlan?: number;
+    allowed_vlans?: string;
+  },
+) {
+  const encoded = encodeURIComponent(port);
+  const { data } = await api.post(`/switches/${id}/ports/${encoded}/mode`, payload);
   return data as { message: string };
 }

@@ -24,6 +24,7 @@ from app.schemas import (
     SwitchPortAdminStateUpdate,
     SwitchPortDescriptionUpdate,
     SwitchPortInfo,
+    SwitchPortModeUpdate,
     SwitchPortPoeUpdate,
     SwitchPortsPublic,
     SwitchPortVlanUpdate,
@@ -248,6 +249,10 @@ async def get_switch_ports(
             speed_mbps=p.speed_mbps,
             duplex=p.duplex,
             vlan=p.vlan,
+            port_mode=p.port_mode,
+            access_vlan=p.access_vlan,
+            trunk_native_vlan=p.trunk_native_vlan,
+            trunk_allowed_vlans=p.trunk_allowed_vlans,
             poe_enabled=p.poe_enabled,
             poe_power_w=p.poe_power_w,
             mac_count=p.mac_count,
@@ -356,4 +361,29 @@ async def set_port_poe(
         operation="poe",
         port=port,
         callback=lambda sw, provider, p: provider.set_poe(sw, p, body.action),
+    )
+
+
+@router.post("/{switch_id}/ports/{port:path}/mode", response_model=Message)
+async def set_port_mode(
+    switch_id: uuid.UUID,
+    port: str,
+    body: SwitchPortModeUpdate,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    return await _run_port_write(
+        session=session,
+        switch_id=switch_id,
+        current_user=current_user,
+        operation="mode",
+        port=port,
+        callback=lambda sw, provider, p: provider.set_mode(
+            sw,
+            p,
+            body.mode,
+            access_vlan=body.access_vlan,
+            native_vlan=body.native_vlan,
+            allowed_vlans=body.allowed_vlans,
+        ),
     )

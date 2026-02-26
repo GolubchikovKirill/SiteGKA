@@ -528,6 +528,10 @@ class SwitchPortInfo(BaseModel):
     speed_mbps: int | None = None
     duplex: str | None = None
     vlan: int | None = None
+    port_mode: str | None = None
+    access_vlan: int | None = None
+    trunk_native_vlan: int | None = None
+    trunk_allowed_vlans: str | None = None
     poe_enabled: bool | None = None
     poe_power_w: float | None = None
     mac_count: int | None = None
@@ -583,6 +587,44 @@ class SwitchPortPoeUpdate(BaseModel):
         if normalized not in {"on", "off", "cycle"}:
             raise ValueError("action must be one of: on, off, cycle")
         return normalized
+
+
+class SwitchPortModeUpdate(BaseModel):
+    mode: str
+    access_vlan: int | None = None
+    native_vlan: int | None = None
+    allowed_vlans: str | None = None
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"access", "trunk"}:
+            raise ValueError("mode must be one of: access, trunk")
+        return normalized
+
+    @field_validator("access_vlan", "native_vlan")
+    @classmethod
+    def validate_vlan_fields(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if v < 1 or v > 4094:
+            raise ValueError("VLAN must be 1-4094")
+        return v
+
+    @field_validator("allowed_vlans")
+    @classmethod
+    def validate_allowed_vlans(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 255:
+            raise ValueError("allowed_vlans must be <= 255 characters")
+        if not re.match(r"^[0-9,\-\s]+$", value):
+            raise ValueError("allowed_vlans supports digits, commas, spaces and hyphens only")
+        return value
 
 
 # ── MediaPlayer schemas ─────────────────────────────────────────

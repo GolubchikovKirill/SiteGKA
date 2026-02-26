@@ -25,6 +25,10 @@ class SwitchPortState:
     speed_mbps: int | None = None
     duplex: str | None = None
     vlan: int | None = None
+    port_mode: str | None = None  # access | trunk | dynamic | unknown
+    access_vlan: int | None = None
+    trunk_native_vlan: int | None = None
+    trunk_allowed_vlans: str | None = None
     poe_enabled: bool | None = None
     poe_power_w: float | None = None
     mac_count: int | None = None
@@ -40,5 +44,15 @@ class SwitchProvider(Protocol):
     def set_description(self, switch: NetworkSwitch, port: str, description: str) -> None: ...
 
     def set_vlan(self, switch: NetworkSwitch, port: str, vlan: int) -> None: ...
+
+    def set_mode(
+        self,
+        switch: NetworkSwitch,
+        port: str,
+        mode: str,
+        access_vlan: int | None = None,
+        native_vlan: int | None = None,
+        allowed_vlans: str | None = None,
+    ) -> None: ...
 
     def set_poe(self, switch: NetworkSwitch, port: str, action: str) -> None: ...
