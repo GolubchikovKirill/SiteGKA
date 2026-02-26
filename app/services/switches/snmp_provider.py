@@ -2,14 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import warnings
 
-from pysnmp.hlapi.asyncio import CommunityData, ContextData, ObjectIdentity, ObjectType, SnmpEngine, UdpTransportTarget
-from pysnmp.hlapi.asyncio.cmdgen import getCmd, setCmd, walkCmd
-from pysnmp.proto.rfc1902 import Integer, OctetString
+warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
 
-from app.models import NetworkSwitch
-from app.observability.metrics import snmp_operations_total
-from app.services.switches.base import SwitchPollInfo, SwitchPortState
+from pysnmp.hlapi.asyncio import (  # noqa: E402
+    CommunityData,
+    ContextData,
+    ObjectIdentity,
+    ObjectType,
+    SnmpEngine,
+    UdpTransportTarget,
+)
+from pysnmp.hlapi.asyncio.cmdgen import getCmd, setCmd, walkCmd  # noqa: E402
+from pysnmp.proto.rfc1902 import Integer, OctetString  # noqa: E402
+
+from app.models import NetworkSwitch  # noqa: E402
+from app.observability.metrics import snmp_operations_total  # noqa: E402
+from app.services.switches.base import SwitchPollInfo, SwitchPortState  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +84,7 @@ class SnmpSwitchProvider:
 
     async def _get_ports_async(self, switch: NetworkSwitch) -> list[SwitchPortState]:
         engine = SnmpEngine()
-        target = await UdpTransportTarget.create((switch.ip_address, 161), timeout=2, retries=1)
+        target = await self._create_transport_target(switch.ip_address, 161, timeout=2, retries=1)
         community = CommunityData(switch.snmp_community_ro, mpModel=1)
         descr_rows = await self._snmp_walk(engine, target, community, _OID_IF_DESCR)
         alias_rows = await self._snmp_walk(engine, target, community, _OID_IF_ALIAS)
@@ -160,7 +170,7 @@ class SnmpSwitchProvider:
 
     async def _fetch_basics(self, host: str, community: str) -> dict[str, str] | None:
         engine = SnmpEngine()
-        target = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
+        target = await self._create_transport_target(host, 161, timeout=2, retries=1)
         comm = CommunityData(community, mpModel=1)
         sys_name = await self._snmp_get(engine, target, comm, _OID_SYS_NAME)
         sys_descr = await self._snmp_get(engine, target, comm, _OID_SYS_DESCR)
@@ -201,7 +211,7 @@ class SnmpSwitchProvider:
         value,
     ) -> None:
         engine = SnmpEngine()
-        target = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
+        target = await self._create_transport_target(host, 161, timeout=2, retries=1)
         comm = CommunityData(community, mpModel=1)
         error_indication, error_status, _error_index, _var_binds = await setCmd(
             engine,
@@ -257,6 +267,20 @@ class SnmpSwitchProvider:
             except UnicodeDecodeError:
                 return raw.decode("latin-1", errors="replace")
         return str(val)
+
+    async def _create_transport_target(
+        self,
+        host: str,
+        port: int,
+        *,
+        timeout: int,
+        retries: int,
+    ) -> UdpTransportTarget:
+        """Support both modern and legacy pysnmp async transport APIs."""
+        create = getattr(UdpTransportTarget, "create", None)
+        if callable(create):
+            return await create((host, port), timeout=timeout, retries=retries)
+        return UdpTransportTarget((host, port), timeout=timeout, retries=retries)
 
     def set_admin_state(self, switch: NetworkSwitch, port: str, admin_state: str) -> None:
         idx = self._resolve_if_index(switch, port)
