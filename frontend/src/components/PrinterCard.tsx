@@ -16,8 +16,7 @@ function statusBadge(printer: Printer) {
     return <span className="inline-flex items-center gap-1 text-xs text-gray-400"><span className="h-2 w-2 rounded-full bg-gray-300" />Не опрошен</span>;
   }
   if (printer.is_online) {
-    const label = printer.status === "printing" ? "Печатает" : printer.status === "idle" ? "Готов" : printer.status === "warmup" ? "Прогрев" : "Онлайн";
-    return <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />{label}</span>;
+    return <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Онлайн</span>;
   }
   return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
 }
@@ -63,7 +62,7 @@ export default function PrinterCard({ printer, onPoll, onEdit, onDelete, isPolli
     : null;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex flex-col">
+    <div className="app-panel rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
       <div className="p-5 flex flex-col gap-4">
         {/* Header */}
         <div className="flex items-start justify-between">

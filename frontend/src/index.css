@@ -2,46 +2,52 @@
 
 :root {
   color-scheme: light;
-  --app-text: #0f172a;
+  --app-text: #3a1118;
   --app-bg:
-    radial-gradient(1200px 420px at 0% -10%, rgba(59, 130, 246, 0.13), transparent 55%),
-    radial-gradient(900px 340px at 100% 0%, rgba(20, 184, 166, 0.12), transparent 50%),
-    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  --app-panel-bg: rgba(255, 255, 255, 0.9);
-  --app-panel-border: rgba(148, 163, 184, 0.25);
-  --app-toolbar-bg: rgba(255, 255, 255, 0.82);
-  --app-input-bg: #ffffff;
-  --app-input-border: #cbd5e1;
-  --app-secondary-text: #0f172a;
-  --app-secondary-bg: rgba(255, 255, 255, 0.9);
-  --app-secondary-border: #cbd5e1;
-  --app-header-bg: rgba(255, 255, 255, 0.82);
-  --app-header-border: rgba(148, 163, 184, 0.4);
-  --app-nav-active-bg: #eff6ff;
-  --app-nav-active-border: #bfdbfe;
-  --app-nav-active-text: #1d4ed8;
+    radial-gradient(1200px 420px at 0% -10%, rgba(244, 63, 94, 0.14), transparent 55%),
+    radial-gradient(900px 340px at 100% 0%, rgba(251, 113, 133, 0.13), transparent 50%),
+    linear-gradient(180deg, #fff5f7 0%, #ffe4e9 100%);
+  --app-panel-bg: rgba(255, 249, 250, 0.9);
+  --app-panel-border: rgba(251, 113, 133, 0.28);
+  --app-toolbar-bg: rgba(255, 247, 248, 0.85);
+  --app-input-bg: #fff7f8;
+  --app-input-border: #fda4af;
+  --app-secondary-text: #5f1a24;
+  --app-secondary-bg: rgba(255, 243, 245, 0.95);
+  --app-secondary-border: #fda4af;
+  --app-header-bg: rgba(255, 245, 247, 0.9);
+  --app-header-border: rgba(251, 113, 133, 0.45);
+  --app-nav-active-bg: rgba(190, 24, 93, 0.11);
+  --app-nav-active-border: rgba(190, 24, 93, 0.45);
+  --app-nav-active-text: #9f1239;
+  --app-sidebar-bg: rgba(255, 241, 244, 0.92);
+  --app-sidebar-border: rgba(251, 113, 133, 0.35);
+  --app-primary-gradient: linear-gradient(135deg, #be123c, #e11d48);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --app-text: #e2e8f0;
+  --app-text: #ffe4e6;
   --app-bg:
-    radial-gradient(1200px 420px at 0% -10%, rgba(56, 189, 248, 0.13), transparent 55%),
-    radial-gradient(900px 340px at 100% 0%, rgba(45, 212, 191, 0.1), transparent 50%),
-    linear-gradient(180deg, #020617 0%, #0f172a 100%);
-  --app-panel-bg: rgba(15, 23, 42, 0.76);
-  --app-panel-border: rgba(71, 85, 105, 0.5);
-  --app-toolbar-bg: rgba(15, 23, 42, 0.8);
-  --app-input-bg: rgba(15, 23, 42, 0.82);
-  --app-input-border: #475569;
-  --app-secondary-text: #e2e8f0;
-  --app-secondary-bg: rgba(15, 23, 42, 0.86);
-  --app-secondary-border: #475569;
-  --app-header-bg: rgba(2, 6, 23, 0.86);
-  --app-header-border: rgba(71, 85, 105, 0.5);
-  --app-nav-active-bg: rgba(30, 41, 59, 0.95);
-  --app-nav-active-border: #334155;
-  --app-nav-active-text: #7dd3fc;
+    radial-gradient(1200px 420px at 0% -10%, rgba(225, 29, 72, 0.18), transparent 55%),
+    radial-gradient(900px 340px at 100% 0%, rgba(190, 24, 93, 0.14), transparent 50%),
+    linear-gradient(180deg, #090204 0%, #19060c 100%);
+  --app-panel-bg: rgba(34, 7, 14, 0.82);
+  --app-panel-border: rgba(190, 24, 93, 0.42);
+  --app-toolbar-bg: rgba(38, 8, 16, 0.86);
+  --app-input-bg: rgba(47, 10, 19, 0.88);
+  --app-input-border: #9f1239;
+  --app-secondary-text: #ffe4e6;
+  --app-secondary-bg: rgba(46, 9, 18, 0.9);
+  --app-secondary-border: #9f1239;
+  --app-header-bg: rgba(22, 4, 10, 0.9);
+  --app-header-border: rgba(190, 24, 93, 0.42);
+  --app-nav-active-bg: rgba(190, 24, 93, 0.22);
+  --app-nav-active-border: rgba(251, 113, 133, 0.55);
+  --app-nav-active-text: #fecdd3;
+  --app-sidebar-bg: rgba(20, 4, 9, 0.95);
+  --app-sidebar-border: rgba(190, 24, 93, 0.48);
+  --app-primary-gradient: linear-gradient(135deg, #9f1239, #e11d48);
 }
 
 body {
@@ -57,7 +63,7 @@ body {
 
 ::selection {
   color: white;
-  background: #2563eb;
+  background: #be123c;
 }
 
 .app-shell {
@@ -96,8 +102,8 @@ body {
   border-radius: 12px;
   color: white;
   font-weight: 600;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25);
+  background: var(--app-primary-gradient);
+  box-shadow: 0 8px 18px rgba(190, 24, 93, 0.32);
 }
 
 .app-btn-primary:hover {
@@ -113,19 +119,19 @@ body {
 }
 
 .app-btn-secondary:hover {
-  background: #f8fafc;
+  filter: brightness(1.06);
 }
 
 .app-stat {
-  border: 1px solid rgba(203, 213, 225, 0.65);
+  border: 1px solid var(--app-panel-border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.84);
+  background: var(--app-panel-bg);
 }
 
 .app-tabbar {
   border-radius: 14px;
-  border: 1px solid rgba(203, 213, 225, 0.55);
-  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid var(--app-panel-border);
+  background: var(--app-toolbar-bg);
 }
 
 .app-tab {
@@ -134,8 +140,8 @@ body {
 }
 
 .app-tab.active {
-  color: #0f172a;
-  background: white;
+  color: var(--app-nav-active-text);
+  background: var(--app-nav-active-bg);
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.12);
 }
 
@@ -150,9 +156,15 @@ body {
   color: var(--app-nav-active-text) !important;
 }
 
+.app-sidebar {
+  background: var(--app-sidebar-bg);
+  border-color: var(--app-sidebar-border);
+  backdrop-filter: blur(12px);
+}
+
 :root[data-theme="dark"] .app-tabbar {
-  border-color: rgba(71, 85, 105, 0.7);
-  background: rgba(15, 23, 42, 0.82);
+  border-color: var(--app-panel-border);
+  background: var(--app-toolbar-bg);
 }
 
 :root[data-theme="dark"] .app-tab.active {
@@ -162,8 +174,8 @@ body {
 }
 
 :root[data-theme="dark"] .app-stat {
-  border-color: rgba(71, 85, 105, 0.7);
-  background: rgba(15, 23, 42, 0.76);
+  border-color: var(--app-panel-border);
+  background: var(--app-panel-bg);
 }
 
 :root[data-theme="dark"] .text-slate-900,
@@ -175,20 +187,20 @@ body {
 :root[data-theme="dark"] .text-slate-500,
 :root[data-theme="dark"] .text-gray-500,
 :root[data-theme="dark"] .text-gray-400 {
-  color: #94a3b8 !important;
+  color: #fda4af !important;
 }
 
 :root[data-theme="dark"] .bg-white,
 :root[data-theme="dark"] .bg-gray-50,
 :root[data-theme="dark"] .bg-gray-100,
 :root[data-theme="dark"] .bg-slate-50 {
-  background-color: rgba(15, 23, 42, 0.82) !important;
+  background-color: rgba(45, 9, 18, 0.84) !important;
 }
 
 :root[data-theme="dark"] .border-slate-200,
 :root[data-theme="dark"] .border-slate-200\/70,
 :root[data-theme="dark"] .border-gray-200 {
-  border-color: rgba(71, 85, 105, 0.55) !important;
+  border-color: rgba(190, 24, 93, 0.45) !important;
 }
 
 @keyframes eq1 {

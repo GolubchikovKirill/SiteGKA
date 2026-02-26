@@ -98,7 +98,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
     : null;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex flex-col">
+    <div className="app-panel rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
       <div className="p-5 flex flex-col gap-3">
         {/* Header */}
         <div className="flex items-start justify-between">
