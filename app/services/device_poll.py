@@ -11,6 +11,7 @@ import asyncio
 import ipaddress
 import logging
 import os
+import platform
 import re as _re
 import socket
 import struct
@@ -35,6 +36,8 @@ from app.observability.metrics import media_player_ops_total  # noqa: E402
 logger = logging.getLogger(__name__)
 _RESOLVE_WARN_COOLDOWN_SECONDS = 300.0
 _RESOLVE_WARN_LAST_SEEN: dict[str, float] = {}
+_RESOLVE_CACHE_SECONDS = 300.0
+_RESOLVE_CACHE: dict[str, tuple[float, str | None]] = {}
 
 SNMP_TIMEOUT = 3
 SNMP_RETRIES = 1
@@ -46,6 +49,18 @@ OID_IF_PHYS_ADDR = "1.3.6.1.2.1.2.2.1.6"
 
 SCAN_PORTS = [22, 80, 135, 139, 443, 445, 554, 3389, 5405, 8080, 8081, 9090]
 TCP_TIMEOUT = 2.0
+_PORT_SCAN_SEMAPHORE = asyncio.Semaphore(64)
+_MAX_NETBIOS_TARGETS = 2048
+_PING_SWEEP_CONCURRENCY = 128
+
+
+def _ping_command(ip: str) -> list[str]:
+    system = platform.system()
+    if system == "Windows":
+        return ["ping", "-n", "1", "-w", "1000", ip]
+    if system == "Darwin":
+        return ["ping", "-c", "1", "-W", "1000", ip]
+    return ["ping", "-c", "1", "-W", "1", ip]
 
 
 @dataclass
@@ -74,13 +89,14 @@ def _format_uptime(ticks: int) -> str:
 
 async def _check_port(ip: str, port: int) -> int | None:
     try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port),
-            timeout=TCP_TIMEOUT,
-        )
-        writer.close()
-        await writer.wait_closed()
-        return port
+        async with _PORT_SCAN_SEMAPHORE:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(ip, port),
+                timeout=TCP_TIMEOUT,
+            )
+            writer.close()
+            await writer.wait_closed()
+            return port
     except (TimeoutError, OSError):
         return None
 
@@ -163,7 +179,7 @@ def _get_mac_from_arp(ip: str) -> str | None:
     import subprocess
     try:
         subprocess.run(
-            ["ping", "-c", "1", "-W", "1", ip],
+            _ping_command(ip),
             capture_output=True, timeout=3,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -277,6 +293,13 @@ def _netbios_resolve(name: str, subnets: list[str] | None = None) -> str | None:
             targets.extend(str(h) for h in net.hosts())
         except ValueError:
             continue
+    if len(targets) > _MAX_NETBIOS_TARGETS:
+        logger.warning(
+            "NetBIOS target list too large (%d), truncating to %d for safety",
+            len(targets),
+            _MAX_NETBIOS_TARGETS,
+        )
+        targets = targets[:_MAX_NETBIOS_TARGETS]
 
     if not targets:
         return None
@@ -322,29 +345,39 @@ def _resolve_host(address: str) -> str | None:
     if _re.match(r"^(\d{1,3}\.){3}\d{1,3}$", address):
         return address
 
+    cached = _RESOLVE_CACHE.get(address)
+    now = time.monotonic()
+    if cached and now - cached[0] < _RESOLVE_CACHE_SECONDS:
+        return cached[1]
+
     # 1. DNS
     try:
-        return socket.gethostbyname(address)
+        resolved = socket.gethostbyname(address)
+        _RESOLVE_CACHE[address] = (time.monotonic(), resolved)
+        return resolved
     except socket.gaierror:
         pass
 
     if "." not in address:
         for suffix in [".local", ".lan"]:
             try:
-                return socket.gethostbyname(address + suffix)
+                resolved = socket.gethostbyname(address + suffix)
+                _RESOLVE_CACHE[address] = (time.monotonic(), resolved)
+                return resolved
             except socket.gaierror:
                 pass
 
     # 2. NetBIOS (for Windows hostnames)
     ip = _netbios_resolve(address)
     if ip:
+        _RESOLVE_CACHE[address] = (time.monotonic(), ip)
         return ip
 
-    now = time.monotonic()
     last = _RESOLVE_WARN_LAST_SEEN.get(address, 0.0)
     if now - last >= _RESOLVE_WARN_COOLDOWN_SECONDS:
         _RESOLVE_WARN_LAST_SEEN[address] = now
         logger.warning("Cannot resolve hostname: %s", address)
+    _RESOLVE_CACHE[address] = (now, None)
     return None
 
 
@@ -425,7 +458,7 @@ async def _async_ping(ip: str) -> None:
     """Fire-and-forget async ping to populate ARP cache."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ping", "-c", "1", "-W", "1", ip,
+            *_ping_command(ip),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
@@ -467,11 +500,16 @@ async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str 
         media_player_ops_total.labels(operation="find_by_mac", result="error").inc()
         return None
 
-    # Ping up to 510 hosts concurrently (~2 sec)
-    batch_size = 255
+    # Ping sweep in bounded batches to avoid self-induced packet storms.
+    batch_size = _PING_SWEEP_CONCURRENCY
     for i in range(0, len(hosts), batch_size):
         batch = hosts[i:i + batch_size]
         await asyncio.gather(*[_async_ping(h) for h in batch])
+        ip = await asyncio.to_thread(_check_arp_for_mac, target)
+        if ip:
+            logger.info("MAC %s discovered at %s during ping sweep", target, ip)
+            media_player_ops_total.labels(operation="find_by_mac", result="success").inc()
+            return ip
 
     # Recheck ARP table
     ip = await asyncio.to_thread(_check_arp_for_mac, target)

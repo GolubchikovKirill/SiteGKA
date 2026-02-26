@@ -126,4 +126,8 @@ async def get_scanner_settings(current_user: CurrentUser) -> dict:
     return {
         "subnet": settings.SCAN_SUBNET,
         "ports": settings.SCAN_PORTS,
+        "max_hosts": settings.SCAN_MAX_HOSTS,
+        "tcp_timeout": settings.SCAN_TCP_TIMEOUT,
+        "tcp_retries": settings.SCAN_TCP_RETRIES,
+        "tcp_concurrency": settings.SCAN_TCP_CONCURRENCY,
     }

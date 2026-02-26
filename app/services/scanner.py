@@ -18,6 +18,7 @@ import subprocess
 from dataclasses import asdict, dataclass, field
 from time import perf_counter
 
+from app.core.config import settings
 from app.core.redis import get_redis
 from app.observability.metrics import (
     scanner_devices_found_total,
@@ -31,6 +32,7 @@ SCAN_KEY_PROGRESS = "scan:progress"
 SCAN_KEY_RESULTS = "scan:results"
 SCAN_KEY_LOCK = "scan:lock"
 SCAN_TTL = 600
+_SCAN_TCP_SEMAPHORE = asyncio.Semaphore(max(settings.SCAN_TCP_CONCURRENCY, 1))
 
 
 @dataclass
@@ -43,6 +45,10 @@ class DiscoveredDevice:
     known_printer_id: str | None = None
     ip_changed: bool = False
     old_ip: str | None = None
+
+
+class SubnetLimitExceeded(ValueError):
+    """Raised when subnet expansion exceeds configured host limit."""
 
 
 def _parse_arp_table() -> dict[str, str]:
@@ -94,17 +100,23 @@ def _parse_arp_table() -> dict[str, str]:
     return result
 
 
-async def _tcp_check(ip: str, port: int, timeout: float = 1.0) -> bool:
-    try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port),
-            timeout=timeout,
-        )
-        writer.close()
-        await writer.wait_closed()
-        return True
-    except (TimeoutError, OSError):
-        return False
+async def _tcp_check(ip: str, port: int) -> bool:
+    timeout = max(settings.SCAN_TCP_TIMEOUT, 0.1)
+    retries = max(settings.SCAN_TCP_RETRIES, 0)
+    for attempt in range(retries + 1):
+        try:
+            async with _SCAN_TCP_SEMAPHORE:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ip, port),
+                    timeout=timeout,
+                )
+                writer.close()
+                await writer.wait_closed()
+                return True
+        except (TimeoutError, OSError):
+            if attempt < retries:
+                await asyncio.sleep(0.05 * (attempt + 1))
+    return False
 
 
 async def _check_ports(ip: str, ports: list[int]) -> list[int]:
@@ -209,16 +221,52 @@ async def _update_progress(
 def _parse_subnets(subnet_str: str) -> list[str]:
     """Parse comma-separated subnets or IP ranges."""
     all_ips: list[str] = []
+    seen: set[str] = set()
+    max_hosts = max(settings.SCAN_MAX_HOSTS, 1)
     for part in subnet_str.split(","):
         part = part.strip()
         if not part:
             continue
         try:
             network = ipaddress.ip_network(part, strict=False)
-            all_ips.extend(str(ip) for ip in network.hosts())
+            for ip in network.hosts():
+                ip_str = str(ip)
+                if ip_str in seen:
+                    continue
+                seen.add(ip_str)
+                all_ips.append(ip_str)
+                if len(all_ips) > max_hosts:
+                    raise SubnetLimitExceeded(
+                        f"Too many hosts to scan ({len(all_ips)}). "
+                        f"Limit is {max_hosts}; split SCAN_SUBNET into smaller ranges."
+                    )
+        except SubnetLimitExceeded:
+            raise
         except ValueError:
-            logger.warning("Invalid subnet: %s", part)
+            logger.warning("Invalid subnet or subnet limit exceeded: %s", part)
     return all_ips
+
+
+def _parse_ports(ports_str: str) -> list[int]:
+    ports: list[int] = []
+    seen: set[int] = set()
+    for raw in ports_str.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            port = int(raw)
+        except ValueError:
+            logger.warning("Invalid scan port: %s", raw)
+            continue
+        if not (1 <= port <= 65535):
+            logger.warning("Scan port out of range: %s", raw)
+            continue
+        if port in seen:
+            continue
+        seen.add(port)
+        ports.append(port)
+    return ports
 
 
 async def scan_subnet(subnet: str, ports_str: str, known_printers: list[dict]) -> list[dict]:
@@ -240,7 +288,9 @@ async def scan_subnet(subnet: str, ports_str: str, known_printers: list[dict]) -
             raise ValueError(f"No valid IPs in subnet: {subnet}")
 
         total = len(all_ips)
-        ports = [int(p.strip()) for p in ports_str.split(",") if p.strip()]
+        ports = _parse_ports(ports_str)
+        if not ports:
+            raise ValueError("No valid scan ports configured")
 
         await _update_progress("running", 0, total, 0)
 

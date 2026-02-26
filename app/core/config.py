@@ -40,6 +40,10 @@ class Settings(BaseSettings):
 
     SCAN_SUBNET: str = ""
     SCAN_PORTS: str = "9100,631,80,443"
+    SCAN_MAX_HOSTS: int = 4096
+    SCAN_TCP_TIMEOUT: float = 1.0
+    SCAN_TCP_RETRIES: int = 1
+    SCAN_TCP_CONCURRENCY: int = 256
 
     DOMAIN: str = "infrascope.local"
 
