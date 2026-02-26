@@ -525,6 +525,11 @@ class SwitchPortInfo(BaseModel):
     description: str | None = None
     admin_status: str | None = None
     oper_status: str | None = None
+    status_text: str | None = None
+    vlan_text: str | None = None
+    duplex_text: str | None = None
+    speed_text: str | None = None
+    media_type: str | None = None
     speed_mbps: int | None = None
     duplex: str | None = None
     vlan: int | None = None

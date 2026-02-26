@@ -33,11 +33,13 @@ class CiscoSwitchProvider:
 
     def get_ports(self, switch: NetworkSwitch) -> list[SwitchPortState]:
         ports = self.snmp_provider.get_ports(switch)
+        status_map = self._get_interfaces_status_map(switch)
         switchport_map = self._get_switchport_details(switch)
         if ports:
+            self._enrich_ports_with_status(ports, status_map)
             self._enrich_ports_with_switchport(ports, switchport_map)
             return ports
-        ssh_ports = self._get_ports_via_ssh(switch)
+        ssh_ports = list(status_map.values()) if status_map else self._get_ports_via_ssh(switch)
         self._enrich_ports_with_switchport(ssh_ports, switchport_map)
         return ssh_ports
 
@@ -57,25 +59,57 @@ class CiscoSwitchProvider:
             ssh.close()
         return self._parse_interfaces_status(output)
 
+    def _get_interfaces_status_map(self, switch: NetworkSwitch) -> dict[str, SwitchPortState]:
+        ssh = CiscoSSH(
+            switch.ip_address,
+            switch.ssh_username,
+            switch.ssh_password,
+            switch.enable_password,
+            switch.ssh_port,
+        )
+        if not ssh.connect():
+            return {}
+        try:
+            output = ssh.execute("show interfaces status")
+        finally:
+            ssh.close()
+        rows = self._parse_interfaces_status(output)
+        return {self._normalize_port(r.port): r for r in rows}
+
     def _parse_interfaces_status(self, output: str) -> list[SwitchPortState]:
         ports: list[SwitchPortState] = []
         for line in output.splitlines():
             line = line.rstrip()
             if not line or line.lower().startswith("port ") or line.startswith("---"):
                 continue
-            match = re.match(r"^(\S+)\s+(.+?)\s+(connected|notconnect|disabled|err-disabled)\s+", line)
-            if not match:
+            parts = line.split()
+            if len(parts) < 7:
                 continue
-            port_name = match.group(1)
-            descr = match.group(2).strip()
-            oper_state = "up" if match.group(3) == "connected" else "down"
+            port_name = parts[0]
+            media_type = parts[-1]
+            speed_text = parts[-2]
+            duplex_text = parts[-3]
+            vlan_text = parts[-4]
+            status_text = parts[-5]
+            name_text = " ".join(parts[1:-5]).strip()
+            oper_state = "up" if status_text == "connected" else "down"
+            port_mode = "trunk" if vlan_text.lower() == "trunk" else ("access" if vlan_text.isdigit() else None)
+            vlan_num: int | None = int(vlan_text) if vlan_text.isdigit() else None
             ports.append(
                 SwitchPortState(
                     port=port_name,
                     if_index=0,
-                    description=descr if descr != "--" else None,
+                    description=name_text if name_text and name_text != "--" else None,
                     admin_status=None,
                     oper_status=oper_state,
+                    status_text=status_text,
+                    vlan_text=vlan_text,
+                    duplex_text=duplex_text,
+                    speed_text=speed_text,
+                    media_type=media_type,
+                    port_mode=port_mode,
+                    vlan=vlan_num,
+                    access_vlan=vlan_num if port_mode == "access" else None,
                 )
             )
         return ports
@@ -137,6 +171,26 @@ class CiscoSwitchProvider:
                     port.trunk_native_vlan = None
             if cfg.get("allowed_vlans"):
                 port.trunk_allowed_vlans = cfg["allowed_vlans"]
+
+    def _enrich_ports_with_status(self, ports: list[SwitchPortState], status_map: dict[str, SwitchPortState]) -> None:
+        for port in ports:
+            status_row = status_map.get(self._normalize_port(port.port))
+            if not status_row:
+                continue
+            if not port.description:
+                port.description = status_row.description
+            port.oper_status = status_row.oper_status or port.oper_status
+            port.status_text = status_row.status_text
+            port.vlan_text = status_row.vlan_text
+            port.duplex_text = status_row.duplex_text
+            port.speed_text = status_row.speed_text
+            port.media_type = status_row.media_type
+            if status_row.vlan is not None:
+                port.vlan = status_row.vlan
+            if status_row.port_mode and not port.port_mode:
+                port.port_mode = status_row.port_mode
+            if status_row.access_vlan is not None and port.access_vlan is None:
+                port.access_vlan = status_row.access_vlan
 
     def _normalize_mode(self, mode_raw: str) -> str | None:
         if not mode_raw:

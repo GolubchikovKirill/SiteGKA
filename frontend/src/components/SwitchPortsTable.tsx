@@ -145,78 +145,117 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
           ) : (
             <table className="w-full text-xs">
               <thead className="bg-slate-50 sticky top-0 z-10">
-                <tr className="text-left text-slate-600">
-                  <th className="px-3 py-2">Порт</th>
-                  <th className="px-3 py-2">Admin/Oper</th>
-                  <th className="px-3 py-2">Mode/VLAN</th>
-                  <th className="px-3 py-2">Speed</th>
-                  <th className="px-3 py-2">PoE</th>
-                  <th className="px-3 py-2">Описание</th>
-                  {activeTab === "configure" && <th className="px-3 py-2">Операции</th>}
-                </tr>
+                {activeTab === "current" ? (
+                  <tr className="text-left text-slate-600">
+                    <th className="px-3 py-2">Port</th>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Vlan</th>
+                    <th className="px-3 py-2">Mode</th>
+                    <th className="px-3 py-2">Duplex</th>
+                    <th className="px-3 py-2">Speed</th>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">PoE</th>
+                  </tr>
+                ) : (
+                  <tr className="text-left text-slate-600">
+                    <th className="px-3 py-2">Порт</th>
+                    <th className="px-3 py-2">Admin/Oper</th>
+                    <th className="px-3 py-2">Mode/VLAN</th>
+                    <th className="px-3 py-2">Speed</th>
+                    <th className="px-3 py-2">PoE</th>
+                    <th className="px-3 py-2">Описание</th>
+                    <th className="px-3 py-2">Операции</th>
+                  </tr>
+                )}
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.port} className="border-t border-slate-100 align-top hover:bg-slate-50/60">
-                    <td className="px-3 py-2 font-mono">{row.port}</td>
-                    <td className="px-3 py-2">{formatStatus(row.admin_status)} / {formatStatus(row.oper_status)}</td>
-                    <td className="px-3 py-2">
-                      <div className="space-y-1">
-                        <div className="text-[11px] text-slate-500">
-                          current: {row.port_mode ?? "unknown"}
-                          {row.port_mode === "access" && (row.access_vlan ?? row.vlan) ? ` / VLAN ${row.access_vlan ?? row.vlan}` : ""}
-                          {row.port_mode === "trunk" && row.trunk_native_vlan ? ` / native ${row.trunk_native_vlan}` : ""}
-                        </div>
-                        {row.port_mode === "trunk" && row.trunk_allowed_vlans && (
-                          <div className="text-[11px] text-slate-500">allowed: {row.trunk_allowed_vlans}</div>
-                        )}
-                        {activeTab === "configure" && isSuperuser && (
-                          <div className="flex flex-wrap items-center gap-1">
-                            <select
-                              value={modeDraft[row.port] ?? (row.port_mode === "trunk" ? "trunk" : "access")}
-                              onChange={(e) =>
-                                setModeDraft((prev) => ({ ...prev, [row.port]: e.target.value as "access" | "trunk" }))
-                              }
-                              className="app-input px-2 py-1 text-xs"
-                            >
-                              <option value="access">access</option>
-                              <option value="trunk">trunk</option>
-                            </select>
-                            <input
-                              value={vlanDraft[row.port] ?? String(row.access_vlan ?? row.vlan ?? "")}
-                              onChange={(e) => setVlanDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
-                              placeholder="access vlan"
-                              className="app-input w-20 px-2 py-1 text-xs"
-                            />
-                            <input
-                              value={nativeVlanDraft[row.port] ?? String(row.trunk_native_vlan ?? "")}
-                              onChange={(e) => setNativeVlanDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
-                              placeholder="native"
-                              className="app-input w-20 px-2 py-1 text-xs"
-                            />
-                            <input
-                              value={allowedVlansDraft[row.port] ?? row.trunk_allowed_vlans ?? ""}
-                              onChange={(e) => setAllowedVlansDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
-                              placeholder="allowed vlans"
-                              className="app-input w-28 px-2 py-1 text-xs"
-                            />
-                            <button onClick={() => saveMode(row)} className="app-btn-secondary px-2 py-1 text-xs">
-                              Apply
-                            </button>
-                            <button onClick={() => saveVlan(row)} className="app-btn-secondary px-2 py-1 text-xs">
-                              Set VLAN
-                            </button>
+                {rows.map((row) => {
+                  const modeValue = row.port_mode ?? (row.vlan_text === "trunk" ? "trunk" : row.vlan_text && /^\d+$/.test(row.vlan_text) ? "access" : "—");
+                  const vlanValue = row.vlan_text ?? (row.vlan !== null ? String(row.vlan) : "—");
+                  const duplexValue = row.duplex_text ?? row.duplex ?? "—";
+                  const speedValue = row.speed_text ?? (row.speed_mbps ? `${row.speed_mbps} Mbps` : "—");
+                  const typeValue = row.media_type ?? "—";
+
+                  if (activeTab === "current") {
+                    return (
+                      <tr key={row.port} className="border-t border-slate-100 align-top hover:bg-slate-50/60">
+                        <td className="px-3 py-2 font-mono">{row.port}</td>
+                        <td className="px-3 py-2 text-slate-700">{row.description || "—"}</td>
+                        <td className="px-3 py-2">{row.status_text ?? formatStatus(row.oper_status)}</td>
+                        <td className="px-3 py-2">{vlanValue}</td>
+                        <td className="px-3 py-2">{modeValue}</td>
+                        <td className="px-3 py-2">{duplexValue}</td>
+                        <td className="px-3 py-2">{speedValue}</td>
+                        <td className="px-3 py-2">{typeValue}</td>
+                        <td className="px-3 py-2">
+                          <div>{row.poe_enabled === null ? "—" : row.poe_enabled ? "on" : "off"}</div>
+                          <div className="text-gray-400">{row.poe_power_w ?? "—"} W</div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return (
+                    <tr key={row.port} className="border-t border-slate-100 align-top hover:bg-slate-50/60">
+                      <td className="px-3 py-2 font-mono">{row.port}</td>
+                      <td className="px-3 py-2">{formatStatus(row.admin_status)} / {formatStatus(row.oper_status)}</td>
+                      <td className="px-3 py-2">
+                        <div className="space-y-1">
+                          <div className="text-[11px] text-slate-500">
+                            current: {row.port_mode ?? "unknown"}
+                            {row.port_mode === "access" && (row.access_vlan ?? row.vlan) ? ` / VLAN ${row.access_vlan ?? row.vlan}` : ""}
+                            {row.port_mode === "trunk" && row.trunk_native_vlan ? ` / native ${row.trunk_native_vlan}` : ""}
                           </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">{row.speed_mbps ? `${row.speed_mbps} Mbps` : "—"}</td>
-                    <td className="px-3 py-2">
-                      <div>{row.poe_enabled === null ? "—" : row.poe_enabled ? "on" : "off"}</div>
-                      <div className="text-gray-400">{row.poe_power_w ?? "—"} W</div>
-                    </td>
-                    <td className="px-3 py-2">
-                      {activeTab === "configure" ? (
+                          {row.port_mode === "trunk" && row.trunk_allowed_vlans && (
+                            <div className="text-[11px] text-slate-500">allowed: {row.trunk_allowed_vlans}</div>
+                          )}
+                          {isSuperuser && (
+                            <div className="flex flex-wrap items-center gap-1">
+                              <select
+                                value={modeDraft[row.port] ?? (row.port_mode === "trunk" ? "trunk" : "access")}
+                                onChange={(e) =>
+                                  setModeDraft((prev) => ({ ...prev, [row.port]: e.target.value as "access" | "trunk" }))
+                                }
+                                className="app-input px-2 py-1 text-xs"
+                              >
+                                <option value="access">access</option>
+                                <option value="trunk">trunk</option>
+                              </select>
+                              <input
+                                value={vlanDraft[row.port] ?? String(row.access_vlan ?? row.vlan ?? "")}
+                                onChange={(e) => setVlanDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
+                                placeholder="access vlan"
+                                className="app-input w-20 px-2 py-1 text-xs"
+                              />
+                              <input
+                                value={nativeVlanDraft[row.port] ?? String(row.trunk_native_vlan ?? "")}
+                                onChange={(e) => setNativeVlanDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
+                                placeholder="native"
+                                className="app-input w-20 px-2 py-1 text-xs"
+                              />
+                              <input
+                                value={allowedVlansDraft[row.port] ?? row.trunk_allowed_vlans ?? ""}
+                                onChange={(e) => setAllowedVlansDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
+                                placeholder="allowed vlans"
+                                className="app-input w-28 px-2 py-1 text-xs"
+                              />
+                              <button onClick={() => saveMode(row)} className="app-btn-secondary px-2 py-1 text-xs">
+                                Apply
+                              </button>
+                              <button onClick={() => saveVlan(row)} className="app-btn-secondary px-2 py-1 text-xs">
+                                Set VLAN
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">{speedValue}</td>
+                      <td className="px-3 py-2">
+                        <div>{row.poe_enabled === null ? "—" : row.poe_enabled ? "on" : "off"}</div>
+                        <div className="text-gray-400">{row.poe_power_w ?? "—"} W</div>
+                      </td>
+                      <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
                           <input
                             value={descDraft[row.port] ?? row.description ?? ""}
@@ -232,11 +271,7 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                             </button>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-slate-700">{row.description || "—"}</span>
-                      )}
-                    </td>
-                    {activeTab === "configure" && (
+                      </td>
                       <td className="px-3 py-2">
                         {isSuperuser ? (
                           <div className="flex flex-wrap gap-1">
@@ -275,9 +310,9 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                           <span className="text-gray-400">read-only</span>
                         )}
                       </td>
-                    )}
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

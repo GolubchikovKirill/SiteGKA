@@ -429,6 +429,11 @@ export interface SwitchPort {
   description: string | null;
   admin_status: string | null;
   oper_status: string | null;
+  status_text: string | null;
+  vlan_text: string | null;
+  duplex_text: string | null;
+  speed_text: string | null;
+  media_type: string | null;
   speed_mbps: number | null;
   duplex: string | null;
   vlan: number | null;
@@ -483,6 +488,10 @@ export async function deleteSwitch(id: string) {
 export async function pollSwitch(id: string) {
   const { data } = await api.post<NetworkSwitch>(`/switches/${id}/poll`);
   return data;
+}
+
+export async function pollAllSwitches() {
+  await api.post("/switches/poll-all");
 }
 
 export async function getSwitchAPs(id: string) {

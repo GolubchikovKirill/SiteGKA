@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace, Radar } from "lucide-react";
 import {
@@ -16,6 +16,14 @@ import {
   type MediaPlayer,
   type DeviceType,
 } from "../client";
+import {
+  AUTO_REFRESH_INTERVAL_OPTIONS,
+  type AutoRefreshMinutes,
+  readAutoRefreshEnabled,
+  readAutoRefreshIntervalMinutes,
+  writeAutoRefreshEnabled,
+  writeAutoRefreshIntervalMinutes,
+} from "../autoRefresh";
 import { useAuth } from "../auth";
 import MediaPlayerCard from "../components/MediaPlayerCard";
 import MediaPlayerForm from "../components/MediaPlayerForm";
@@ -41,6 +49,8 @@ export default function MediaPlayersPage() {
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(() => readAutoRefreshEnabled());
+  const [autoRefreshMinutes, setAutoRefreshMinutes] = useState<AutoRefreshMinutes>(() => readAutoRefreshIntervalMinutes());
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const replaceFileRef = useRef<HTMLInputElement>(null);
 
@@ -113,6 +123,16 @@ export default function MediaPlayersPage() {
     if (confirm("Удалить устройство?")) deleteMut.mutate(id);
   };
 
+  useEffect(() => {
+    if (!autoRefreshEnabled) return;
+    const timer = setInterval(() => {
+      pollAllMediaPlayers(deviceTypeParam)
+        .then(() => queryClient.invalidateQueries({ queryKey: ["media-players"] }))
+        .catch(() => undefined);
+    }, autoRefreshMinutes * 60_000);
+    return () => clearInterval(timer);
+  }, [autoRefreshEnabled, autoRefreshMinutes, deviceTypeParam, queryClient]);
+
   const showBulkResult = (res: { success: number; failed: number }) => {
     setBulkMsg(`Успешно: ${res.success}, ошибок: ${res.failed}`);
     setTimeout(() => setBulkMsg(null), 4000);
@@ -160,6 +180,10 @@ export default function MediaPlayersPage() {
   };
 
   const players = data?.data ?? [];
+  const sortedPlayers = [...players].sort((a, b) => {
+    const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
+    return rank(a.is_online) - rank(b.is_online);
+  });
   const total = players.length;
   const online = players.filter((p) => p.is_online === true).length;
   const offline = players.filter((p) => p.is_online === false).length;
@@ -174,6 +198,35 @@ export default function MediaPlayersPage() {
           <p className="text-sm text-slate-500 mt-1">Неттопы, Iconbit и Twix устройства</p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-xs text-slate-600 px-2">
+            <input
+              type="checkbox"
+              checked={autoRefreshEnabled}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setAutoRefreshEnabled(checked);
+                writeAutoRefreshEnabled(checked);
+              }}
+              className="h-4 w-4"
+            />
+            Авто
+          </label>
+          <select
+            value={autoRefreshMinutes}
+            onChange={(e) => {
+              const minutes = Number(e.target.value) as AutoRefreshMinutes;
+              setAutoRefreshMinutes(minutes);
+              writeAutoRefreshIntervalMinutes(minutes);
+            }}
+            className="app-input px-2 py-2 text-xs"
+            title="Интервал автообновления"
+          >
+            {AUTO_REFRESH_INTERVAL_OPTIONS.map((minutes) => (
+              <option key={minutes} value={minutes}>
+                {minutes} мин
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => pollAllMut.mutate()}
             disabled={pollAllMut.isPending}
@@ -287,14 +340,14 @@ export default function MediaPlayersPage() {
         <div className="flex justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
         </div>
-      ) : players.length === 0 ? (
+      ) : sortedPlayers.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <p className="text-lg">Нет устройств</p>
           <p className="text-sm mt-1">Добавьте первое устройство для мониторинга</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {players.map((player) => (
+          {sortedPlayers.map((player) => (
             <MediaPlayerCard
               key={player.id}
               player={player}

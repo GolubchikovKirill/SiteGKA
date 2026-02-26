@@ -135,6 +135,32 @@ async def poll_switch(switch_id: uuid.UUID, session: SessionDep, current_user: C
     return switch
 
 
+@router.post("/poll-all", response_model=Message)
+async def poll_all_switches(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    del current_user
+    switches = session.exec(select(NetworkSwitch)).all()
+    for switch in switches:
+        try:
+            provider = resolve_switch_provider(switch)
+            info = await asyncio.to_thread(provider.poll_switch, switch)
+            switch.is_online = info.is_online
+            switch.hostname = info.hostname or switch.hostname
+            switch.model_info = info.model_info or switch.model_info
+            switch.ios_version = info.ios_version or switch.ios_version
+            switch.uptime = info.uptime or switch.uptime
+            switch.last_polled_at = datetime.now(UTC)
+            switch_ops_total.labels(operation="poll_all", result="online" if info.is_online else "offline").inc()
+            session.add(switch)
+        except Exception as exc:
+            logger.warning("Bulk switch poll failed for %s (%s): %s", switch.name, switch.ip_address, exc)
+            switch_ops_total.labels(operation="poll_all", result="error").inc()
+    session.commit()
+    return Message(message="Switches polled")
+
+
 @router.get("/{switch_id}/access-points", response_model=list[AccessPointInfo])
 async def get_switch_aps(
     switch_id: uuid.UUID,
@@ -246,6 +272,11 @@ async def get_switch_ports(
             description=p.description,
             admin_status=p.admin_status,
             oper_status=p.oper_status,
+            status_text=p.status_text,
+            vlan_text=p.vlan_text,
+            duplex_text=p.duplex_text,
+            speed_text=p.speed_text,
+            media_type=p.media_type,
             speed_mbps=p.speed_mbps,
             duplex=p.duplex,
             vlan=p.vlan,
