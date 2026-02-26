@@ -21,6 +21,7 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 import httpx
 
@@ -33,7 +34,7 @@ TIMEOUT = 8
 
 AUTH_CREDS = ("admin", "admin")
 _FIRMWARE_HINTS: dict[str, str] = {}
-_WARN_COOLDOWN_SECONDS = 120.0
+_WARN_COOLDOWN_SECONDS = 600.0
 _WARN_LAST_SEEN: dict[str, float] = {}
 
 
@@ -71,7 +72,8 @@ def _get(url: str, **kwargs) -> httpx.Response | None:
     except Exception as e:
         media_player_ops_total.labels(operation="iconbit_http_get", result="error").inc()
         if "Connection refused" in str(e):
-            _log_warning_with_cooldown(f"iconbit_conn_refused:{url}", "Iconbit GET %s failed: %s", url, e)
+            host = urlparse(url).hostname or url
+            _log_warning_with_cooldown(f"iconbit_conn_refused:{host}", "Iconbit GET %s failed: %s", url, e)
         else:
             logger.warning("Iconbit GET %s failed: %s", url, e)
         return None

@@ -171,6 +171,17 @@ class CiscoSwitchProvider:
                     port.trunk_native_vlan = None
             if cfg.get("allowed_vlans"):
                 port.trunk_allowed_vlans = cfg["allowed_vlans"]
+            # Fill VLAN text/value even when SNMP PVID is missing for this port.
+            if port.port_mode == "trunk":
+                if not port.vlan_text:
+                    port.vlan_text = "trunk"
+                if port.vlan is None and port.trunk_native_vlan is not None:
+                    port.vlan = port.trunk_native_vlan
+            elif port.port_mode == "access":
+                if port.vlan is None and port.access_vlan is not None:
+                    port.vlan = port.access_vlan
+                if not port.vlan_text and port.vlan is not None:
+                    port.vlan_text = str(port.vlan)
 
     def _enrich_ports_with_status(self, ports: list[SwitchPortState], status_map: dict[str, SwitchPortState]) -> None:
         for port in ports:

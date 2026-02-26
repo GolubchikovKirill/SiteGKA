@@ -171,8 +171,26 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const modeValue = row.port_mode ?? (row.vlan_text === "trunk" ? "trunk" : row.vlan_text && /^\d+$/.test(row.vlan_text) ? "access" : "—");
-                  const vlanValue = row.vlan_text ?? (row.vlan !== null ? String(row.vlan) : "—");
+                  const modeValue =
+                    row.port_mode ??
+                    (row.vlan_text === "trunk"
+                      ? "trunk"
+                      : row.vlan_text && /^\d+$/.test(row.vlan_text)
+                        ? "access"
+                        : row.trunk_allowed_vlans
+                          ? "trunk"
+                          : row.access_vlan !== null
+                            ? "access"
+                            : "—");
+                  const vlanValue =
+                    row.vlan_text ??
+                    (row.vlan !== null
+                      ? String(row.vlan)
+                      : row.access_vlan !== null
+                        ? String(row.access_vlan)
+                        : row.port_mode === "trunk" || row.trunk_allowed_vlans
+                          ? "trunk"
+                          : "—");
                   const duplexValue = row.duplex_text ?? row.duplex ?? "—";
                   const speedValue = row.speed_text ?? (row.speed_mbps ? `${row.speed_mbps} Mbps` : "—");
                   const typeValue = row.media_type ?? "—";
