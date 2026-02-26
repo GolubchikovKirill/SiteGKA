@@ -191,6 +191,25 @@ export interface ScanResultsResponse {
   devices: DiscoveredDevice[];
 }
 
+export interface DiscoveredNetworkDevice {
+  ip: string;
+  mac: string | null;
+  open_ports: number[];
+  hostname: string | null;
+  model_info: string | null;
+  vendor: string | null;
+  device_kind: string | null;
+  is_known: boolean;
+  known_device_id: string | null;
+  ip_changed: boolean;
+  old_ip: string | null;
+}
+
+export interface DiscoveryResultsResponse {
+  progress: ScanProgress;
+  devices: DiscoveredNetworkDevice[];
+}
+
 export async function startScan(subnet: string, ports: string = "9100,631,80,443") {
   const { data } = await api.post<ScanProgress>("/scanner/scan", { subnet, ports });
   return data;
@@ -226,6 +245,60 @@ export async function updatePrinterIp(printerId: string, newIp: string, newMac?:
   const params: Record<string, string> = { new_ip: newIp };
   if (newMac) params.new_mac = newMac;
   const { data } = await api.post<Printer>(`/scanner/update-ip/${printerId}`, null, { params });
+  return data;
+}
+
+export async function startIconbitDiscoveryScan(subnet: string, ports: string = "8081,80,443") {
+  const { data } = await api.post<ScanProgress>("/media-players/discover/scan", { subnet, ports });
+  return data;
+}
+
+export async function getIconbitDiscoveryResults() {
+  const { data } = await api.get<DiscoveryResultsResponse>("/media-players/discover/results");
+  return data;
+}
+
+export async function addDiscoveredIconbit(payload: {
+  ip_address: string;
+  name?: string;
+  model?: string;
+  mac_address?: string;
+}) {
+  const { data } = await api.post<MediaPlayer>("/media-players/discover/add", payload);
+  return data;
+}
+
+export async function updateDiscoveredIconbitIp(playerId: string, newIp: string, newMac?: string) {
+  const params: Record<string, string> = { new_ip: newIp };
+  if (newMac) params.new_mac = newMac;
+  const { data } = await api.post<MediaPlayer>(`/media-players/discover/update-ip/${playerId}`, null, { params });
+  return data;
+}
+
+export async function startSwitchDiscoveryScan(subnet: string, ports: string = "22,80,443") {
+  const { data } = await api.post<ScanProgress>("/switches/discover/scan", { subnet, ports });
+  return data;
+}
+
+export async function getSwitchDiscoveryResults() {
+  const { data } = await api.get<DiscoveryResultsResponse>("/switches/discover/results");
+  return data;
+}
+
+export async function addDiscoveredSwitch(payload: {
+  ip_address: string;
+  name?: string;
+  hostname?: string;
+  vendor?: string;
+}) {
+  const { data } = await api.post<NetworkSwitch>("/switches/discover/add", payload);
+  return data;
+}
+
+export async function updateDiscoveredSwitchIp(switchId: string, newIp: string) {
+  const { data } = await api.post<NetworkSwitch>(`/switches/discover/update-ip/${switchId}`, null, {
+    params: { new_ip: newIp },
+  });
   return data;
 }
 

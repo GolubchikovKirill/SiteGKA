@@ -17,12 +17,16 @@ from app.observability.metrics import (
     set_device_counts,
 )
 from app.schemas import (
+    DiscoveryResults,
     MediaPlayerCreate,
     MediaPlayerPublic,
     MediaPlayersPublic,
     MediaPlayerUpdate,
     Message,
+    ScanProgress,
+    ScanRequest,
 )
+from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.device_poll import find_device_by_mac, poll_device_sync
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
@@ -52,6 +56,13 @@ router = APIRouter(tags=["media-players"])
 
 MAX_POLL_WORKERS = 20
 CACHE_TTL = 30
+
+
+async def _run_iconbit_discovery(subnet: str, ports: str, known_players: list[dict]) -> None:
+    try:
+        await run_discovery_scan("iconbit", subnet, ports, known_players)
+    except Exception as exc:
+        logger.error("Iconbit discovery failed: %s", exc)
 
 
 async def _invalidate_cache() -> None:
@@ -113,6 +124,87 @@ async def create_media_player(session: SessionDep, player_in: MediaPlayerCreate)
     if existing:
         raise HTTPException(status_code=400, detail="Device with this IP already exists")
     player = MediaPlayer(**player_in.model_dump())
+    session.add(player)
+    session.commit()
+    session.refresh(player)
+    await _invalidate_cache()
+    return player
+
+
+@router.post("/discover/scan", response_model=ScanProgress, dependencies=[Depends(get_current_active_superuser)])
+async def discover_iconbit_scan(
+    body: ScanRequest,
+    session: SessionDep,
+) -> dict:
+    players = session.exec(select(MediaPlayer).where(MediaPlayer.device_type == "iconbit")).all()
+    known = [{"id": str(p.id), "ip_address": p.ip_address, "mac_address": p.mac_address} for p in players]
+    asyncio.create_task(_run_iconbit_discovery(body.subnet, body.ports, known))
+    return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
+
+
+@router.get("/discover/status", response_model=ScanProgress)
+async def discover_iconbit_status(current_user: CurrentUser) -> dict:
+    del current_user
+    return await get_discovery_progress("iconbit")
+
+
+@router.get("/discover/results", response_model=DiscoveryResults)
+async def discover_iconbit_results(current_user: CurrentUser) -> dict:
+    del current_user
+    progress = await get_discovery_progress("iconbit")
+    devices = await get_discovery_results("iconbit")
+    return {"progress": progress, "devices": devices}
+
+
+@router.post("/discover/add", response_model=MediaPlayerPublic, dependencies=[Depends(get_current_active_superuser)])
+async def discover_add_iconbit(
+    session: SessionDep,
+    payload: dict,
+) -> MediaPlayer:
+    ip = str(payload.get("ip_address", "")).strip()
+    if not ip:
+        raise HTTPException(status_code=422, detail="ip_address is required")
+    existing = session.exec(select(MediaPlayer).where(MediaPlayer.ip_address == ip)).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Device with this IP already exists")
+    name = str(payload.get("name") or f"Iconbit {ip}")
+    model = str(payload.get("model") or "Iconbit")
+    player = MediaPlayer(
+        device_type="iconbit",
+        name=name[:255],
+        model=model[:255],
+        ip_address=ip,
+        mac_address=str(payload.get("mac_address") or "")[:17] or None,
+    )
+    session.add(player)
+    session.commit()
+    session.refresh(player)
+    await _invalidate_cache()
+    return player
+
+
+@router.post(
+    "/discover/update-ip/{player_id}",
+    response_model=MediaPlayerPublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+async def discover_update_iconbit_ip(
+    player_id: uuid.UUID,
+    session: SessionDep,
+    new_ip: str = "",
+    new_mac: str | None = None,
+) -> MediaPlayer:
+    player = session.get(MediaPlayer, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Media player not found")
+    if new_ip:
+        conflict = session.exec(select(MediaPlayer).where(MediaPlayer.ip_address == new_ip, MediaPlayer.id != player.id)).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Another device already has this IP")
+        player.ip_address = new_ip
+    if new_mac:
+        player.mac_address = new_mac
+    player.updated_at = datetime.now(UTC)
     session.add(player)
     session.commit()
     session.refresh(player)

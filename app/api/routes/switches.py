@@ -16,11 +16,14 @@ from app.observability.metrics import (
 )
 from app.schemas import (
     AccessPointInfo,
+    DiscoveryResults,
     Message,
     NetworkSwitchCreate,
     NetworkSwitchesPublic,
     NetworkSwitchPublic,
     NetworkSwitchUpdate,
+    ScanProgress,
+    ScanRequest,
     SwitchPortAdminStateUpdate,
     SwitchPortDescriptionUpdate,
     SwitchPortInfo,
@@ -30,11 +33,19 @@ from app.schemas import (
     SwitchPortVlanUpdate,
 )
 from app.services.cisco_ssh import get_access_points, poe_cycle_ap, reboot_ap
+from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.switches import resolve_switch_provider
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["switches"])
+
+
+async def _run_switch_discovery(subnet: str, ports: str, known_switches: list[dict]) -> None:
+    try:
+        await run_discovery_scan("switch", subnet, ports, known_switches)
+    except Exception as exc:
+        logger.error("Switch discovery failed: %s", exc)
 
 
 @router.get("/", response_model=NetworkSwitchesPublic)
@@ -66,6 +77,81 @@ def create_switch(session: SessionDep, switch_in: NetworkSwitchCreate) -> Networ
     if existing:
         raise HTTPException(status_code=400, detail="Switch with this IP already exists")
     switch = NetworkSwitch(**switch_in.model_dump())
+    session.add(switch)
+    session.commit()
+    session.refresh(switch)
+    return switch
+
+
+@router.post("/discover/scan", response_model=ScanProgress, dependencies=[Depends(get_current_active_superuser)])
+async def discover_switch_scan(body: ScanRequest, session: SessionDep) -> dict:
+    switches = session.exec(select(NetworkSwitch)).all()
+    known = [{"id": str(s.id), "ip_address": s.ip_address, "mac_address": None} for s in switches]
+    asyncio.create_task(_run_switch_discovery(body.subnet, body.ports, known))
+    return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
+
+
+@router.get("/discover/status", response_model=ScanProgress)
+async def discover_switch_status(current_user: CurrentUser) -> dict:
+    del current_user
+    return await get_discovery_progress("switch")
+
+
+@router.get("/discover/results", response_model=DiscoveryResults)
+async def discover_switch_results(current_user: CurrentUser) -> dict:
+    del current_user
+    progress = await get_discovery_progress("switch")
+    devices = await get_discovery_results("switch")
+    return {"progress": progress, "devices": devices}
+
+
+@router.post("/discover/add", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])
+def discover_add_switch(session: SessionDep, payload: dict) -> NetworkSwitch:
+    ip = str(payload.get("ip_address", "")).strip()
+    if not ip:
+        raise HTTPException(status_code=422, detail="ip_address is required")
+    existing = session.exec(select(NetworkSwitch).where(NetworkSwitch.ip_address == ip)).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Switch with this IP already exists")
+    vendor = str(payload.get("vendor") or "generic").strip().lower()
+    if vendor not in {"cisco", "dlink", "generic"}:
+        vendor = "generic"
+    name = str(payload.get("name") or payload.get("hostname") or f"Switch {ip}")[:255]
+    switch = NetworkSwitch(
+        name=name,
+        ip_address=ip,
+        vendor=vendor,
+        management_protocol="snmp+ssh",
+        snmp_version="2c",
+        snmp_community_ro="public",
+    )
+    session.add(switch)
+    session.commit()
+    session.refresh(switch)
+    return switch
+
+
+@router.post(
+    "/discover/update-ip/{switch_id}",
+    response_model=NetworkSwitchPublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def discover_update_switch_ip(
+    switch_id: uuid.UUID,
+    session: SessionDep,
+    new_ip: str = "",
+) -> NetworkSwitch:
+    switch = session.get(NetworkSwitch, switch_id)
+    if not switch:
+        raise HTTPException(status_code=404, detail="Switch not found")
+    if new_ip:
+        conflict = session.exec(
+            select(NetworkSwitch).where(NetworkSwitch.ip_address == new_ip, NetworkSwitch.id != switch.id)
+        ).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Another switch already has this IP")
+        switch.ip_address = new_ip
+    switch.updated_at = datetime.now(UTC)
     session.add(switch)
     session.commit()
     session.refresh(switch)

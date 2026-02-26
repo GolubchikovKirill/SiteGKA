@@ -27,6 +27,7 @@ import {
 import { useAuth } from "../auth";
 import MediaPlayerCard from "../components/MediaPlayerCard";
 import MediaPlayerForm from "../components/MediaPlayerForm";
+import NetworkDiscoveryModal from "../components/NetworkDiscoveryModal";
 
 type FilterKey = "all" | DeviceType;
 
@@ -45,6 +46,7 @@ export default function MediaPlayersPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showDiscovery, setShowDiscovery] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<MediaPlayer | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
@@ -244,6 +246,13 @@ export default function MediaPlayersPage() {
             <Radar className={`h-4 w-4 ${rediscoverMut.isPending ? "animate-ping" : ""}`} />
             {rediscoverMut.isPending ? "Поиск..." : "Переоткрыть"}
           </button>
+          <button
+            onClick={() => setShowDiscovery(true)}
+            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
+          >
+            <Search className="h-4 w-4" />
+            Поиск сети
+          </button>
           {isSuperuser && (
             <button
               onClick={() => { setEditingPlayer(null); setFormError(null); setShowForm(true); }}
@@ -378,6 +387,7 @@ export default function MediaPlayersPage() {
           }}
         />
       )}
+      {showDiscovery && <NetworkDiscoveryModal kind="iconbit" onClose={() => setShowDiscovery(false)} />}
     </div>
   );
 }

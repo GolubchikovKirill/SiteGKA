@@ -15,6 +15,7 @@ import {
 import SwitchForm from "../components/SwitchForm";
 import SwitchCard from "../components/SwitchCard";
 import SwitchPortsTable from "../components/SwitchPortsTable";
+import NetworkDiscoveryModal from "../components/NetworkDiscoveryModal";
 
 export default function SwitchesPage() {
   const { user } = useAuth();
@@ -23,6 +24,7 @@ export default function SwitchesPage() {
 
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showDiscovery, setShowDiscovery] = useState(false);
   const [editTarget, setEditTarget] = useState<NetworkSwitch | null>(null);
   const [pollingId, setPollingId] = useState<string | null>(null);
   const [portsTarget, setPortsTarget] = useState<NetworkSwitch | null>(null);
@@ -136,6 +138,13 @@ export default function SwitchesPage() {
             <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
             {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
           </button>
+          <button
+            onClick={() => setShowDiscovery(true)}
+            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
+          >
+            <Search className="h-4 w-4" />
+            Поиск сети
+          </button>
           {isSuperuser && (
             <button
               onClick={() => { setEditTarget(null); setShowForm(true); }}
@@ -209,6 +218,7 @@ export default function SwitchesPage() {
           onClose={() => setPortsTarget(null)}
         />
       )}
+      {showDiscovery && <NetworkDiscoveryModal kind="switch" onClose={() => setShowDiscovery(false)} />}
     </div>
   );
 }
