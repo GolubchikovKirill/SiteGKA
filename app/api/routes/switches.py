@@ -38,12 +38,28 @@ from app.schemas import (
 )
 from app.services.cisco_ssh import get_access_points, poe_cycle_ap, reboot_ap
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
+from app.services.event_log import write_event_log
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
 from app.services.switches import resolve_switch_provider
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["switches"])
+
+
+def _record_status_change(session: SessionDep, sw: NetworkSwitch, was_online: bool | None) -> None:
+    if was_online is None or was_online == sw.is_online:
+        return
+    write_event_log(
+        session,
+        category="device",
+        event_type="device_online" if sw.is_online else "device_offline",
+        severity="info" if sw.is_online else "warning",
+        device_kind="switch",
+        device_name=sw.name,
+        ip_address=sw.ip_address,
+        message=f"Network device '{sw.name}' is now {'online' if sw.is_online else 'offline'}",
+    )
 
 
 async def _run_switch_discovery(subnet: str, ports: str, known_switches: list[dict]) -> None:
@@ -149,6 +165,7 @@ def discover_update_switch_ip(
     switch = session.get(NetworkSwitch, switch_id)
     if not switch:
         raise HTTPException(status_code=404, detail="Switch not found")
+    old_ip = switch.ip_address
     if new_ip:
         conflict = session.exec(
             select(NetworkSwitch).where(NetworkSwitch.ip_address == new_ip, NetworkSwitch.id != switch.id)
@@ -156,6 +173,17 @@ def discover_update_switch_ip(
         if conflict:
             raise HTTPException(status_code=409, detail="Another switch already has this IP")
         switch.ip_address = new_ip
+        if old_ip != new_ip:
+            write_event_log(
+                session,
+                category="network",
+                event_type="ip_changed",
+                severity="warning",
+                device_kind="switch",
+                device_name=switch.name,
+                ip_address=new_ip,
+                message=f"Switch '{switch.name}' moved IP: {old_ip} -> {new_ip}",
+            )
     switch.updated_at = datetime.now(UTC)
     session.add(switch)
     session.commit()
@@ -210,6 +238,7 @@ async def poll_switch(switch_id: uuid.UUID, session: SessionDep, current_user: C
     if not switch:
         raise HTTPException(status_code=404, detail="Switch not found")
 
+    was_online = switch.is_online
     provider = resolve_switch_provider(switch)
     info = await asyncio.to_thread(provider.poll_switch, switch)
 
@@ -220,6 +249,7 @@ async def poll_switch(switch_id: uuid.UUID, session: SessionDep, current_user: C
     switch.ios_version = info.ios_version or switch.ios_version
     switch.uptime = info.uptime or switch.uptime
     switch.last_polled_at = datetime.now(UTC)
+    _record_status_change(session, switch, was_online)
     session.add(switch)
     session.commit()
     session.refresh(switch)
@@ -269,6 +299,7 @@ async def poll_all_switches(
         results = await asyncio.gather(*[_poll_one(sw) for sw in poll_targets]) if poll_targets else []
         for switch, info, exc in results:
             try:
+                was_online = switch.is_online
                 if exc:
                     raise exc
                 if info is None:
@@ -286,10 +317,21 @@ async def poll_all_switches(
                 switch.ios_version = info.ios_version or switch.ios_version
                 switch.uptime = info.uptime or switch.uptime
                 switch.last_polled_at = datetime.now(UTC)
+                _record_status_change(session, switch, was_online)
                 switch_ops_total.labels(operation="poll_all", result="online" if effective_online else "offline").inc()
                 session.add(switch)
             except Exception as exc:
                 logger.warning("Bulk switch poll failed for %s (%s): %s", switch.name, switch.ip_address, exc)
+                write_event_log(
+                    session,
+                    category="system",
+                    event_type="critical_poll_error",
+                    severity="critical",
+                    device_kind="switch",
+                    device_name=switch.name,
+                    ip_address=switch.ip_address,
+                    message=f"Critical switch poll error for '{switch.name}': {exc}",
+                )
                 switch.is_online = await apply_poll_outcome(
                     kind="switch",
                     entity_id=str(switch.id),

@@ -83,3 +83,15 @@ class MediaPlayer(SQLModel, table=True):
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = Field(default=None)
+
+
+class EventLog(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    severity: str = Field(default="info", max_length=16, index=True)
+    category: str = Field(default="system", max_length=64, index=True)
+    event_type: str = Field(max_length=128, index=True)
+    message: str = Field(max_length=1024)
+    device_kind: str | None = Field(default=None, max_length=32, index=True)
+    device_name: str | None = Field(default=None, max_length=255)
+    ip_address: str | None = Field(default=None, max_length=255, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)

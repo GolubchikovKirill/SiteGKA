@@ -21,6 +21,7 @@ from app.schemas import (
     PrintersPublic,
     PrinterUpdate,
 )
+from app.services.event_log import write_event_log
 from app.services.ping import check_port
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 from app.services.snmp import get_snmp_mac, poll_printer
@@ -33,6 +34,21 @@ MAX_POLL_WORKERS = 20
 CACHE_TTL = 30
 
 _CYR_TO_LAT = str.maketrans("АВЕКМНОРСТХавекмнорстх", "ABEKMHOPCTXabekmhopctx")
+
+
+def _record_status_change(session: SessionDep, printer: Printer, was_online: bool | None) -> None:
+    if was_online is None or was_online == printer.is_online:
+        return
+    write_event_log(
+        session,
+        category="device",
+        event_type="device_online" if printer.is_online else "device_offline",
+        severity="info" if printer.is_online else "warning",
+        device_kind="printer",
+        device_name=printer.store_name,
+        ip_address=printer.ip_address,
+        message=f"Printer '{printer.store_name}' is now {'online' if printer.is_online else 'offline'}",
+    )
 
 
 def _normalize(text: str) -> str:
@@ -257,6 +273,7 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
 
+    was_online = printer.is_online
     if printer.connection_type == "usb" or not printer.ip_address:
         printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="unsupported").inc()
         raise HTTPException(status_code=400, detail="USB printers cannot be polled")
@@ -278,6 +295,7 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
             if printer.mac_address:
                 new_ip = await _find_by_mac_in_scan_cache(printer.mac_address)
                 if new_ip and new_ip != printer.ip_address:
+                    old_ip = printer.ip_address
                     logger.info(
                         "Printer %s (%s) found at new IP %s (was %s)",
                         printer.store_name, printer.mac_address, new_ip, printer.ip_address,
@@ -290,6 +308,16 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
                     ).first()
                     if not conflict:
                         printer.ip_address = new_ip
+                        write_event_log(
+                            session,
+                            category="network",
+                            event_type="ip_changed",
+                            severity="warning",
+                            device_kind="printer",
+                            device_name=printer.store_name,
+                            ip_address=new_ip,
+                            message=f"Printer '{printer.store_name}' moved IP: {old_ip} -> {new_ip}",
+                        )
                         _, result, current_mac = await asyncio.to_thread(_poll_one, printer)
 
             if result is None:
@@ -322,6 +350,7 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
             printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="online").inc()
 
     printer.last_polled_at = datetime.now(UTC)
+    _record_status_change(session, printer, was_online)
     session.add(printer)
     session.commit()
     session.refresh(printer)
@@ -376,7 +405,7 @@ async def poll_all_printers(
 
         for ip, (result, current_mac) in poll_results.items():
             p = printer_map[ip]
-            previous_online = bool(p.is_online)
+            previous_online = p.is_online
             raw_online = bool(result and ((isinstance(result, dict) and result.get("is_online")) or (hasattr(result, "is_online") and result.is_online)))
             effective_online = await apply_poll_outcome(
                 kind="printer",
@@ -428,6 +457,7 @@ async def poll_all_printers(
                 elif (not effective_online) and p.mac_address:
                     offline_with_mac.append(p)
             p.last_polled_at = datetime.now(UTC)
+            _record_status_change(session, p, previous_online)
             session.add(p)
 
         # Phase 2: try to relocate offline printers by MAC
@@ -462,6 +492,16 @@ async def poll_all_printers(
                             logger.info(
                                 "Auto-relocated %s: %s -> %s (MAC %s)",
                                 p.store_name, old_ip, new_ip, p.mac_address,
+                            )
+                            write_event_log(
+                                session,
+                                category="network",
+                                event_type="ip_changed",
+                                severity="warning",
+                                device_kind="printer",
+                                device_name=p.store_name,
+                                ip_address=new_ip,
+                                message=f"Printer '{p.store_name}' moved IP: {old_ip} -> {new_ip}",
                             )
                         else:
                             p.ip_address = old_ip

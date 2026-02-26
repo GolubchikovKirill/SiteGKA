@@ -32,6 +32,7 @@ from app.schemas import (
 )
 from app.services.device_poll import find_device_by_mac, find_devices_by_macs, poll_device_sync
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
+from app.services.event_log import write_event_log
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
 )
@@ -62,6 +63,21 @@ router = APIRouter(tags=["media-players"])
 
 MAX_POLL_WORKERS = 20
 CACHE_TTL = 30
+
+
+def _record_status_change(session: SessionDep, player: MediaPlayer, was_online: bool | None) -> None:
+    if was_online is None or was_online == player.is_online:
+        return
+    write_event_log(
+        session,
+        category="device",
+        event_type="device_online" if player.is_online else "device_offline",
+        severity="info" if player.is_online else "warning",
+        device_kind="media_player",
+        device_name=player.name,
+        ip_address=player.ip_address,
+        message=f"Media player '{player.name}' is now {'online' if player.is_online else 'offline'}",
+    )
 
 
 @dataclass
@@ -213,11 +229,23 @@ async def discover_update_iconbit_ip(
     player = session.get(MediaPlayer, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Media player not found")
+    old_ip = player.ip_address
     if new_ip:
         conflict = session.exec(select(MediaPlayer).where(MediaPlayer.ip_address == new_ip, MediaPlayer.id != player.id)).first()
         if conflict:
             raise HTTPException(status_code=409, detail="Another device already has this IP")
         player.ip_address = new_ip
+        if old_ip != new_ip:
+            write_event_log(
+                session,
+                category="network",
+                event_type="ip_changed",
+                severity="warning",
+                device_kind="media_player",
+                device_name=player.name,
+                ip_address=new_ip,
+                message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
+            )
     if new_mac:
         player.mac_address = new_mac
     player.updated_at = datetime.now(UTC)
@@ -310,6 +338,7 @@ async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_
     if not player:
         raise HTTPException(status_code=404, detail="Media player not found")
 
+    was_online = player.is_online
     _, result = await asyncio.to_thread(_poll_one, player)
     _apply_poll_result(player, result)
     media_player_polls_total.labels(
@@ -323,7 +352,18 @@ async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_
         new_ip = await find_device_by_mac(player.mac_address)
         if new_ip and new_ip != player.ip_address:
             logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+            old_ip = player.ip_address
             player.ip_address = new_ip
+            write_event_log(
+                session,
+                category="network",
+                event_type="ip_changed",
+                severity="warning",
+                device_kind="media_player",
+                device_name=player.name,
+                ip_address=new_ip,
+                message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
+            )
             _, result = await asyncio.to_thread(_poll_one, player)
             _apply_poll_result(player, result)
             media_player_polls_total.labels(
@@ -333,6 +373,7 @@ async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_
             ).inc()
 
     player.last_polled_at = datetime.now(UTC)
+    _record_status_change(session, player, was_online)
     session.add(player)
     session.commit()
     session.refresh(player)
@@ -400,7 +441,7 @@ async def poll_all_players(
                 continue
 
             result = results.get(player.ip_address)
-            previous_online = bool(player.is_online)
+            previous_online = player.is_online
             raw_online = bool(result and result.is_online)
             effective_online = await apply_poll_outcome(
                 kind="media_player",
@@ -419,6 +460,7 @@ async def poll_all_players(
             if (not effective_online) and player.mac_address:
                 offline_with_mac.append(player)
             player.last_polled_at = datetime.now(UTC)
+            _record_status_change(session, player, previous_online)
             session.add(player)
 
         # Try to rediscover offline devices by MAC (one sweep for all)
@@ -429,7 +471,18 @@ async def poll_all_players(
                 new_ip = mac_to_ip.get((player.mac_address or "").lower())
                 if new_ip and new_ip != player.ip_address:
                     logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+                    old_ip = player.ip_address
                     player.ip_address = new_ip
+                    write_event_log(
+                        session,
+                        category="network",
+                        event_type="ip_changed",
+                        severity="warning",
+                        device_kind="media_player",
+                        device_name=player.name,
+                        ip_address=new_ip,
+                        message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
+                    )
                     _, result = await asyncio.to_thread(_poll_one, player)
                     _apply_poll_result(player, result)
                     media_player_polls_total.labels(
@@ -487,8 +540,19 @@ async def rediscover_devices(
         new_ip = mac_to_ip.get((player.mac_address or "").lower())
         if new_ip and new_ip != player.ip_address:
             logger.info("Rediscovery: %s moved %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+            old_ip = player.ip_address
             player.ip_address = new_ip
             updated += 1
+            write_event_log(
+                session,
+                category="network",
+                event_type="ip_changed",
+                severity="warning",
+                device_kind="media_player",
+                device_name=player.name,
+                ip_address=new_ip,
+                message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
+            )
             _, result = await asyncio.to_thread(_poll_one, player)
             _apply_poll_result(player, result)
             player.last_polled_at = datetime.now(UTC)

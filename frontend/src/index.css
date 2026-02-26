@@ -94,6 +94,16 @@ body {
   border: 1px solid var(--app-panel-border);
   border-radius: 16px;
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.app-toolbar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 0%, rgba(225, 29, 72, 0.04) 40%, transparent 100%);
 }
 
 .app-input {
@@ -115,10 +125,13 @@ body {
   font-weight: 600;
   background: var(--app-primary-gradient);
   box-shadow: 0 8px 18px rgba(190, 24, 93, 0.32);
+  transition: transform .18s ease, filter .2s ease, box-shadow .2s ease;
 }
 
 .app-btn-primary:hover {
   filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(190, 24, 93, 0.36);
 }
 
 .app-btn-secondary {
@@ -127,10 +140,13 @@ body {
   color: var(--app-secondary-text);
   border: 1px solid var(--app-secondary-border);
   background: var(--app-secondary-bg);
+  transition: transform .18s ease, filter .2s ease, box-shadow .2s ease;
 }
 
 .app-btn-secondary:hover {
   filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
 }
 
 .app-stat {

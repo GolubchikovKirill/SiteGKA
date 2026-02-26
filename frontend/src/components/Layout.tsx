@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth";
-import { LogOut, Server, Printer, Users, Monitor, Network, Moon, Sun } from "lucide-react";
+import { LogOut, Server, Printer, Users, Monitor, Network, Moon, Sun, ScrollText } from "lucide-react";
 import { readThemeMode, setThemeMode, type ThemeMode } from "../theme";
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -12,7 +12,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     { to: "/", label: "Принтеры", icon: Printer, visible: true },
     { to: "/media-players", label: "Медиаплееры", icon: Monitor, visible: true },
-    { to: "/switches", label: "Свитчи", icon: Network, visible: true },
+    { to: "/switches", label: "Сетевое оборудование", icon: Network, visible: true },
+    { to: "/logs", label: "Логи", icon: ScrollText, visible: true },
     { to: "/users", label: "Пользователи", icon: Users, visible: isSuperuser },
   ];
 
@@ -68,7 +69,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             {themeMode === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             {themeMode === "light" ? "Тёмная тема" : "Светлая тема"}
           </button>
-          <div className="text-xs text-slate-500 truncate px-1">Логин: {user?.email || "—"}</div>
+          <div className="text-xs text-slate-500 truncate px-1">{user?.email || "—"}</div>
           <button
             onClick={logout}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm transition app-btn-secondary"

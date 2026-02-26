@@ -14,6 +14,7 @@ from app.schemas import (
     ScanRequest,
     ScanResults,
 )
+from app.services.event_log import write_event_log
 from app.services.scanner import get_scan_progress, get_scan_results, scan_subnet
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ def update_printer_ip(
     printer = session.get(Printer, uuid.UUID(printer_id))
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
+    old_ip = printer.ip_address
     if new_ip:
         conflict = session.exec(
             select(Printer).where(Printer.ip_address == new_ip, Printer.id != printer.id)
@@ -111,6 +113,17 @@ def update_printer_ip(
         if conflict:
             raise HTTPException(status_code=409, detail="Another printer already has this IP")
         printer.ip_address = new_ip
+        if old_ip != new_ip:
+            write_event_log(
+                session,
+                category="network",
+                event_type="ip_changed",
+                severity="warning",
+                device_kind="printer",
+                device_name=printer.store_name,
+                ip_address=new_ip,
+                message=f"Printer '{printer.store_name}' moved IP: {old_ip} -> {new_ip}",
+            )
     if new_mac:
         printer.mac_address = new_mac
     printer.updated_at = datetime.now(UTC)

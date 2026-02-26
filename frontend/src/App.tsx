@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import MediaPlayersPage from "./pages/MediaPlayersPage";
 import SwitchesPage from "./pages/SwitchesPage";
+import LogsPage from "./pages/LogsPage";
 import UsersPage from "./pages/Users";
 
 const GLOBAL_AUTO_REFRESH_MS = 15 * 60_000;
@@ -36,7 +37,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
       </div>
     );
   }
@@ -63,6 +64,7 @@ export default function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/media-players" element={<MediaPlayersPage />} />
                 <Route path="/switches" element={<SwitchesPage />} />
+                <Route path="/logs" element={<LogsPage />} />
                 <Route
                   path="/users"
                   element={

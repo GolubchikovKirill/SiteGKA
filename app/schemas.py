@@ -81,6 +81,25 @@ class Message(BaseModel):
     message: str
 
 
+class EventLogPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    severity: str
+    category: str
+    event_type: str
+    message: str
+    device_kind: str | None = None
+    device_name: str | None = None
+    ip_address: str | None = None
+    created_at: datetime
+
+
+class EventLogsPublic(BaseModel):
+    data: list[EventLogPublic]
+    count: int
+
+
 # ── Printer schemas ──────────────────────────────────────────────
 
 

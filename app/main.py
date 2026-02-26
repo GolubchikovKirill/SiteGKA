@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.db import engine, init_db
 from app.core.limiter import limiter
 from app.core.redis import close_redis
+from app.services.event_log import write_event_log
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("app").setLevel(logging.INFO)
@@ -53,6 +54,20 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         status_code=429,
         content={"detail": "Слишком много попыток. Повторите позже."},
     )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    with Session(engine) as session:
+        write_event_log(
+            session,
+            severity="critical",
+            category="system",
+            event_type="unhandled_exception",
+            message=f"{request.method} {request.url.path}: {exc}",
+        )
+        session.commit()
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 app.add_middleware(
