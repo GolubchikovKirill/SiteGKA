@@ -27,6 +27,10 @@ export default function SwitchesPage() {
 
   const switches = data?.data ?? [];
   const onlineCount = switches.filter((s) => s.is_online === true).length;
+  const sortedSwitches = [...switches].sort((a, b) => {
+    const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
+    return rank(a.is_online) - rank(b.is_online);
+  });
 
   const pollMut = useMutation({
     mutationFn: (id: string) => pollSwitch(id),
@@ -97,9 +101,9 @@ export default function SwitchesPage() {
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-500 border-t-transparent" />
         </div>
-      ) : switches.length > 0 ? (
+      ) : sortedSwitches.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {switches.map((sw) => (
+          {sortedSwitches.map((sw) => (
             <SwitchCard
               key={sw.id}
               sw={sw}

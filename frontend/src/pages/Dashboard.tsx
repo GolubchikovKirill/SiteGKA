@@ -21,7 +21,7 @@ type TabKey = PrinterType | "scanner";
 
 const TABS: { key: TabKey; label: string; icon: typeof PrinterIcon }[] = [
   { key: "laser", label: "Картриджные", icon: PrinterIcon },
-  { key: "label", label: "Этикетки", icon: Tag },
+  { key: "label", label: "Этикеточные", icon: Tag },
   { key: "scanner", label: "Поиск в сети", icon: Wifi },
 ];
 

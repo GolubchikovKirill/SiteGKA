@@ -25,6 +25,7 @@ function formatStatus(value: string | null) {
 
 export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
   const [q, setQ] = useState("");
+  const [activeTab, setActiveTab] = useState<"current" | "configure">("current");
   const [descDraft, setDescDraft] = useState<Record<string, string>>({});
   const [vlanDraft, setVlanDraft] = useState<Record<string, string>>({});
   const [modeDraft, setModeDraft] = useState<Record<string, "access" | "trunk">>({});
@@ -37,7 +38,11 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
     queryFn: () => getSwitchPorts(sw.id, q || undefined),
   });
 
-  const rows = data?.data ?? [];
+  const rows = useMemo(() => {
+    const source = data?.data ?? [];
+    const rank = (status: string | null) => (status === "up" ? 0 : status === "down" ? 2 : 1);
+    return [...source].sort((a, b) => rank(a.oper_status) - rank(b.oper_status));
+  }, [data?.data]);
   const key = useMemo(() => ["switch-ports", sw.id, q] as const, [sw.id, q]);
 
   const refresh = () => {
@@ -118,6 +123,22 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
             </button>
           </div>
         </div>
+        <div className="px-4 pt-3">
+          <div className="app-tabbar inline-flex gap-1 p-1.5">
+            <button
+              onClick={() => setActiveTab("current")}
+              className={`app-tab px-3 py-1.5 text-xs font-medium ${activeTab === "current" ? "active" : "text-slate-500"}`}
+            >
+              Текущие настройки
+            </button>
+            <button
+              onClick={() => setActiveTab("configure")}
+              className={`app-tab px-3 py-1.5 text-xs font-medium ${activeTab === "configure" ? "active" : "text-slate-500"}`}
+            >
+              Перенастроить порты
+            </button>
+          </div>
+        </div>
         <div className="overflow-auto max-h-[75vh]">
           {isLoading ? (
             <div className="p-8 text-sm text-gray-500 text-center">Загрузка портов...</div>
@@ -131,7 +152,7 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                   <th className="px-3 py-2">Speed</th>
                   <th className="px-3 py-2">PoE</th>
                   <th className="px-3 py-2">Описание</th>
-                  <th className="px-3 py-2">Операции</th>
+                  {activeTab === "configure" && <th className="px-3 py-2">Операции</th>}
                 </tr>
               </thead>
               <tbody>
@@ -149,7 +170,7 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                         {row.port_mode === "trunk" && row.trunk_allowed_vlans && (
                           <div className="text-[11px] text-slate-500">allowed: {row.trunk_allowed_vlans}</div>
                         )}
-                        {isSuperuser && (
+                        {activeTab === "configure" && isSuperuser && (
                           <div className="flex flex-wrap items-center gap-1">
                             <select
                               value={modeDraft[row.port] ?? (row.port_mode === "trunk" ? "trunk" : "access")}
@@ -195,60 +216,66 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                       <div className="text-gray-400">{row.poe_power_w ?? "—"} W</div>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <input
-                          value={descDraft[row.port] ?? row.description ?? ""}
-                          onChange={(e) => setDescDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
-                          className="app-input w-52 px-2 py-1 text-xs"
-                        />
-                        {isSuperuser && (
-                          <button
-                            onClick={() => saveDescription(row)}
-                            className="app-btn-secondary px-2 py-1 text-xs"
-                          >
-                            Save
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      {isSuperuser ? (
-                        <div className="flex flex-wrap gap-1">
-                          <button
-                            onClick={() => adminMut.mutate({ port: row.port, state: "up" })}
-                            className="px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50"
-                          >
-                            Up
-                          </button>
-                          <button
-                            onClick={() => adminMut.mutate({ port: row.port, state: "down" })}
-                            className="px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50"
-                          >
-                            Down
-                          </button>
-                          <button
-                            onClick={() => poeMut.mutate({ port: row.port, action: "cycle" })}
-                            className="px-2 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-50"
-                          >
-                            PoE cycle
-                          </button>
-                          <button
-                            onClick={() => poeMut.mutate({ port: row.port, action: "on" })}
-                            className="px-2 py-1 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                          >
-                            PoE on
-                          </button>
-                          <button
-                            onClick={() => poeMut.mutate({ port: row.port, action: "off" })}
-                            className="px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-                          >
-                            PoE off
-                          </button>
+                      {activeTab === "configure" ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={descDraft[row.port] ?? row.description ?? ""}
+                            onChange={(e) => setDescDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
+                            className="app-input w-52 px-2 py-1 text-xs"
+                          />
+                          {isSuperuser && (
+                            <button
+                              onClick={() => saveDescription(row)}
+                              className="app-btn-secondary px-2 py-1 text-xs"
+                            >
+                              Save
+                            </button>
+                          )}
                         </div>
                       ) : (
-                        <span className="text-gray-400">read-only</span>
+                        <span className="text-slate-700">{row.description || "—"}</span>
                       )}
                     </td>
+                    {activeTab === "configure" && (
+                      <td className="px-3 py-2">
+                        {isSuperuser ? (
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              onClick={() => adminMut.mutate({ port: row.port, state: "up" })}
+                              className="px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50"
+                            >
+                              Up
+                            </button>
+                            <button
+                              onClick={() => adminMut.mutate({ port: row.port, state: "down" })}
+                              className="px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50"
+                            >
+                              Down
+                            </button>
+                            <button
+                              onClick={() => poeMut.mutate({ port: row.port, action: "cycle" })}
+                              className="px-2 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-50"
+                            >
+                              PoE cycle
+                            </button>
+                            <button
+                              onClick={() => poeMut.mutate({ port: row.port, action: "on" })}
+                              className="px-2 py-1 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                            >
+                              PoE on
+                            </button>
+                            <button
+                              onClick={() => poeMut.mutate({ port: row.port, action: "off" })}
+                              className="px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                            >
+                              PoE off
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">read-only</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

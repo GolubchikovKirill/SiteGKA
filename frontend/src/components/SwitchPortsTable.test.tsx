@@ -78,6 +78,7 @@ describe("SwitchPortsTable", () => {
     );
 
     expect(await screen.findByText("Gi0/1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Перенастроить порты" }));
     fireEvent.click(screen.getByRole("button", { name: "Down" }));
     await waitFor(() => {
       expect(api.setSwitchPortAdminState).toHaveBeenCalledWith("1", "Gi0/1", "down");
