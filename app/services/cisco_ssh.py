@@ -12,10 +12,12 @@ import logging
 import re
 import socket
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import paramiko
+
+from app.observability.metrics import ssh_operations_total, switch_ops_total
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +80,10 @@ class CiscoSSH:
             logger.info("SSH to %s: trying %s auth", self.ip, name)
             if method():
                 logger.info("SSH to %s: %s auth succeeded", self.ip, name)
+                ssh_operations_total.labels(operation="connect", result="success", reason=name).inc()
                 return True
             logger.warning("SSH to %s: %s auth failed", self.ip, name)
+            ssh_operations_total.labels(operation="connect", result="error", reason=name).inc()
         return False
 
     def _query_auth_methods(self) -> list[str]:
@@ -231,6 +235,7 @@ def get_switch_info(ip: str, username: str, password: str,
     info = SwitchInfo()
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
+        switch_ops_total.labels(operation="poll_info", result="error").inc()
         return info
 
     try:
@@ -260,9 +265,11 @@ def get_switch_info(ip: str, username: str, password: str,
             info.model_info = m.group(1)
     except Exception as e:
         logger.warning("Failed to get switch info from %s: %s", ip, e)
+        switch_ops_total.labels(operation="poll_info", result="error").inc()
     finally:
         ssh.close()
 
+    switch_ops_total.labels(operation="poll_info", result="success").inc()
     return info
 
 
@@ -272,6 +279,7 @@ def get_access_points(ip: str, username: str, password: str,
     """Discover access points on the given VLAN using CDP as primary source."""
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
+        switch_ops_total.labels(operation="access_points", result="error").inc()
         return []
 
     try:
@@ -280,6 +288,7 @@ def get_access_points(ip: str, username: str, password: str,
         logger.info("CDP found %d access points on %s vlan %d", len(aps), ip, vlan)
 
         if not aps:
+            switch_ops_total.labels(operation="access_points", result="success").inc()
             return []
 
         mac_output = ssh.execute(f"show mac address-table vlan {vlan}")
@@ -291,9 +300,11 @@ def get_access_points(ip: str, username: str, password: str,
         arp_output = ssh.execute(f"show ip arp vlan {vlan}")
         _enrich_arp(aps, arp_output)
 
+        switch_ops_total.labels(operation="access_points", result="success").inc()
         return aps
     except Exception as e:
         logger.warning("Failed to get APs from %s: %s", ip, e)
+        switch_ops_total.labels(operation="access_points", result="error").inc()
         return []
     finally:
         ssh.close()
@@ -305,6 +316,7 @@ def reboot_ap(ip: str, username: str, password: str,
     """Reboot an AP by PoE cycling the switch port."""
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
+        switch_ops_total.labels(operation="reboot_ap_shutdown", result="error").inc()
         return False
 
     try:
@@ -315,9 +327,11 @@ def reboot_ap(ip: str, username: str, password: str,
         ssh.execute("no shutdown")
         ssh.execute("end")
         logger.info("PoE cycle completed on %s port %s", ip, interface)
+        switch_ops_total.labels(operation="reboot_ap_shutdown", result="success").inc()
         return True
     except Exception as e:
         logger.warning("Failed to reboot AP on %s port %s: %s", ip, interface, e)
+        switch_ops_total.labels(operation="reboot_ap_shutdown", result="error").inc()
         return False
     finally:
         ssh.close()
@@ -329,6 +343,7 @@ def poe_cycle_ap(ip: str, username: str, password: str,
     """Reboot AP via PoE power cycle (cleaner than shutdown)."""
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
+        switch_ops_total.labels(operation="reboot_ap_poe", result="error").inc()
         return False
 
     try:
@@ -342,9 +357,11 @@ def poe_cycle_ap(ip: str, username: str, password: str,
         ssh.execute("power inline auto")
         ssh.execute("end")
         logger.info("PoE power cycle completed on %s port %s", ip, interface)
+        switch_ops_total.labels(operation="reboot_ap_poe", result="success").inc()
         return True
     except Exception as e:
         logger.warning("PoE cycle failed on %s port %s: %s", ip, interface, e)
+        switch_ops_total.labels(operation="reboot_ap_poe", result="error").inc()
         return False
     finally:
         ssh.close()

@@ -8,6 +8,7 @@ from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.models import NetworkSwitch
+from app.observability.metrics import set_device_counts, switch_ops_total
 from app.schemas import (
     AccessPointInfo,
     Message,
@@ -43,6 +44,11 @@ def read_switches(
         count_stmt = count_stmt.where(NetworkSwitch.name.ilike(f"%{name}%"))
     count = session.exec(count_stmt).one()
     switches = session.exec(statement.offset(skip).limit(limit).order_by(NetworkSwitch.name)).all()
+    set_device_counts(
+        kind="switch",
+        total=len(switches),
+        online=sum(1 for s in switches if s.is_online),
+    )
     return NetworkSwitchesPublic(data=switches, count=count)
 
 
@@ -115,6 +121,7 @@ async def poll_switch(switch_id: uuid.UUID, session: SessionDep, current_user: C
     )
 
     switch.is_online = info.is_online
+    switch_ops_total.labels(operation="poll", result="online" if info.is_online else "offline").inc()
     switch.hostname = info.hostname or switch.hostname
     switch.model_info = info.model_info or switch.model_info
     switch.ios_version = info.ios_version or switch.ios_version
@@ -145,6 +152,7 @@ async def get_switch_aps(
         switch.ssh_port,
         switch.ap_vlan,
     )
+    switch_ops_total.labels(operation="access_points", result="success").inc()
 
     return [
         AccessPointInfo(
@@ -187,5 +195,7 @@ async def reboot_access_point(
         )
 
     if not ok:
+        switch_ops_total.labels(operation="reboot_ap", result="error").inc()
         raise HTTPException(status_code=502, detail="Failed to reboot AP")
+    switch_ops_total.labels(operation="reboot_ap", result="success").inc()
     return {"status": "rebooting", "interface": interface, "method": method}

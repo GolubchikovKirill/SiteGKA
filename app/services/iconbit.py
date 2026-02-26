@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from app.observability.metrics import media_player_ops_total
+
 logger = logging.getLogger(__name__)
 
 ICONBIT_PORT = 8081
@@ -48,16 +50,28 @@ def _base_url(ip: str) -> str:
 
 def _get(url: str, **kwargs) -> httpx.Response | None:
     try:
-        return httpx.get(url, auth=AUTH_CREDS, timeout=TIMEOUT, follow_redirects=True, **kwargs)
+        resp = httpx.get(url, auth=AUTH_CREDS, timeout=TIMEOUT, follow_redirects=True, **kwargs)
+        media_player_ops_total.labels(
+            operation="iconbit_http_get",
+            result="success" if resp.status_code < 500 else "error",
+        ).inc()
+        return resp
     except Exception as e:
+        media_player_ops_total.labels(operation="iconbit_http_get", result="error").inc()
         logger.warning("Iconbit GET %s failed: %s", url, e)
         return None
 
 
 def _post(url: str, **kwargs) -> httpx.Response | None:
     try:
-        return httpx.post(url, auth=AUTH_CREDS, follow_redirects=True, **kwargs)
+        resp = httpx.post(url, auth=AUTH_CREDS, follow_redirects=True, **kwargs)
+        media_player_ops_total.labels(
+            operation="iconbit_http_post",
+            result="success" if resp.status_code < 500 else "error",
+        ).inc()
+        return resp
     except Exception as e:
+        media_player_ops_total.labels(operation="iconbit_http_post", result="error").inc()
         logger.warning("Iconbit POST %s failed: %s", url, e)
         return None
 

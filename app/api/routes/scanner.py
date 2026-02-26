@@ -8,7 +8,6 @@ from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
 from app.models import Printer
 from app.schemas import (
-    DiscoveredDevice,
     PrinterCreate,
     PrinterPublic,
     ScanProgress,

@@ -17,8 +17,6 @@ import struct
 import warnings
 from dataclasses import dataclass, field
 
-warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
-
 from pysnmp.hlapi.asyncio import (  # noqa: E402
     CommunityData,
     ContextData,
@@ -28,6 +26,10 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
     UdpTransportTarget,
 )
 from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd  # noqa: E402
+
+from app.observability.metrics import media_player_ops_total
+
+warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +78,7 @@ async def _check_port(ip: str, port: int) -> int | None:
         writer.close()
         await writer.wait_closed()
         return port
-    except (OSError, asyncio.TimeoutError):
+    except (TimeoutError, OSError):
         return None
 
 
@@ -348,6 +350,7 @@ async def poll_device(address: str, community: str = "public") -> DeviceStatus:
 
     ip = await asyncio.to_thread(_resolve_host, address)
     if not ip:
+        media_player_ops_total.labels(operation="poll_device", result="error").inc()
         status.is_online = False
         return status
 
@@ -376,6 +379,10 @@ async def poll_device(address: str, community: str = "public") -> DeviceStatus:
         if arp_mac:
             status.mac_address = arp_mac
 
+    media_player_ops_total.labels(
+        operation="poll_device",
+        result="success" if status.is_online else "offline",
+    ).inc()
     return status
 
 
@@ -416,7 +423,7 @@ async def _async_ping(ip: str) -> None:
             stderr=asyncio.subprocess.DEVNULL,
         )
         await asyncio.wait_for(proc.wait(), timeout=2)
-    except (OSError, asyncio.TimeoutError):
+    except (TimeoutError, OSError):
         pass
 
 
@@ -433,6 +440,7 @@ async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str 
     ip = await asyncio.to_thread(_check_arp_for_mac, target)
     if ip:
         logger.info("MAC %s found in ARP cache at %s", target, ip)
+        media_player_ops_total.labels(operation="find_by_mac", result="success").inc()
         return ip
 
     # Ping sweep all subnets in parallel
@@ -449,6 +457,7 @@ async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str 
             continue
 
     if not hosts:
+        media_player_ops_total.labels(operation="find_by_mac", result="error").inc()
         return None
 
     # Ping up to 510 hosts concurrently (~2 sec)
@@ -461,6 +470,9 @@ async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str 
     ip = await asyncio.to_thread(_check_arp_for_mac, target)
     if ip:
         logger.info("MAC %s discovered at %s after ping sweep", target, ip)
+        media_player_ops_total.labels(operation="find_by_mac", result="success").inc()
+    else:
+        media_player_ops_total.labels(operation="find_by_mac", result="offline").inc()
     return ip
 
 

@@ -11,6 +11,11 @@ from sqlmodel import func, select
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.redis import get_redis
 from app.models import MediaPlayer
+from app.observability.metrics import (
+    media_player_ops_total,
+    media_player_polls_total,
+    set_device_counts,
+)
 from app.schemas import (
     MediaPlayerCreate,
     MediaPlayerPublic,
@@ -21,11 +26,23 @@ from app.schemas import (
 from app.services.device_poll import find_device_by_mac, poll_device_sync
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
+)
+from app.services.iconbit import (
     delete_file as iconbit_delete_file,
+)
+from app.services.iconbit import (
     get_status as iconbit_get_status,
+)
+from app.services.iconbit import (
     play as iconbit_play,
+)
+from app.services.iconbit import (
     play_file as iconbit_play_file,
+)
+from app.services.iconbit import (
     stop as iconbit_stop,
+)
+from app.services.iconbit import (
     upload_file as iconbit_upload_file,
 )
 
@@ -180,6 +197,11 @@ async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_
 
     _, result = await asyncio.to_thread(_poll_one, player)
     _apply_poll_result(player, result)
+    media_player_polls_total.labels(
+        mode="single",
+        device_type=player.device_type,
+        result="online" if player.is_online else "offline",
+    ).inc()
 
     # If offline and MAC is known, try to find new IP
     if not player.is_online and player.mac_address:
@@ -189,6 +211,11 @@ async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_
             player.ip_address = new_ip
             _, result = await asyncio.to_thread(_poll_one, player)
             _apply_poll_result(player, result)
+            media_player_polls_total.labels(
+                mode="single",
+                device_type=player.device_type,
+                result="online" if player.is_online else "offline",
+            ).inc()
 
     player.last_polled_at = datetime.now(UTC)
     session.add(player)
@@ -208,6 +235,11 @@ async def poll_all_players(
     if device_type:
         statement = statement.where(MediaPlayer.device_type == device_type)
     players = session.exec(statement).all()
+    set_device_counts(
+        kind="media_player",
+        total=len(players),
+        online=sum(1 for p in players if p.is_online),
+    )
     if not players:
         return MediaPlayersPublic(data=[], count=0)
 
@@ -228,6 +260,11 @@ async def poll_all_players(
     for player in players:
         result = results.get(player.ip_address)
         _apply_poll_result(player, result)
+        media_player_polls_total.labels(
+            mode="all",
+            device_type=player.device_type,
+            result="online" if player.is_online else "offline",
+        ).inc()
         if not player.is_online and player.mac_address:
             offline_with_mac.append(player)
         player.last_polled_at = datetime.now(UTC)
@@ -243,6 +280,11 @@ async def poll_all_players(
                 player.ip_address = new_ip
                 _, result = await asyncio.to_thread(_poll_one, player)
                 _apply_poll_result(player, result)
+                media_player_polls_total.labels(
+                    mode="all",
+                    device_type=player.device_type,
+                    result="online" if player.is_online else "offline",
+                ).inc()
                 player.last_polled_at = datetime.now(UTC)
                 session.add(player)
 
@@ -252,6 +294,11 @@ async def poll_all_players(
     if device_type:
         result_statement = result_statement.where(MediaPlayer.device_type == device_type)
     all_players = session.exec(result_statement).all()
+    set_device_counts(
+        kind="media_player",
+        total=len(all_players),
+        online=sum(1 for p in all_players if p.is_online),
+    )
 
     await _invalidate_cache()
     return MediaPlayersPublic(data=all_players, count=len(all_players))
@@ -287,6 +334,7 @@ async def rediscover_devices(
         await _invalidate_cache()
 
     logger.info("Rediscovery complete: %d/%d devices updated", updated, len(players))
+    media_player_ops_total.labels(operation="rediscover", result="success").inc()
     all_players = session.exec(select(MediaPlayer)).all()
     return MediaPlayersPublic(data=all_players, count=len(all_players))
 
@@ -302,6 +350,7 @@ async def iconbit_status(player_id: uuid.UUID, session: SessionDep, current_user
     if player.device_type != "iconbit":
         raise HTTPException(status_code=400, detail="Not an Iconbit device")
     result = await asyncio.to_thread(iconbit_get_status, player.ip_address)
+    media_player_ops_total.labels(operation="iconbit_status", result="success").inc()
     return {
         "now_playing": result.now_playing,
         "is_playing": result.is_playing,
@@ -322,7 +371,9 @@ async def iconbit_play_action(player_id: uuid.UUID, session: SessionDep, current
         raise HTTPException(status_code=400, detail="Not an Iconbit device")
     ok = await asyncio.to_thread(iconbit_play, player.ip_address)
     if not ok:
+        media_player_ops_total.labels(operation="iconbit_play", result="error").inc()
         raise HTTPException(status_code=502, detail="Failed to start playback")
+    media_player_ops_total.labels(operation="iconbit_play", result="success").inc()
     return {"status": "playing"}
 
 
@@ -335,7 +386,9 @@ async def iconbit_stop_action(player_id: uuid.UUID, session: SessionDep, current
         raise HTTPException(status_code=400, detail="Not an Iconbit device")
     ok = await asyncio.to_thread(iconbit_stop, player.ip_address)
     if not ok:
+        media_player_ops_total.labels(operation="iconbit_stop", result="error").inc()
         raise HTTPException(status_code=502, detail="Failed to stop playback")
+    media_player_ops_total.labels(operation="iconbit_stop", result="success").inc()
     return {"status": "stopped"}
 
 
@@ -353,7 +406,9 @@ async def iconbit_play_file_action(
         raise HTTPException(status_code=400, detail="Not an Iconbit device")
     ok = await asyncio.to_thread(iconbit_play_file, player.ip_address, filename)
     if not ok:
+        media_player_ops_total.labels(operation="iconbit_play_file", result="error").inc()
         raise HTTPException(status_code=502, detail="Failed to play file")
+    media_player_ops_total.labels(operation="iconbit_play_file", result="success").inc()
     return {"status": "playing", "file": filename}
 
 
@@ -371,7 +426,9 @@ async def iconbit_delete_file_action(
         raise HTTPException(status_code=400, detail="Not an Iconbit device")
     ok = await asyncio.to_thread(iconbit_delete_file, player.ip_address, filename)
     if not ok:
+        media_player_ops_total.labels(operation="iconbit_delete_file", result="error").inc()
         raise HTTPException(status_code=502, detail="Failed to delete file")
+    media_player_ops_total.labels(operation="iconbit_delete_file", result="success").inc()
     return {"status": "deleted", "file": filename}
 
 
@@ -390,7 +447,9 @@ async def iconbit_upload_action(
     content = await file.read()
     ok = await asyncio.to_thread(iconbit_upload_file, player.ip_address, file.filename or "upload.mp3", content)
     if not ok:
+        media_player_ops_total.labels(operation="iconbit_upload", result="error").inc()
         raise HTTPException(status_code=502, detail="Failed to upload file")
+    media_player_ops_total.labels(operation="iconbit_upload", result="success").inc()
     return {"status": "uploaded", "file": file.filename}
 
 
@@ -412,7 +471,11 @@ async def iconbit_bulk_play(session: SessionDep, current_user: CurrentUser) -> d
     for p in players:
         ok = await asyncio.to_thread(iconbit_play, p.ip_address)
         results.append(ok)
-    return {"success": sum(results), "failed": len(results) - sum(results)}
+    success = sum(results)
+    failed = len(results) - success
+    media_player_ops_total.labels(operation="iconbit_bulk_play", result="success").inc(success)
+    media_player_ops_total.labels(operation="iconbit_bulk_play", result="error").inc(failed)
+    return {"success": success, "failed": failed}
 
 
 @router.post("/iconbit/bulk-stop")
@@ -426,7 +489,11 @@ async def iconbit_bulk_stop(session: SessionDep, current_user: CurrentUser) -> d
     for p in players:
         ok = await asyncio.to_thread(iconbit_stop, p.ip_address)
         results.append(ok)
-    return {"success": sum(results), "failed": len(results) - sum(results)}
+    success = sum(results)
+    failed = len(results) - success
+    media_player_ops_total.labels(operation="iconbit_bulk_stop", result="success").inc(success)
+    media_player_ops_total.labels(operation="iconbit_bulk_stop", result="error").inc(failed)
+    return {"success": success, "failed": failed}
 
 
 @router.post("/iconbit/bulk-upload")
@@ -446,7 +513,11 @@ async def iconbit_bulk_upload(
     for p in players:
         ok = await asyncio.to_thread(iconbit_upload_file, p.ip_address, fname, content)
         results.append(ok)
-    return {"success": sum(results), "failed": len(results) - sum(results), "file": fname}
+    success = sum(results)
+    failed = len(results) - success
+    media_player_ops_total.labels(operation="iconbit_bulk_upload", result="success").inc(success)
+    media_player_ops_total.labels(operation="iconbit_bulk_upload", result="error").inc(failed)
+    return {"success": success, "failed": failed, "file": fname}
 
 
 @router.post("/iconbit/bulk-delete-file")
@@ -464,7 +535,11 @@ async def iconbit_bulk_delete(
     for p in players:
         ok = await asyncio.to_thread(iconbit_delete_file, p.ip_address, filename)
         results.append(ok)
-    return {"success": sum(results), "failed": len(results) - sum(results), "file": filename}
+    success = sum(results)
+    failed = len(results) - success
+    media_player_ops_total.labels(operation="iconbit_bulk_delete", result="success").inc(success)
+    media_player_ops_total.labels(operation="iconbit_bulk_delete", result="error").inc(failed)
+    return {"success": success, "failed": failed, "file": filename}
 
 
 @router.post("/iconbit/bulk-play-file")
@@ -482,7 +557,11 @@ async def iconbit_bulk_play_file(
     for p in players:
         ok = await asyncio.to_thread(iconbit_play_file, p.ip_address, filename)
         results.append(ok)
-    return {"success": sum(results), "failed": len(results) - sum(results), "file": filename}
+    success = sum(results)
+    failed = len(results) - success
+    media_player_ops_total.labels(operation="iconbit_bulk_play_file", result="success").inc(success)
+    media_player_ops_total.labels(operation="iconbit_bulk_play_file", result="error").inc(failed)
+    return {"success": success, "failed": failed, "file": filename}
 
 
 @router.post("/iconbit/bulk-replace")
@@ -511,4 +590,6 @@ async def iconbit_bulk_replace(
                 failed += 1
         except Exception:
             failed += 1
+    media_player_ops_total.labels(operation="iconbit_bulk_replace", result="success").inc(success)
+    media_player_ops_total.labels(operation="iconbit_bulk_replace", result="error").inc(failed)
     return {"success": success, "failed": failed, "file": fname}

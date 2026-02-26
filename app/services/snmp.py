@@ -21,15 +21,18 @@ Printers that will NOT work:
 from __future__ import annotations
 
 import asyncio
+import http.client
 import logging
 import re
 import socket
-import http.client
+import ssl as _ssl
 import urllib.error
 import urllib.request
 import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+
+from app.observability.metrics import snmp_operations_total
 
 warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
 
@@ -533,8 +536,6 @@ _HP_URLS = [
     "/info_suppliesStatus.html",
 ]
 
-import ssl as _ssl
-
 _SSL_CTX = _ssl.create_default_context()
 _SSL_CTX.check_hostname = False
 _SSL_CTX.verify_mode = _ssl.CERT_NONE
@@ -881,12 +882,23 @@ def poll_printer(ip_address: str, community: str = "public") -> PrinterStatus:
     except RuntimeError:
         loop = None
 
-    if loop and loop.is_running():
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, _poll_printer_async(ip_address, community)).result()
-    else:
-        return asyncio.run(_poll_printer_async(ip_address, community))
+    try:
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                result = pool.submit(asyncio.run, _poll_printer_async(ip_address, community)).result()
+        else:
+            result = asyncio.run(_poll_printer_async(ip_address, community))
+    except Exception:
+        snmp_operations_total.labels(operation="poll_printer", result="error", reason="exception").inc()
+        raise
+
+    snmp_operations_total.labels(
+        operation="poll_printer",
+        result="success" if result.is_online else "offline",
+        reason="none",
+    ).inc()
+    return result
 
 
 OID_IF_PHYS_ADDR = "1.3.6.1.2.1.2.2.1.6"
@@ -967,17 +979,28 @@ def get_snmp_mac(ip_address: str, community: str = "public") -> str | None:
         loop = None
 
     mac = None
-    if loop and loop.is_running():
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            mac = pool.submit(asyncio.run, _get_snmp_mac_async(ip_address, community)).result()
-    else:
-        mac = asyncio.run(_get_snmp_mac_async(ip_address, community))
+    try:
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                mac = pool.submit(asyncio.run, _get_snmp_mac_async(ip_address, community)).result()
+        else:
+            mac = asyncio.run(_get_snmp_mac_async(ip_address, community))
+    except Exception:
+        snmp_operations_total.labels(operation="get_mac", result="error", reason="exception").inc()
+        return None
 
     # ARP fallback: works with network_mode: host on Linux
     if mac is None:
         mac = _get_mac_from_arp(ip_address)
         if mac:
             logger.debug("%s: MAC obtained from ARP table: %s", ip_address, mac)
+            snmp_operations_total.labels(operation="get_mac", result="success", reason="arp_fallback").inc()
+            return mac
 
+    snmp_operations_total.labels(
+        operation="get_mac",
+        result="success" if mac else "offline",
+        reason="snmp" if mac else "not_found",
+    ).inc()
     return mac

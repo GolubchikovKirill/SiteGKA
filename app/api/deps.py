@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Generator
 from typing import Annotated
 
@@ -12,6 +13,7 @@ from app.core.config import settings
 from app.core.db import engine
 from app.core.security import ALGORITHM, is_token_blacklisted
 from app.models import User
+from app.observability.metrics import auth_events_total
 from app.schemas import TokenPayload
 
 reusable_oauth2 = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
@@ -31,21 +33,30 @@ async def get_current_user(session: SessionDep, token: TokenDep) -> User:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         token_data = TokenPayload(**payload)
     except (InvalidTokenError, ValidationError):
+        auth_events_total.labels(result="failure", reason="token_invalid").inc()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
         )
     jti = payload.get("jti")
     if jti and await is_token_blacklisted(jti):
+        auth_events_total.labels(result="failure", reason="token_revoked").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has been revoked",
         )
-    user = session.get(User, token_data.sub)
+    try:
+        user_id = uuid.UUID(token_data.sub) if token_data.sub else None
+    except ValueError:
+        user_id = None
+    user = session.get(User, user_id) if user_id else None
     if not user:
+        auth_events_total.labels(result="failure", reason="user_not_found").inc()
         raise HTTPException(status_code=404, detail="User not found")
     if not user.is_active:
+        auth_events_total.labels(result="failure", reason="inactive_user").inc()
         raise HTTPException(status_code=400, detail="Inactive user")
+    auth_events_total.labels(result="success", reason="token_valid").inc()
     return user
 
 

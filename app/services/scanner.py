@@ -16,8 +16,14 @@ import platform
 import re
 import subprocess
 from dataclasses import asdict, dataclass, field
+from time import perf_counter
 
 from app.core.redis import get_redis
+from app.observability.metrics import (
+    scanner_devices_found_total,
+    scanner_duration_seconds,
+    scanner_runs_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +103,7 @@ async def _tcp_check(ip: str, port: int, timeout: float = 1.0) -> bool:
         writer.close()
         await writer.wait_closed()
         return True
-    except (OSError, asyncio.TimeoutError):
+    except (TimeoutError, OSError):
         return False
 
 
@@ -127,8 +133,12 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
 
     async def _query() -> SnmpInfo:
         from pysnmp.hlapi.asyncio import (
-            CommunityData, ContextData, ObjectIdentity,
-            ObjectType, SnmpEngine, UdpTransportTarget,
+            CommunityData,
+            ContextData,
+            ObjectIdentity,
+            ObjectType,
+            SnmpEngine,
+            UdpTransportTarget,
         )
         from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd
 
@@ -223,6 +233,7 @@ async def scan_subnet(subnet: str, ports_str: str, known_printers: list[dict]) -
 
     await r.setex(SCAN_KEY_LOCK, 300, "1")
 
+    started = perf_counter()
     try:
         all_ips = _parse_subnets(subnet)
         if not all_ips:
@@ -307,13 +318,17 @@ async def scan_subnet(subnet: str, ports_str: str, known_printers: list[dict]) -
         }
         await r.setex(SCAN_KEY_PROGRESS, SCAN_TTL, json.dumps(progress))
         await r.setex(SCAN_KEY_RESULTS, SCAN_TTL, json.dumps(result_dicts))
+        scanner_runs_total.labels(result="success").inc()
+        scanner_devices_found_total.inc(len(devices))
         return result_dicts
 
     except Exception as e:
         logger.exception("Scan failed")
         await _update_progress("error", 0, 0, 0, str(e))
+        scanner_runs_total.labels(result="error").inc()
         raise
     finally:
+        scanner_duration_seconds.observe(max(perf_counter() - started, 0))
         await r.delete(SCAN_KEY_LOCK)
 
 

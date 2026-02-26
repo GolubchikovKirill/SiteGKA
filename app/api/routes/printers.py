@@ -11,6 +11,7 @@ from sqlmodel import func, select
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.redis import get_redis
 from app.models import Printer
+from app.observability.metrics import printer_polls_total, set_device_counts
 from app.schemas import (
     Message,
     PrinterCreate,
@@ -254,6 +255,7 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
         raise HTTPException(status_code=404, detail="Printer not found")
 
     if printer.connection_type == "usb" or not printer.ip_address:
+        printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="unsupported").inc()
         raise HTTPException(status_code=400, detail="USB printers cannot be polled")
 
     if printer.printer_type == "label":
@@ -261,6 +263,11 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
         printer.is_online = online
         printer.status = "online" if online else "offline"
         printer.mac_status = None
+        printer_polls_total.labels(
+            mode="single",
+            printer_type=printer.printer_type,
+            result="online" if online else "offline",
+        ).inc()
     else:
         _, result, current_mac = await asyncio.to_thread(_poll_one, printer)
         if result is None or not result.is_online:
@@ -286,10 +293,12 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
                 printer.is_online = False
                 printer.status = "error"
                 printer.mac_status = "unavailable"
+                printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="error").inc()
             elif not result.is_online:
                 printer.is_online = False
                 printer.status = "offline"
                 printer.mac_status = "unavailable"
+                printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="offline").inc()
             else:
                 printer.is_online = result.is_online
                 printer.status = result.status
@@ -298,6 +307,7 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
                 printer.toner_magenta = result.toner_magenta
                 printer.toner_yellow = result.toner_yellow
                 printer.mac_status = _verify_mac(printer, current_mac)
+                printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="online").inc()
         else:
             printer.is_online = result.is_online
             printer.status = result.status
@@ -306,6 +316,7 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
             printer.toner_magenta = result.toner_magenta
             printer.toner_yellow = result.toner_yellow
             printer.mac_status = _verify_mac(printer, current_mac)
+            printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="online").inc()
 
     printer.last_polled_at = datetime.now(UTC)
     session.add(printer)
@@ -322,6 +333,11 @@ async def poll_all_printers(
     printer_type: str = Query(default="laser"),
 ) -> PrintersPublic:
     all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+    set_device_counts(
+        kind="printer",
+        total=len(all_printers),
+        online=sum(1 for p in all_printers if p.is_online),
+    )
     if not all_printers:
         return PrintersPublic(data=[], count=0)
 
@@ -342,12 +358,18 @@ async def poll_all_printers(
             p.is_online = False
             p.status = "error"
             p.mac_status = "unavailable"
+            printer_polls_total.labels(mode="all", printer_type=p.printer_type, result="error").inc()
             if p.mac_address:
                 offline_with_mac.append(p)
         elif isinstance(result, dict):
             p.is_online = result["is_online"]
             p.status = "online" if p.is_online else "offline"
             p.mac_status = None
+            printer_polls_total.labels(
+                mode="all",
+                printer_type=p.printer_type,
+                result="online" if p.is_online else "offline",
+            ).inc()
             if not p.is_online and p.mac_address:
                 offline_with_mac.append(p)
         else:
@@ -358,6 +380,11 @@ async def poll_all_printers(
             p.toner_magenta = result.toner_magenta
             p.toner_yellow = result.toner_yellow
             p.mac_status = _verify_mac(p, current_mac)
+            printer_polls_total.labels(
+                mode="all",
+                printer_type=p.printer_type,
+                result="online" if p.is_online else "offline",
+            ).inc()
             if p.is_online and current_mac:
                 online_macs[ip] = current_mac
             elif not p.is_online and p.mac_address:
@@ -405,6 +432,11 @@ async def poll_all_printers(
     session.commit()
     # Re-fetch all printers (including USB) for the response
     result_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+    set_device_counts(
+        kind="printer",
+        total=len(result_printers),
+        online=sum(1 for p in result_printers if p.is_online),
+    )
 
     await _invalidate_printer_cache()
     return PrintersPublic(data=result_printers, count=len(result_printers))

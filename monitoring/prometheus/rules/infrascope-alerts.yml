@@ -1,0 +1,97 @@
+groups:
+  - name: infrascope-core-alerts
+    rules:
+      - alert: InfraScopeBackendDown
+        expr: max_over_time(up{job="infrascope-backend"}[2m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "InfraScope backend недоступен"
+          description: "Prometheus не может собрать метрики backend более 2 минут."
+
+      - alert: InfraScopeHighApi5xxRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="infrascope-backend",status=~"5.."}[5m])) /
+            clamp_min(sum(rate(http_requests_total{job="infrascope-backend"}[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая доля 5xx"
+          description: "Доля 5xx ответов API выше 5% за последние 5 минут."
+
+      - alert: InfraScopeHighApiP95Latency
+        expr: |
+          1000 * histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="infrascope-backend"}[5m])) by (le)
+          ) > 1500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая latency API (p95)"
+          description: "p95 latency API выше 1.5s более 10 минут."
+
+      - alert: InfraScopeAuthFailuresSpike
+        expr: sum(increase(infrascope_auth_events_total{result="failure"}[10m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Скачок ошибок аутентификации"
+          description: "Более 30 неудачных auth-событий за 10 минут."
+
+      - alert: InfraScopeScannerFailures
+        expr: increase(infrascope_scanner_runs_total{result="error"}[30m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибка сканера сети"
+          description: "За последние 30 минут был минимум один неуспешный запуск scanner."
+
+      - alert: InfraScopeSnmpErrorsBurst
+        expr: sum(increase(infrascope_snmp_operations_total{result="error"}[15m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Массовые SNMP-ошибки"
+          description: "Более 20 SNMP ошибок за 15 минут."
+
+      - alert: InfraScopeSshErrorsBurst
+        expr: sum(increase(infrascope_ssh_operations_total{result="error"}[15m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Массовые SSH-ошибки"
+          description: "Более 10 SSH ошибок за 15 минут."
+
+      - alert: InfraScopeMediaOperationFailures
+        expr: sum(increase(infrascope_media_player_ops_total{result="error"}[15m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибки операций с медиаплеерами"
+          description: "Более 10 ошибок media operations за 15 минут."
+
+      - alert: InfraScopeHighOfflineDeviceRatio
+        expr: |
+          (
+            1 - (
+              sum(infrascope_devices_online{kind=~"printer|media_player|switch"}) /
+              clamp_min(sum(infrascope_devices_total{kind=~"printer|media_player|switch"}), 1)
+            )
+          ) > 0.2
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Высокая доля offline устройств"
+          description: "Более 20% устройств offline более 10 минут."
