@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
 from sqlmodel import Session
 
@@ -30,6 +31,13 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
+
+# Expose Prometheus metrics for service monitoring and alerting.
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/metrics", "/health"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 app.state.limiter = limiter
 

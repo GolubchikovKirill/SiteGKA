@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import logging
 import re
+import socket
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Callable
 
 import paramiko
 
@@ -60,12 +62,8 @@ class CiscoSSH:
     def connect(self) -> bool:
         allowed = self._query_auth_methods()
         logger.info("SSH to %s: server allows auth methods: %s", self.ip, allowed)
-        logger.info(
-            "SSH to %s: using username=%r, password length=%d",
-            self.ip, self.username, len(self.password),
-        )
 
-        strategies: list[tuple[str, callable]] = []
+        strategies: list[tuple[str, Callable[[], bool]]] = []
         if "password" in allowed:
             strategies.append(("password", self._connect_password))
         if "keyboard-interactive" in allowed:
@@ -86,19 +84,20 @@ class CiscoSSH:
 
     def _query_auth_methods(self) -> list[str]:
         """Ask the server which auth methods it supports."""
+        transport: paramiko.Transport | None = None
         try:
-            transport = paramiko.Transport((self.ip, self.port))
-            transport.connect()
+            transport = self._open_transport()
             try:
                 transport.auth_none(self.username)
             except paramiko.BadAuthenticationType as e:
                 return list(e.allowed_types)
             except paramiko.AuthenticationException:
                 return ["password", "keyboard-interactive"]
-            finally:
-                transport.close()
         except Exception as e:
             logger.debug("SSH auth query to %s failed: %s", self.ip, e)
+        finally:
+            if transport is not None:
+                transport.close()
         return ["password", "keyboard-interactive"]
 
     def _connect_password(self) -> bool:
@@ -111,6 +110,8 @@ class CiscoSSH:
                 username=self.username,
                 password=self.password,
                 timeout=SSH_TIMEOUT,
+                auth_timeout=SSH_TIMEOUT,
+                banner_timeout=SSH_TIMEOUT,
                 look_for_keys=False,
                 allow_agent=False,
                 disabled_algorithms={"pubkeys": ["rsa-sha2-512", "rsa-sha2-256"]},
@@ -123,9 +124,9 @@ class CiscoSSH:
 
     def _connect_keyboard_interactive(self) -> bool:
         """Cisco often uses keyboard-interactive instead of standard password auth."""
+        transport: paramiko.Transport | None = None
         try:
-            transport = paramiko.Transport((self.ip, self.port))
-            transport.connect()
+            transport = self._open_transport()
             transport.set_keepalive(30)
 
             password = self.password
@@ -153,6 +154,17 @@ class CiscoSSH:
             logger.debug("SSH keyboard-interactive to %s: %s", self.ip, e)
             self.close()
             return False
+        finally:
+            if transport is not None and self.client is None:
+                transport.close()
+
+    def _open_transport(self) -> paramiko.Transport:
+        """Open SSH transport with explicit socket timeout safeguards."""
+        sock = socket.create_connection((self.ip, self.port), timeout=SSH_TIMEOUT)
+        transport = paramiko.Transport(sock)
+        transport.banner_timeout = SSH_TIMEOUT
+        transport.start_client(timeout=SSH_TIMEOUT)
+        return transport
 
     def _post_connect(self) -> bool:
         """Open shell and enter privileged mode after successful transport auth."""

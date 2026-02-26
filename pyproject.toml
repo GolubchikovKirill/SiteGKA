@@ -22,6 +22,7 @@ dependencies = [
     "sqlmodel>=0.0.22",
     "uvicorn[standard]>=0.34",
     "paramiko>=3.5",
+    "prometheus-fastapi-instrumentator>=7.1.0",
 ]
 
 [dependency-groups]
