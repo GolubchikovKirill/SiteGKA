@@ -228,10 +228,25 @@ async def poll_all_switches(
 ) -> Message:
     del current_user
     switches = session.exec(select(NetworkSwitch)).all()
-    for switch in switches:
+
+    semaphore = asyncio.Semaphore(12)
+
+    async def _poll_one(sw: NetworkSwitch) -> tuple[NetworkSwitch, object | None, Exception | None]:
         try:
-            provider = resolve_switch_provider(switch)
-            info = await asyncio.to_thread(provider.poll_switch, switch)
+            async with semaphore:
+                provider = resolve_switch_provider(sw)
+                info = await asyncio.to_thread(provider.poll_switch, sw)
+                return sw, info, None
+        except Exception as exc:  # pragma: no cover - defensive
+            return sw, None, exc
+
+    results = await asyncio.gather(*[_poll_one(sw) for sw in switches])
+    for switch, info, exc in results:
+        try:
+            if exc:
+                raise exc
+            if info is None:
+                raise RuntimeError("poll returned no data")
             switch.is_online = info.is_online
             switch.hostname = info.hostname or switch.hostname
             switch.model_info = info.model_info or switch.model_info

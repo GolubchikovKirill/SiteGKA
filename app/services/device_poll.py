@@ -468,22 +468,67 @@ async def _async_ping(ip: str) -> None:
 
 
 async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str | None:
+    results = await find_devices_by_macs([mac], subnets=subnets)
+    return results.get(mac.lower().strip())
+
+
+def _arp_table_mac_to_ip() -> dict[str, str]:
+    """Build MAC->IP map from ARP/neigh tables."""
+    import subprocess
+
+    out: dict[str, str] = {}
+    try:
+        with open("/proc/net/arp") as f:
+            for line in f.readlines()[1:]:
+                parts = line.split()
+                if len(parts) >= 4:
+                    ip = parts[0]
+                    mac = parts[3].lower()
+                    if mac != "00:00:00:00:00:00" and len(mac) == 17:
+                        out[mac] = ip
+    except (FileNotFoundError, PermissionError):
+        pass
+
+    try:
+        neigh = subprocess.run(
+            ["ip", "neigh"], capture_output=True, text=True, timeout=5,
+        ).stdout
+        for line in neigh.strip().split("\n"):
+            parts = line.split()
+            if "lladdr" in parts:
+                ip = parts[0]
+                idx = parts.index("lladdr")
+                if idx + 1 < len(parts):
+                    mac = parts[idx + 1].lower()
+                    if len(mac) == 17:
+                        out[mac] = ip
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return out
+
+
+async def find_devices_by_macs(macs: list[str], subnets: list[str] | None = None) -> dict[str, str]:
     """Find a device's current IP by its MAC address.
 
-    1. Checks existing ARP table first (instant).
-    2. If not found, does an async parallel ping sweep of known subnets
-       to populate ARP cache, then rechecks.
+    Optimized for batch lookups:
+    1. Checks ARP table once for all MACs.
+    2. If unresolved, does bounded ping sweep once, rechecking ARP in batches.
     """
-    target = mac.lower().strip()
+    targets = {m.lower().strip() for m in macs if m and m.strip()}
+    if not targets:
+        return {}
+    found: dict[str, str] = {}
 
-    # Quick check — maybe it's already in ARP
-    ip = await asyncio.to_thread(_check_arp_for_mac, target)
-    if ip:
-        logger.info("MAC %s found in ARP cache at %s", target, ip)
-        media_player_ops_total.labels(operation="find_by_mac", result="success").inc()
-        return ip
+    # Quick check — maybe targets are already in ARP.
+    arp_map = await asyncio.to_thread(_arp_table_mac_to_ip)
+    for mac in targets:
+        ip = arp_map.get(mac)
+        if ip:
+            found[mac] = ip
+    if len(found) == len(targets):
+        media_player_ops_total.labels(operation="find_by_mac", result="success").inc(len(found))
+        return found
 
-    # Ping sweep all subnets in parallel
     if subnets is None:
         raw = os.environ.get("SCAN_SUBNET", "")
         subnets = [s.strip() for s in raw.split(",") if s.strip()]
@@ -498,27 +543,26 @@ async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str 
 
     if not hosts:
         media_player_ops_total.labels(operation="find_by_mac", result="error").inc()
-        return None
+        return found
 
     # Ping sweep in bounded batches to avoid self-induced packet storms.
     batch_size = _PING_SWEEP_CONCURRENCY
     for i in range(0, len(hosts), batch_size):
         batch = hosts[i:i + batch_size]
         await asyncio.gather(*[_async_ping(h) for h in batch])
-        ip = await asyncio.to_thread(_check_arp_for_mac, target)
-        if ip:
-            logger.info("MAC %s discovered at %s during ping sweep", target, ip)
-            media_player_ops_total.labels(operation="find_by_mac", result="success").inc()
-            return ip
+        arp_map = await asyncio.to_thread(_arp_table_mac_to_ip)
+        for mac in targets - found.keys():
+            ip = arp_map.get(mac)
+            if ip:
+                found[mac] = ip
+        if len(found) == len(targets):
+            break
 
-    # Recheck ARP table
-    ip = await asyncio.to_thread(_check_arp_for_mac, target)
-    if ip:
-        logger.info("MAC %s discovered at %s after ping sweep", target, ip)
-        media_player_ops_total.labels(operation="find_by_mac", result="success").inc()
-    else:
-        media_player_ops_total.labels(operation="find_by_mac", result="offline").inc()
-    return ip
+    if found:
+        media_player_ops_total.labels(operation="find_by_mac", result="success").inc(len(found))
+    if len(found) < len(targets):
+        media_player_ops_total.labels(operation="find_by_mac", result="offline").inc(len(targets) - len(found))
+    return found
 
 
 def poll_device_sync(address: str, community: str = "public") -> DeviceStatus:

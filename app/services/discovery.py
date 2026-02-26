@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 DISCOVERY_TTL = 600
 _DISCOVERY_TCP_SEMAPHORE = asyncio.Semaphore(max(settings.SCAN_TCP_CONCURRENCY, 1))
 _DISCOVERY_HTTP_TIMEOUT = 2.0
+_DISCOVERY_IDENTIFY_CONCURRENCY = 32
 
 
 @dataclass
@@ -247,23 +248,33 @@ async def run_discovery_scan(kind: str, subnet: str, ports_str: str, known_devic
         if devices:
             await _update_progress(kind, "running", len(all_ips), len(all_ips), len(devices), "Идентификация устройств…")
             if kind == "iconbit":
-                for dev in devices:
+                semaphore = asyncio.Semaphore(_DISCOVERY_IDENTIFY_CONCURRENCY)
+
+                async def _identify_iconbit(dev: DiscoveredNetworkDevice) -> None:
                     if 8081 not in dev.open_ports:
-                        continue
-                    info = await _iconbit_fingerprint(dev.ip)
+                        return
+                    async with semaphore:
+                        info = await _iconbit_fingerprint(dev.ip)
                     if not info:
-                        continue
+                        return
                     dev.device_kind = "iconbit"
                     dev.model_info = info.get("model_info")
+
+                await asyncio.gather(*[_identify_iconbit(dev) for dev in devices])
             else:
-                for dev in devices:
-                    info = await _snmp_switch_fingerprint(dev.ip)
+                semaphore = asyncio.Semaphore(_DISCOVERY_IDENTIFY_CONCURRENCY)
+
+                async def _identify_switch(dev: DiscoveredNetworkDevice) -> None:
+                    async with semaphore:
+                        info = await _snmp_switch_fingerprint(dev.ip)
                     if not info:
-                        continue
+                        return
                     dev.hostname = info.get("hostname")
                     dev.model_info = info.get("model_info")
                     dev.device_kind = "switch"
                     dev.vendor = _normalize_vendor(dev.model_info)
+
+                await asyncio.gather(*[_identify_switch(dev) for dev in devices])
 
             # Best-effort ARP enrich and known by MAC.
             from app.services.scanner import _parse_arp_table

@@ -27,7 +27,7 @@ from app.schemas import (
     ScanRequest,
 )
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
-from app.services.device_poll import find_device_by_mac, poll_device_sync
+from app.services.device_poll import find_device_by_mac, find_devices_by_macs, poll_device_sync
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
 )
@@ -365,8 +365,9 @@ async def poll_all_players(
     # Try to rediscover offline devices by MAC (one sweep for all)
     if offline_with_mac:
         logger.info("Trying MAC rediscovery for %d offline devices...", len(offline_with_mac))
+        mac_to_ip = await find_devices_by_macs([p.mac_address for p in offline_with_mac if p.mac_address])
         for player in offline_with_mac:
-            new_ip = await find_device_by_mac(player.mac_address)
+            new_ip = mac_to_ip.get((player.mac_address or "").lower())
             if new_ip and new_ip != player.ip_address:
                 logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
                 player.ip_address = new_ip
@@ -410,8 +411,9 @@ async def rediscover_devices(
         return MediaPlayersPublic(data=[], count=0)
 
     updated = 0
+    mac_to_ip = await find_devices_by_macs([p.mac_address for p in players if p.mac_address])
     for player in players:
-        new_ip = await find_device_by_mac(player.mac_address)
+        new_ip = mac_to_ip.get((player.mac_address or "").lower())
         if new_ip and new_ip != player.ip_address:
             logger.info("Rediscovery: %s moved %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
             player.ip_address = new_ip
