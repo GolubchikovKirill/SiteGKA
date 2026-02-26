@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
@@ -32,6 +33,16 @@ TIMEOUT = 8
 
 AUTH_CREDS = ("admin", "admin")
 _FIRMWARE_HINTS: dict[str, str] = {}
+_WARN_COOLDOWN_SECONDS = 120.0
+_WARN_LAST_SEEN: dict[str, float] = {}
+
+
+def _log_warning_with_cooldown(key: str, message: str, *args) -> None:
+    now = time.monotonic()
+    last = _WARN_LAST_SEEN.get(key, 0.0)
+    if now - last >= _WARN_COOLDOWN_SECONDS:
+        _WARN_LAST_SEEN[key] = now
+        logger.warning(message, *args)
 
 
 @dataclass
@@ -59,7 +70,10 @@ def _get(url: str, **kwargs) -> httpx.Response | None:
         return resp
     except Exception as e:
         media_player_ops_total.labels(operation="iconbit_http_get", result="error").inc()
-        logger.warning("Iconbit GET %s failed: %s", url, e)
+        if "Connection refused" in str(e):
+            _log_warning_with_cooldown(f"iconbit_conn_refused:{url}", "Iconbit GET %s failed: %s", url, e)
+        else:
+            logger.warning("Iconbit GET %s failed: %s", url, e)
         return None
 
 

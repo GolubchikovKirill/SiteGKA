@@ -14,6 +14,7 @@ import os
 import re as _re
 import socket
 import struct
+import time
 import warnings
 from dataclasses import dataclass, field
 
@@ -32,6 +33,8 @@ from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd  # noqa: E402
 from app.observability.metrics import media_player_ops_total  # noqa: E402
 
 logger = logging.getLogger(__name__)
+_RESOLVE_WARN_COOLDOWN_SECONDS = 300.0
+_RESOLVE_WARN_LAST_SEEN: dict[str, float] = {}
 
 SNMP_TIMEOUT = 3
 SNMP_RETRIES = 1
@@ -337,7 +340,11 @@ def _resolve_host(address: str) -> str | None:
     if ip:
         return ip
 
-    logger.warning("Cannot resolve hostname: %s", address)
+    now = time.monotonic()
+    last = _RESOLVE_WARN_LAST_SEEN.get(address, 0.0)
+    if now - last >= _RESOLVE_WARN_COOLDOWN_SECONDS:
+        _RESOLVE_WARN_LAST_SEEN[address] = now
+        logger.warning("Cannot resolve hostname: %s", address)
     return None
 
 
