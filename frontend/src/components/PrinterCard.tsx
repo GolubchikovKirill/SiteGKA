@@ -62,7 +62,7 @@ export default function PrinterCard({ printer, onPoll, onEdit, onDelete, isPolli
     : null;
 
   return (
-    <div className="app-panel rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
+    <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
       <div className="p-5 flex flex-col gap-4">
         {/* Header */}
         <div className="flex items-start justify-between">

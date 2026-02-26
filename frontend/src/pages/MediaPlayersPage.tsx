@@ -179,7 +179,7 @@ export default function MediaPlayersPage() {
           <h1 className="text-2xl font-bold text-slate-900">Медиаплееры</h1>
           <p className="text-sm text-slate-500 mt-1">Неттопы, Iconbit и Twix устройства</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => pollAllMut.mutate()}
             disabled={pollAllMut.isPending}
@@ -236,7 +236,7 @@ export default function MediaPlayersPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="app-tabbar flex gap-1 p-1.5 w-fit">
+      <div className="app-tabbar flex gap-1 p-1.5 w-fit max-w-full overflow-x-auto app-compact-scroll">
         {FILTERS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}

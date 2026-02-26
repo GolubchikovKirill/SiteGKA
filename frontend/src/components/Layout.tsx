@@ -128,7 +128,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="w-full mx-auto px-3 sm:px-5 lg:px-8 py-5 sm:py-7">
+        <main className="w-full mx-auto px-3 sm:px-5 lg:px-8 py-5 sm:py-7 app-compact-scroll">
           {children}
         </main>
       </div>

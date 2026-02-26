@@ -80,7 +80,7 @@ export default function SwitchesPage() {
             {switches.length} свитч(ей) &middot; {onlineCount} онлайн
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => pollAllMut.mutate()}
             disabled={pollAllMut.isPending}

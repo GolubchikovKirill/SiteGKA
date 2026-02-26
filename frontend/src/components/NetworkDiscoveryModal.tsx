@@ -153,7 +153,7 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
             </div>
           )}
         </div>
-        <div className="overflow-auto max-h-[60vh]">
+        <div className="overflow-auto max-h-[60vh] app-compact-scroll">
           <table className="w-full text-xs">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr className="text-left text-slate-600">

@@ -126,7 +126,7 @@ export default function Dashboard() {
           <p className="text-sm text-slate-500 mt-1">Состояние оборудования, доступность и расходники</p>
         </div>
         {activeTab !== "scanner" && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => pollAllMut.mutate()}
               disabled={pollAllMut.isPending}
@@ -175,7 +175,7 @@ export default function Dashboard() {
       )}
 
       {/* Sub-tabs */}
-      <div className="app-tabbar flex gap-1 p-1.5 w-fit">
+      <div className="app-tabbar flex gap-1 p-1.5 w-fit max-w-full overflow-x-auto app-compact-scroll">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}

@@ -119,7 +119,7 @@ export default function UsersPage() {
           <p className="text-lg">Нет пользователей</p>
         </div>
       ) : (
-        <div className="app-panel overflow-hidden">
+        <div className="app-panel overflow-hidden app-compact-scroll">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

@@ -71,7 +71,7 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
     : null;
 
   return (
-    <div className="app-panel rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
+    <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
       <div className="p-5 flex flex-col gap-3">
         {/* Header */}
         <div className="flex items-start justify-between">
