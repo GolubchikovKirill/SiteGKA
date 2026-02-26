@@ -57,6 +57,30 @@ services:
     networks:
       - internal
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_SERVER: db
+      REDIS_URL: redis://redis:6379/0
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - celery -A app.worker.celery_app.celery_app worker --loglevel=INFO --concurrency=${WORKER_CONCURRENCY:-4}
+    networks:
+      - internal
+
   frontend:
     build:
       context: ./frontend

@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func as sa_func
+from sqlalchemy import or_
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -38,7 +40,6 @@ def _normalize(text: str) -> str:
 
 def _search_filter(column, query: str):
     normalized = _normalize(query)
-    from sqlalchemy import or_, func as sa_func
     return or_(
         sa_func.translate(column, "АВЕКМНОРСТХаверкмнорстх", "ABEKMHOPCTXabekmhopctx").ilike(f"%{normalized}%"),
         column.ilike(f"%{query}%"),

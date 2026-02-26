@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = _PLACEHOLDER
 
     @model_validator(mode="after")
-    def validate_secret_key(self) -> "Settings":
+    def validate_secret_key(self) -> Settings:
         if self.ENVIRONMENT == "production" and self.SECRET_KEY == _PLACEHOLDER:
             raise ValueError(
                 "SECRET_KEY must be set to a secure value in production. "
