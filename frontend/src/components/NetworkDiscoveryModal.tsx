@@ -107,7 +107,7 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
       <div className="app-panel w-full max-w-6xl max-h-[90vh] overflow-hidden border-slate-200/70 shadow-2xl">
         <div className="p-4 border-b border-slate-200 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Wifi className="h-5 w-5 text-blue-600" />
+            <Wifi className="h-5 w-5 text-rose-600" />
             <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           </div>
           <button onClick={onClose} className="app-btn-secondary px-3 py-2 text-sm">Закрыть</button>
@@ -142,7 +142,7 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
                 <span>{pct}%</span>
               </div>
               <div className="w-full bg-slate-200 rounded-full h-2 mt-1">
-                <div className={`h-2 rounded-full ${progress.status === "done" ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${pct}%` }} />
+                <div className={`h-2 rounded-full ${progress.status === "done" ? "bg-emerald-500" : "bg-rose-500"}`} style={{ width: `${pct}%` }} />
               </div>
             </div>
           )}
@@ -186,7 +186,7 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
                         <CheckCircle2 className="h-3 w-3" /> Известен
                       </span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5">Новый</span>
+                      <span className="inline-flex items-center rounded-full bg-rose-100 text-rose-700 px-2 py-0.5">Новый</span>
                     )}
                   </td>
                   <td className="px-3 py-2">

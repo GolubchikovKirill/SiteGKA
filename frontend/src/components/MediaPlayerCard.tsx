@@ -20,9 +20,9 @@ interface Props {
 }
 
 const DEVICE_STYLES: Record<string, { bg: string; iconBg: string; iconColor: string; icon: typeof Monitor }> = {
-  nettop: { bg: "bg-blue-50", iconBg: "bg-blue-50", iconColor: "text-blue-600", icon: Monitor },
-  iconbit: { bg: "bg-purple-50", iconBg: "bg-purple-50", iconColor: "text-purple-600", icon: Music },
-  twix: { bg: "bg-orange-50", iconBg: "bg-orange-50", iconColor: "text-orange-600", icon: Music },
+  nettop: { bg: "bg-rose-50", iconBg: "bg-rose-50", iconColor: "text-rose-600", icon: Monitor },
+  iconbit: { bg: "bg-rose-50", iconBg: "bg-rose-50", iconColor: "text-rose-600", icon: Music },
+  twix: { bg: "bg-rose-50", iconBg: "bg-rose-50", iconColor: "text-rose-600", icon: Music },
 };
 
 const DEVICE_LABELS: Record<string, string> = {
@@ -119,15 +119,15 @@ function IconbitControls({ playerId }: { playerId: string }) {
         <div className="flex items-center gap-1.5 text-xs">
           {isPlaying ? (
             <div className="flex items-end gap-[2px] h-3 w-3 shrink-0" title="Воспроизводится">
-              <span className="w-[3px] bg-purple-500 rounded-sm animate-eq1" />
-              <span className="w-[3px] bg-purple-500 rounded-sm animate-eq2" />
-              <span className="w-[3px] bg-purple-500 rounded-sm animate-eq3" />
+              <span className="w-[3px] bg-rose-500 rounded-sm animate-eq1" />
+              <span className="w-[3px] bg-rose-500 rounded-sm animate-eq2" />
+              <span className="w-[3px] bg-rose-500 rounded-sm animate-eq3" />
             </div>
           ) : (
             <Volume2 className="h-3 w-3 text-gray-300 shrink-0" />
           )}
           {isPlaying ? (
-            <span className="text-purple-700 font-medium truncate" title={ibStatus.now_playing!}>
+            <span className="text-rose-700 font-medium truncate" title={ibStatus.now_playing!}>
               {ibStatus.now_playing!.length > 35 ? ibStatus.now_playing!.slice(0, 35) + "..." : ibStatus.now_playing}
             </span>
           ) : (
@@ -140,15 +140,15 @@ function IconbitControls({ playerId }: { playerId: string }) {
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
               {progress != null ? (
-                <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                <div className="h-full bg-rose-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
               ) : (
-                <div className="h-full bg-purple-400 rounded-full animate-progress-sweep" />
+                <div className="h-full bg-rose-400 rounded-full animate-progress-sweep" />
               )}
             </div>
             {posStr && durStr ? (
               <span className="text-[10px] text-gray-400 shrink-0">{posStr} / {durStr}</span>
             ) : (
-              <span className="text-[10px] text-purple-400 shrink-0">играет</span>
+              <span className="text-[10px] text-rose-400 shrink-0">играет</span>
             )}
           </div>
         )}
@@ -175,7 +175,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={busy || uploadMut.isPending}
-          className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-600 hover:bg-blue-100 disabled:opacity-40 transition"
+          className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40 transition"
           title="Загрузить файл"
         >
           <Upload className="h-3 w-3" /> {uploadMut.isPending ? "..." : "Загрузить"}
@@ -193,7 +193,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
             <div key={f} className="flex items-center gap-1.5 text-[11px] group">
               <FileAudio className="h-3 w-3 text-gray-400 shrink-0" />
               <span
-                className="text-gray-600 truncate cursor-pointer hover:text-purple-700 transition flex-1"
+                className="text-gray-600 truncate cursor-pointer hover:text-rose-700 transition flex-1"
                 title={`Воспроизвести: ${f}`}
                 onClick={() => playFileMut.mutate(f)}
               >
@@ -308,7 +308,7 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
             <button
               onClick={() => onPoll(player.id)}
               disabled={isPolling}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition disabled:opacity-40"
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition disabled:opacity-40"
               title="Опросить"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />
@@ -317,7 +317,7 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
               href={webPanelUrl(player)}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition"
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition"
               title="Веб-панель"
             >
               <ExternalLink className="h-3.5 w-3.5" />

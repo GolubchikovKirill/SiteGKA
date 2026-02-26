@@ -22,6 +22,7 @@ import MediaPlayerForm from "../components/MediaPlayerForm";
 import NetworkDiscoveryModal from "../components/NetworkDiscoveryModal";
 
 type FilterKey = "all" | DeviceType;
+type StatusFilter = "all" | "online" | "offline";
 
 const FILTERS: { key: FilterKey; label: string; icon: typeof Monitor }[] = [
   { key: "all", label: "Все", icon: Monitor },
@@ -43,6 +44,7 @@ export default function MediaPlayersPage() {
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const replaceFileRef = useRef<HTMLInputElement>(null);
 
@@ -166,6 +168,11 @@ export default function MediaPlayersPage() {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
     return rank(a.is_online) - rank(b.is_online);
   });
+  const visiblePlayers = sortedPlayers.filter((player) => {
+    if (statusFilter === "online") return player.is_online === true;
+    if (statusFilter === "offline") return player.is_online === false;
+    return true;
+  });
   const total = players.length;
   const online = players.filter((p) => p.is_online === true).length;
   const offline = players.filter((p) => p.is_online === false).length;
@@ -191,7 +198,7 @@ export default function MediaPlayersPage() {
           <button
             onClick={() => rediscoverMut.mutate()}
             disabled={rediscoverMut.isPending}
-            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm text-blue-700 border-blue-300 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 transition"
+            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
             title="Найти устройства с изменившимся IP по MAC-адресу"
           >
             <Radar className={`h-4 w-4 ${rediscoverMut.isPending ? "animate-ping" : ""}`} />
@@ -218,9 +225,9 @@ export default function MediaPlayersPage() {
 
       {/* Stats */}
       <div className="grid gap-4 grid-cols-3">
-        <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" />
-        <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" />
-        <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" />
+        <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
+        <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
+        <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
       </div>
 
       {/* Search */}
@@ -255,13 +262,13 @@ export default function MediaPlayersPage() {
 
       {/* Iconbit bulk controls */}
       {showIconbitBulk && (
-        <div className="app-panel border-purple-200 bg-purple-50/60 p-4 space-y-3">
-          <div className="text-sm font-semibold text-purple-800">Управление всеми Iconbit</div>
+        <div className="app-panel p-4 space-y-3">
+          <div className="text-sm font-semibold text-rose-800">Управление всеми Iconbit</div>
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => replaceFileRef.current?.click()}
               disabled={bulkBusy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-40 transition"
+              className="app-btn-primary inline-flex items-center gap-1.5 px-4 py-2 text-sm disabled:opacity-40 transition"
             >
               <Replace className="h-4 w-4" /> {bulkReplaceMut.isPending ? "Замена..." : "Заменить плейлист на всех"}
             </button>
@@ -283,14 +290,14 @@ export default function MediaPlayersPage() {
             <button
               onClick={() => bulkFileRef.current?.click()}
               disabled={bulkBusy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-100 disabled:opacity-40 transition"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40 transition"
             >
               <Upload className="h-3.5 w-3.5" /> {bulkUploadMut.isPending ? "..." : "Добавить файл на все"}
             </button>
             <input ref={bulkFileRef} type="file" accept="audio/*,video/*" className="hidden" onChange={handleBulkUpload} />
           </div>
           {bulkMsg && (
-            <div className="text-sm text-purple-700 bg-purple-100 rounded-lg px-3 py-1.5 w-fit">{bulkMsg}</div>
+            <div className="text-sm text-rose-700 bg-rose-100 rounded-lg px-3 py-1.5 w-fit">{bulkMsg}</div>
           )}
         </div>
       )}
@@ -298,16 +305,16 @@ export default function MediaPlayersPage() {
       {/* Grid */}
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
         </div>
-      ) : sortedPlayers.length === 0 ? (
+      ) : visiblePlayers.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <p className="text-lg">Нет устройств</p>
           <p className="text-sm mt-1">Добавьте первое устройство для мониторинга</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sortedPlayers.map((player) => (
+          {visiblePlayers.map((player) => (
             <MediaPlayerCard
               key={player.id}
               player={player}
@@ -343,11 +350,29 @@ export default function MediaPlayersPage() {
   );
 }
 
-function Stat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
+function Stat({
+  label,
+  value,
+  color,
+  bg,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  bg: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className={`app-stat ${bg} px-4 py-3`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`app-stat ${bg} w-full px-4 py-3 text-left transition ${isActive ? "ring-2 ring-rose-400/50" : "hover:-translate-y-0.5 hover:shadow-md"}`}
+    >
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-    </div>
+    </button>
   );
 }

@@ -2,52 +2,58 @@
 
 :root {
   color-scheme: light;
-  --app-text: #3a1118;
+  --app-text: #1f2937;
   --app-bg:
-    radial-gradient(1200px 420px at 0% -10%, rgba(244, 63, 94, 0.14), transparent 55%),
-    radial-gradient(900px 340px at 100% 0%, rgba(251, 113, 133, 0.13), transparent 50%),
-    linear-gradient(180deg, #fff5f7 0%, #ffe4e9 100%);
-  --app-panel-bg: rgba(255, 249, 250, 0.9);
-  --app-panel-border: rgba(251, 113, 133, 0.28);
-  --app-toolbar-bg: rgba(255, 247, 248, 0.85);
-  --app-input-bg: #fff7f8;
-  --app-input-border: #fda4af;
-  --app-secondary-text: #5f1a24;
-  --app-secondary-bg: rgba(255, 243, 245, 0.95);
-  --app-secondary-border: #fda4af;
-  --app-header-bg: rgba(255, 245, 247, 0.9);
-  --app-header-border: rgba(251, 113, 133, 0.45);
-  --app-nav-active-bg: rgba(190, 24, 93, 0.11);
-  --app-nav-active-border: rgba(190, 24, 93, 0.45);
-  --app-nav-active-text: #9f1239;
-  --app-sidebar-bg: rgba(255, 241, 244, 0.92);
-  --app-sidebar-border: rgba(251, 113, 133, 0.35);
+    radial-gradient(1200px 420px at 0% -10%, rgba(244, 63, 94, 0.09), transparent 55%),
+    radial-gradient(900px 340px at 100% 0%, rgba(225, 29, 72, 0.08), transparent 50%),
+    linear-gradient(180deg, #fafbfc 0%, #f3f4f6 100%);
+  --app-panel-bg: rgba(255, 255, 255, 0.92);
+  --app-panel-border: rgba(226, 232, 240, 0.95);
+  --app-toolbar-bg: rgba(255, 255, 255, 0.9);
+  --app-input-bg: #ffffff;
+  --app-input-border: #cbd5e1;
+  --app-secondary-text: #374151;
+  --app-secondary-bg: rgba(255, 255, 255, 0.95);
+  --app-secondary-border: #d1d5db;
+  --app-header-bg: rgba(255, 255, 255, 0.88);
+  --app-header-border: rgba(226, 232, 240, 0.95);
+  --app-nav-active-bg: rgba(225, 29, 72, 0.08);
+  --app-nav-active-border: rgba(225, 29, 72, 0.35);
+  --app-nav-active-text: #be123c;
+  --app-sidebar-bg: rgba(255, 255, 255, 0.9);
+  --app-sidebar-border: rgba(226, 232, 240, 0.95);
   --app-primary-gradient: linear-gradient(135deg, #be123c, #e11d48);
+  --app-accent-soft: rgba(225, 29, 72, 0.1);
+  --app-accent-border: rgba(225, 29, 72, 0.32);
+  --app-accent-text: #be123c;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --app-text: #ffe4e6;
+  --app-text: #e5e7eb;
   --app-bg:
-    radial-gradient(1200px 420px at 0% -10%, rgba(225, 29, 72, 0.18), transparent 55%),
-    radial-gradient(900px 340px at 100% 0%, rgba(190, 24, 93, 0.14), transparent 50%),
-    linear-gradient(180deg, #090204 0%, #19060c 100%);
-  --app-panel-bg: rgba(34, 7, 14, 0.82);
-  --app-panel-border: rgba(190, 24, 93, 0.42);
-  --app-toolbar-bg: rgba(38, 8, 16, 0.86);
-  --app-input-bg: rgba(47, 10, 19, 0.88);
-  --app-input-border: #9f1239;
-  --app-secondary-text: #ffe4e6;
-  --app-secondary-bg: rgba(46, 9, 18, 0.9);
-  --app-secondary-border: #9f1239;
-  --app-header-bg: rgba(22, 4, 10, 0.9);
-  --app-header-border: rgba(190, 24, 93, 0.42);
-  --app-nav-active-bg: rgba(190, 24, 93, 0.22);
-  --app-nav-active-border: rgba(251, 113, 133, 0.55);
+    radial-gradient(1200px 420px at 0% -10%, rgba(225, 29, 72, 0.22), transparent 55%),
+    radial-gradient(900px 340px at 100% 0%, rgba(244, 63, 94, 0.14), transparent 50%),
+    linear-gradient(180deg, #0b0f14 0%, #111827 100%);
+  --app-panel-bg: rgba(17, 24, 39, 0.78);
+  --app-panel-border: rgba(55, 65, 81, 0.85);
+  --app-toolbar-bg: rgba(17, 24, 39, 0.82);
+  --app-input-bg: rgba(15, 23, 42, 0.88);
+  --app-input-border: #374151;
+  --app-secondary-text: #e5e7eb;
+  --app-secondary-bg: rgba(17, 24, 39, 0.88);
+  --app-secondary-border: #374151;
+  --app-header-bg: rgba(12, 18, 30, 0.9);
+  --app-header-border: rgba(55, 65, 81, 0.8);
+  --app-nav-active-bg: rgba(225, 29, 72, 0.22);
+  --app-nav-active-border: rgba(244, 63, 94, 0.55);
   --app-nav-active-text: #fecdd3;
-  --app-sidebar-bg: rgba(20, 4, 9, 0.95);
-  --app-sidebar-border: rgba(190, 24, 93, 0.48);
+  --app-sidebar-bg: rgba(10, 14, 24, 0.94);
+  --app-sidebar-border: rgba(55, 65, 81, 0.85);
   --app-primary-gradient: linear-gradient(135deg, #9f1239, #e11d48);
+  --app-accent-soft: rgba(225, 29, 72, 0.2);
+  --app-accent-border: rgba(244, 63, 94, 0.45);
+  --app-accent-text: #fecdd3;
 }
 
 body {
@@ -98,8 +104,8 @@ body {
 }
 
 .app-input:focus {
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: #f43f5e;
+  box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.18);
   outline: none;
 }
 
@@ -244,8 +250,8 @@ body {
 }
 
 :root[data-theme="dark"] .app-tab.active {
-  color: #e2e8f0;
-  background: rgba(30, 41, 59, 0.95);
+  color: var(--app-nav-active-text);
+  background: var(--app-nav-active-bg);
   box-shadow: 0 3px 10px rgba(2, 6, 23, 0.3);
 }
 
@@ -256,27 +262,70 @@ body {
 
 :root[data-theme="dark"] .text-slate-900,
 :root[data-theme="dark"] .text-gray-900 {
-  color: #e2e8f0 !important;
+  color: #e5e7eb !important;
 }
 
 :root[data-theme="dark"] .text-slate-600,
 :root[data-theme="dark"] .text-slate-500,
 :root[data-theme="dark"] .text-gray-500,
 :root[data-theme="dark"] .text-gray-400 {
-  color: #fda4af !important;
+  color: #9ca3af !important;
 }
 
 :root[data-theme="dark"] .bg-white,
 :root[data-theme="dark"] .bg-gray-50,
 :root[data-theme="dark"] .bg-gray-100,
 :root[data-theme="dark"] .bg-slate-50 {
-  background-color: rgba(45, 9, 18, 0.84) !important;
+  background-color: rgba(17, 24, 39, 0.84) !important;
 }
 
 :root[data-theme="dark"] .border-slate-200,
 :root[data-theme="dark"] .border-slate-200\/70,
 :root[data-theme="dark"] .border-gray-200 {
-  border-color: rgba(190, 24, 93, 0.45) !important;
+  border-color: rgba(55, 65, 81, 0.7) !important;
+}
+
+/* Unified accent language: use one red accent, keep green for OK/online only */
+.text-blue-600, .text-blue-700,
+.text-indigo-600, .text-indigo-700,
+.text-purple-600, .text-purple-700,
+.text-teal-600, .text-teal-700,
+.text-orange-600, .text-amber-600,
+.text-cyan-600, .text-violet-600 {
+  color: var(--app-accent-text) !important;
+}
+
+.bg-blue-50, .bg-indigo-50, .bg-purple-50, .bg-teal-50, .bg-orange-50, .bg-amber-50, .bg-violet-50 {
+  background-color: var(--app-accent-soft) !important;
+}
+
+.border-blue-200, .border-blue-300, .border-indigo-200, .border-purple-200, .border-teal-200, .border-amber-200 {
+  border-color: var(--app-accent-border) !important;
+}
+
+.bg-blue-500, .bg-blue-600, .bg-purple-600 {
+  background-color: #be123c !important;
+}
+
+.hover\:bg-blue-700:hover, .hover\:bg-purple-700:hover {
+  background-color: #9f1239 !important;
+}
+
+.border-blue-500 {
+  border-color: #be123c !important;
+}
+
+.focus\:border-blue-500:focus {
+  border-color: #be123c !important;
+}
+
+.focus\:ring-blue-500:focus,
+.peer-focus\:ring-blue-300:focus {
+  --tw-ring-color: rgba(225, 29, 72, 0.25) !important;
+}
+
+.peer:checked ~ .peer-checked\:bg-blue-600 {
+  background-color: #be123c !important;
 }
 
 @keyframes eq1 {

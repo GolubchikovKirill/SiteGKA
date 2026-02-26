@@ -18,6 +18,7 @@ import PrinterForm from "../components/PrinterForm";
 import NetworkScanner from "../components/NetworkScanner";
 
 type TabKey = PrinterType | "scanner";
+type StatusFilter = "all" | "online" | "offline";
 
 const TABS: { key: TabKey; label: string; icon: typeof PrinterIcon }[] = [
   { key: "laser", label: "Картриджные", icon: PrinterIcon },
@@ -36,6 +37,7 @@ export default function Dashboard() {
   const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const printerTab = activeTab === "laser" || activeTab === "label" ? activeTab : "laser";
 
@@ -106,6 +108,11 @@ export default function Dashboard() {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
     return rank(a.is_online) - rank(b.is_online);
   });
+  const visiblePrinters = sortedPrinters.filter((printer) => {
+    if (statusFilter === "online") return printer.is_online === true;
+    if (statusFilter === "offline") return printer.is_online === false;
+    return true;
+  });
 
   const total = printers.length;
   const online = printers.filter((p) => p.is_online === true).length;
@@ -151,9 +158,9 @@ export default function Dashboard() {
       {/* Stats (only for printer tabs) */}
       {activeTab !== "scanner" && (
         <div className={`grid gap-4 ${printerTab === "laser" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
-          <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" />
-          <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" />
-          <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" />
+          <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
+          <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
+          <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
           {printerTab === "laser" && (
             <Stat label="Мало тонера" value={lowToner} color="text-amber-700" bg="bg-amber-50" />
           )}
@@ -168,7 +175,7 @@ export default function Dashboard() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск по магазину... (А = A)"
+            placeholder="Поиск по магазину..."
             className="app-input w-full pl-10 pr-4 py-2 text-sm"
           />
         </div>
@@ -202,14 +209,14 @@ export default function Dashboard() {
             <div className="flex justify-center py-20">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
             </div>
-          ) : sortedPrinters.length === 0 ? (
+          ) : visiblePrinters.length === 0 ? (
             <div className="text-center py-20 text-gray-400">
               <p className="text-lg">Нет {printerTab === "laser" ? "принтеров" : "этикеточных принтеров"}</p>
               <p className="text-sm mt-1">Добавьте {printerTab === "laser" ? "первый принтер" : "принтер этикеток"} для мониторинга</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sortedPrinters.map((printer) =>
+              {visiblePrinters.map((printer) =>
                 printerTab === "laser" ? (
                   <PrinterCard
                     key={printer.id}
@@ -259,11 +266,38 @@ export default function Dashboard() {
   );
 }
 
-function Stat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
+function Stat({
+  label,
+  value,
+  color,
+  bg,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  bg: string;
+  isActive?: boolean;
+  onClick?: () => void;
+}) {
+  if (!onClick) {
+    return (
+      <div className={`app-stat ${bg} w-full px-4 py-3 text-left`}>
+        <div className={`text-2xl font-bold ${color}`}>{value}</div>
+        <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`app-stat ${bg} px-4 py-3`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`app-stat ${bg} w-full px-4 py-3 text-left transition ${isActive ? "ring-2 ring-rose-400/50" : "hover:-translate-y-0.5 hover:shadow-md"}`}
+    >
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-    </div>
+    </button>
   );
 }

@@ -68,7 +68,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             {themeMode === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             {themeMode === "light" ? "Тёмная тема" : "Светлая тема"}
           </button>
-          <div className="text-xs text-slate-500 truncate px-1">{user?.full_name || user?.email}</div>
+          <div className="text-xs text-slate-500 truncate px-1">Логин: {user?.email || "—"}</div>
           <button
             onClick={logout}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm transition app-btn-secondary"

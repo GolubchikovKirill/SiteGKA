@@ -48,7 +48,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
 
   return (
     <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-gray-50 group text-xs">
-      <Radio className="h-3.5 w-3.5 text-teal-500 shrink-0" />
+      <Radio className="h-3.5 w-3.5 text-rose-500 shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-medium text-gray-800">
@@ -103,8 +103,8 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-teal-50 p-2">
-              <Network className="h-5 w-5 text-teal-600" />
+            <div className="rounded-lg bg-rose-50 p-2">
+              <Network className="h-5 w-5 text-rose-600" />
             </div>
             <div>
               <div className="font-medium text-sm text-gray-900">{sw.name}</div>
@@ -113,7 +113,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           </div>
           <div className="flex flex-col items-end gap-1">
             {statusBadge(sw)}
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-teal-50 text-teal-600">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700">
               VLAN {sw.ap_vlan}
             </span>
           </div>
@@ -151,7 +151,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
         {/* Access Points toggle */}
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1.5 text-xs font-medium text-teal-600 hover:text-teal-700 transition mt-1"
+          className="flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 transition mt-1"
         >
           <Radio className="h-3.5 w-3.5" />
           Точки доступа (VLAN {sw.ap_vlan})
@@ -160,7 +160,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
         </button>
         <button
           onClick={() => onOpenPorts(sw)}
-          className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 transition"
+          className="flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 transition"
         >
           <ExternalLink className="h-3.5 w-3.5" />
           Порты свитча
@@ -171,7 +171,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           <div className="border-t border-gray-100 pt-2 -mx-2">
             {loadingAPs ? (
               <div className="flex items-center justify-center py-4">
-                <RefreshCw className="h-4 w-4 animate-spin text-teal-500" />
+                <RefreshCw className="h-4 w-4 animate-spin text-rose-500" />
                 <span className="ml-2 text-xs text-gray-400">Загрузка...</span>
               </div>
             ) : aps && aps.length > 0 ? (
@@ -197,7 +197,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             <button
               onClick={() => onPoll(sw.id)}
               disabled={isPolling}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition disabled:opacity-40"
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition disabled:opacity-40"
               title="Опросить"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />

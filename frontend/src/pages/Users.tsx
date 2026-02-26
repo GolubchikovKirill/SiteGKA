@@ -100,8 +100,8 @@ export default function UsersPage() {
           <div className="text-2xl font-bold text-gray-900">{users.length}</div>
           <div className="text-xs text-gray-500 mt-0.5">Всего</div>
         </div>
-        <div className="app-stat bg-blue-50 px-4 py-3">
-          <div className="text-2xl font-bold text-blue-700">{users.filter((u) => u.is_superuser).length}</div>
+        <div className="app-stat bg-rose-50 px-4 py-3">
+          <div className="text-2xl font-bold text-rose-700">{users.filter((u) => u.is_superuser).length}</div>
           <div className="text-xs text-gray-500 mt-0.5">Администраторы</div>
         </div>
         <div className="app-stat bg-emerald-50 px-4 py-3">
@@ -112,7 +112,7 @@ export default function UsersPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
         </div>
       ) : users.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
@@ -136,9 +136,9 @@ export default function UsersPage() {
                 <tr key={u.id} className="hover:bg-gray-50 transition">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className={`flex items-center justify-center h-8 w-8 rounded-full ${u.is_superuser ? "bg-blue-100" : "bg-gray-100"}`}>
+                      <div className={`flex items-center justify-center h-8 w-8 rounded-full ${u.is_superuser ? "bg-rose-100" : "bg-gray-100"}`}>
                         {u.is_superuser ? (
-                          <Shield className="h-4 w-4 text-blue-600" />
+                          <Shield className="h-4 w-4 text-rose-600" />
                         ) : (
                           <UserIcon className="h-4 w-4 text-gray-500" />
                         )}
@@ -153,7 +153,7 @@ export default function UsersPage() {
                     <span
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         u.is_superuser
-                          ? "bg-blue-100 text-blue-700"
+                          ? "bg-rose-100 text-rose-700"
                           : "bg-gray-100 text-gray-700"
                       }`}
                     >

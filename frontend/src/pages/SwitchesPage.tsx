@@ -9,6 +9,8 @@ import SwitchCard from "../components/SwitchCard";
 import SwitchPortsTable from "../components/SwitchPortsTable";
 import NetworkDiscoveryModal from "../components/NetworkDiscoveryModal";
 
+type StatusFilter = "all" | "online" | "offline";
+
 export default function SwitchesPage() {
   const { user } = useAuth();
   const isSuperuser = user?.is_superuser ?? false;
@@ -20,6 +22,7 @@ export default function SwitchesPage() {
   const [editTarget, setEditTarget] = useState<NetworkSwitch | null>(null);
   const [pollingId, setPollingId] = useState<string | null>(null);
   const [portsTarget, setPortsTarget] = useState<NetworkSwitch | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const { data, isLoading } = useQuery({
     queryKey: ["switches", search],
@@ -32,6 +35,12 @@ export default function SwitchesPage() {
   const sortedSwitches = [...switches].sort((a, b) => {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
     return rank(a.is_online) - rank(b.is_online);
+  });
+  const offlineCount = switches.filter((s) => s.is_online === false).length;
+  const visibleSwitches = sortedSwitches.filter((sw) => {
+    if (statusFilter === "online") return sw.is_online === true;
+    if (statusFilter === "offline") return sw.is_online === false;
+    return true;
   });
 
   const pollMut = useMutation({
@@ -73,7 +82,7 @@ export default function SwitchesPage() {
       <div className="app-toolbar p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Network className="h-6 w-6 text-teal-600" />
+            <Network className="h-6 w-6 text-rose-600" />
             Сетевое оборудование
           </h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -99,13 +108,20 @@ export default function SwitchesPage() {
           {isSuperuser && (
             <button
               onClick={() => { setEditTarget(null); setShowForm(true); }}
-              className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm transition shadow-sm bg-gradient-to-br from-teal-600 to-cyan-600"
+              className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm transition shadow-sm"
             >
               <Plus className="h-4 w-4" />
               Добавить свитч
             </button>
           )}
         </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 grid-cols-3">
+        <Stat label="Всего" value={switches.length} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
+        <Stat label="Онлайн" value={onlineCount} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
+        <Stat label="Оффлайн" value={offlineCount} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
       </div>
 
       {/* Search */}
@@ -122,11 +138,11 @@ export default function SwitchesPage() {
       {/* Grid */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-500 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
         </div>
-      ) : sortedSwitches.length > 0 ? (
+      ) : visibleSwitches.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sortedSwitches.map((sw) => (
+          {visibleSwitches.map((sw) => (
             <SwitchCard
               key={sw.id}
               sw={sw}
@@ -146,7 +162,7 @@ export default function SwitchesPage() {
           {isSuperuser && (
             <button
               onClick={() => { setEditTarget(null); setShowForm(true); }}
-              className="mt-3 text-teal-600 hover:text-teal-700 text-sm font-medium"
+              className="mt-3 text-rose-600 hover:text-rose-700 text-sm font-medium"
             >
               Добавить первый свитч
             </button>
@@ -171,5 +187,32 @@ export default function SwitchesPage() {
       )}
       {showDiscovery && <NetworkDiscoveryModal kind="switch" onClose={() => setShowDiscovery(false)} />}
     </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  color,
+  bg,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  bg: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`app-stat ${bg} w-full px-4 py-3 text-left transition ${isActive ? "ring-2 ring-rose-400/50" : "hover:-translate-y-0.5 hover:shadow-md"}`}
+    >
+      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+      <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+    </button>
   );
 }
