@@ -3,6 +3,7 @@ from __future__ import annotations
 from celery import Celery
 
 from app.core.config import settings
+from app.worker import metrics_bootstrap  # noqa: F401
 
 DEFAULT_QUEUE = "infrascope"
 

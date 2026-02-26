@@ -64,6 +64,37 @@ ssh_operations_total = Counter(
     ["operation", "result", "reason"],
 )
 
+worker_tasks_enqueued_total = Counter(
+    "infrascope_worker_tasks_enqueued_total",
+    "Number of tasks enqueued for worker execution.",
+    ["operation"],
+)
+
+worker_task_executions_total = Counter(
+    "infrascope_worker_task_executions_total",
+    "Worker task execution outcomes.",
+    ["operation", "result"],
+)
+
+worker_task_duration_seconds = Histogram(
+    "infrascope_worker_task_duration_seconds",
+    "Duration of worker task execution.",
+    ["operation"],
+    buckets=(0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300),
+)
+
+worker_tasks_in_progress = Gauge(
+    "infrascope_worker_tasks_in_progress",
+    "Current number of worker tasks in progress.",
+    ["operation"],
+)
+
+worker_task_status_checks_total = Counter(
+    "infrascope_worker_task_status_checks_total",
+    "Task status API checks by state.",
+    ["state"],
+)
+
 devices_total = Gauge(
     "infrascope_devices_total",
     "Total number of configured devices by kind.",

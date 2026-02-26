@@ -95,3 +95,21 @@ groups:
         annotations:
           summary: "Высокая доля offline устройств"
           description: "Более 20% устройств offline более 10 минут."
+
+      - alert: InfraScopeWorkerDown
+        expr: max_over_time(up{job="infrascope-worker"}[2m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "InfraScope worker недоступен"
+          description: "Prometheus не может собрать метрики worker более 2 минут."
+
+      - alert: InfraScopeWorkerTaskFailuresBurst
+        expr: sum(increase(infrascope_worker_task_executions_total{result="error"}[10m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Скачок ошибок worker задач"
+          description: "Более 5 failed worker tasks за 10 минут."

@@ -14,3 +14,8 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["backend:8000"]
+
+  - job_name: infrascope-worker
+    metrics_path: /
+    static_configs:
+      - targets: ["worker:9108"]

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, get_current_active_superuser
+from app.observability.metrics import worker_task_status_checks_total, worker_tasks_enqueued_total
 from app.worker.celery_app import celery_app
 from app.worker.tasks import (
     poll_all_media_players_task,
@@ -58,36 +59,42 @@ class SwitchPollTaskRequest(BaseModel):
 )
 def enqueue_scan_network(body: ScanTaskRequest) -> TaskEnqueueResponse:
     task = scan_network_task.delay(body.subnet, body.ports)
+    worker_tasks_enqueued_total.labels(operation="scan_network").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="scan_network")
 
 
 @router.post("/poll-printers", response_model=TaskEnqueueResponse)
 def enqueue_poll_printers(body: PrinterPollTaskRequest, current_user: CurrentUser) -> TaskEnqueueResponse:
     task = poll_all_printers_task.delay(body.printer_type)
+    worker_tasks_enqueued_total.labels(operation="poll_all_printers").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_all_printers")
 
 
 @router.post("/poll-media-players", response_model=TaskEnqueueResponse)
 def enqueue_poll_media_players(body: MediaPollTaskRequest, current_user: CurrentUser) -> TaskEnqueueResponse:
     task = poll_all_media_players_task.delay(body.device_type)
+    worker_tasks_enqueued_total.labels(operation="poll_all_media_players").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_all_media_players")
 
 
 @router.post("/poll-switch", response_model=TaskEnqueueResponse)
 def enqueue_poll_switch(body: SwitchPollTaskRequest, current_user: CurrentUser) -> TaskEnqueueResponse:
     task = poll_switch_task.delay(body.switch_id)
+    worker_tasks_enqueued_total.labels(operation="poll_switch").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_switch")
 
 
 @router.post("/poll-switches", response_model=TaskEnqueueResponse)
 def enqueue_poll_switches(current_user: CurrentUser) -> TaskEnqueueResponse:
     task = poll_all_switches_task.delay()
+    worker_tasks_enqueued_total.labels(operation="poll_all_switches").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_all_switches")
 
 
 @router.get("/{task_id}", response_model=TaskStatusResponse)
 def get_task_status(task_id: str, current_user: CurrentUser) -> TaskStatusResponse:
     result = AsyncResult(task_id, app=celery_app)
+    worker_task_status_checks_total.labels(state=result.state).inc()
     payload = TaskStatusResponse(
         task_id=task_id,
         state=result.state,
