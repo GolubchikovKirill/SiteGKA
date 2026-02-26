@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     SCAN_TCP_TIMEOUT: float = 1.0
     SCAN_TCP_RETRIES: int = 1
     SCAN_TCP_CONCURRENCY: int = 256
+    POLL_JITTER_MAX_MS: int = 150
+    POLL_OFFLINE_CONFIRMATIONS: int = 2
+    POLL_CIRCUIT_FAILURE_THRESHOLD: int = 4
+    POLL_CIRCUIT_OPEN_SECONDS: int = 45
+    POLL_RESILIENCE_STATE_TTL_SECONDS: int = 7200
 
     DOMAIN: str = "infrascope.local"
 

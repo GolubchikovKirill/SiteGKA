@@ -4,11 +4,23 @@ import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./auth";
 import App from "./App";
+import { initThemeMode } from "./theme";
 import "./index.css";
+
+initThemeMode();
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false },
+    queries: {
+      retry: 1,
+      staleTime: 20_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
+    mutations: {
+      retry: 0,
+    },
   },
 });
 

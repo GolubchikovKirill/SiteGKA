@@ -69,6 +69,15 @@ export default function UsersPage() {
   };
 
   const users = data?.data ?? [];
+  const ONLINE_WINDOW_MS = 5 * 60_000;
+  const isRecentlyOnline = (lastSeenAt: string | null): boolean => {
+    if (!lastSeenAt) return false;
+    return Date.now() - new Date(lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
+  };
+  const formatLastSeen = (lastSeenAt: string | null): string => {
+    if (!lastSeenAt) return "Никогда";
+    return new Date(lastSeenAt).toLocaleString("ru-RU");
+  };
 
   return (
     <div className="space-y-6">
@@ -117,6 +126,7 @@ export default function UsersPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Пользователь</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Роль</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">В сети</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Создан</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Действия</th>
               </tr>
@@ -160,6 +170,15 @@ export default function UsersPage() {
                     >
                       {u.is_active ? "Активен" : "Заблокирован"}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {isRecentlyOnline(u.last_seen_at) ? (
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
+                        Онлайн
+                      </span>
+                    ) : (
+                      <span className="text-sm text-gray-500">{formatLastSeen(u.last_seen_at)}</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {new Date(u.created_at).toLocaleDateString("ru-RU")}

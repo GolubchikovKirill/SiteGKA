@@ -22,6 +22,7 @@ from app.schemas import (
     PrinterUpdate,
 )
 from app.services.ping import check_port
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 from app.services.snmp import get_snmp_mac, poll_printer
 
 logger = logging.getLogger(__name__)
@@ -160,6 +161,7 @@ def _poll_one(printer: Printer) -> tuple[str, object | None, str | None]:
         return "", None, None
     ip = printer.ip_address
     try:
+        poll_jitter_sync()
         if printer.printer_type == "label":
             online = check_port(ip)
             return ip, {"is_online": online}, None
@@ -333,12 +335,23 @@ async def poll_all_printers(
     current_user: CurrentUser,
     printer_type: str = Query(default="laser"),
 ) -> PrintersPublic:
+    lock_key = f"lock:poll-all:printers:{printer_type}"
+    lock_acquired = True
+    try:
+        r = await get_redis()
+        lock_acquired = bool(await r.set(lock_key, "1", ex=45, nx=True))
+    except Exception:
+        lock_acquired = True
+
     all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
     set_device_counts(
         kind="printer",
         total=len(all_printers),
         online=sum(1 for p in all_printers if p.is_online),
     )
+    if not lock_acquired:
+        logger.info("Skipping duplicate poll-all request for printers (%s): lock busy", printer_type)
+        return PrintersPublic(data=all_printers, count=len(all_printers))
     if not all_printers:
         return PrintersPublic(data=[], count=0)
 
@@ -346,98 +359,129 @@ async def poll_all_printers(
     if not printers:
         return PrintersPublic(data=all_printers, count=len(all_printers))
 
-    printer_map = {p.ip_address: p for p in printers}
-    poll_results = await asyncio.to_thread(_do_poll_all, printers)
+    poll_targets: list[Printer] = []
+    for printer in printers:
+        if await is_circuit_open("printer", str(printer.id)):
+            printer_polls_total.labels(mode="all", printer_type=printer.printer_type, result="skipped").inc()
+            continue
+        poll_targets.append(printer)
 
-    # Phase 1: apply poll results, collect online MACs and offline printers
-    online_macs: dict[str, str] = {}
-    offline_with_mac: list[Printer] = []
+    printer_map = {p.ip_address: p for p in poll_targets}
+    try:
+        poll_results = await asyncio.to_thread(_do_poll_all, poll_targets) if poll_targets else {}
 
-    for ip, (result, current_mac) in poll_results.items():
-        p = printer_map[ip]
-        if result is None:
-            p.is_online = False
-            p.status = "error"
-            p.mac_status = "unavailable"
-            printer_polls_total.labels(mode="all", printer_type=p.printer_type, result="error").inc()
-            if p.mac_address:
-                offline_with_mac.append(p)
-        elif isinstance(result, dict):
-            p.is_online = result["is_online"]
-            p.status = "online" if p.is_online else "offline"
-            p.mac_status = None
-            printer_polls_total.labels(
-                mode="all",
-                printer_type=p.printer_type,
-                result="online" if p.is_online else "offline",
-            ).inc()
-            if not p.is_online and p.mac_address:
-                offline_with_mac.append(p)
-        else:
-            p.is_online = result.is_online
-            p.status = result.status
-            p.toner_black = result.toner_black
-            p.toner_cyan = result.toner_cyan
-            p.toner_magenta = result.toner_magenta
-            p.toner_yellow = result.toner_yellow
-            p.mac_status = _verify_mac(p, current_mac)
-            printer_polls_total.labels(
-                mode="all",
-                printer_type=p.printer_type,
-                result="online" if p.is_online else "offline",
-            ).inc()
-            if p.is_online and current_mac:
-                online_macs[ip] = current_mac
-            elif not p.is_online and p.mac_address:
-                offline_with_mac.append(p)
-        p.last_polled_at = datetime.now(UTC)
-        session.add(p)
+        # Phase 1: apply poll results, collect online MACs and offline printers
+        online_macs: dict[str, str] = {}
+        offline_with_mac: list[Printer] = []
 
-    # Phase 2: try to relocate offline printers by MAC
-    if offline_with_mac:
-        # Check scan cache for known MACs at new IPs
-        for p in offline_with_mac:
-            new_ip = await _find_by_mac_in_scan_cache(p.mac_address)
-            if new_ip and new_ip != p.ip_address:
-                conflict = session.exec(
-                    select(Printer).where(
-                        Printer.ip_address == new_ip,
-                        Printer.id != p.id,
-                    )
-                ).first()
-                if not conflict:
-                    old_ip = p.ip_address
-                    p.ip_address = new_ip
-                    # Re-poll at new IP
-                    _, new_result, new_mac = await asyncio.to_thread(_poll_one, p)
-                    if new_result and (isinstance(new_result, dict) and new_result.get("is_online") or hasattr(new_result, 'is_online') and new_result.is_online):
-                        if not isinstance(new_result, dict):
-                            p.is_online = True
-                            p.status = new_result.status
-                            p.toner_black = new_result.toner_black
-                            p.toner_cyan = new_result.toner_cyan
-                            p.toner_magenta = new_result.toner_magenta
-                            p.toner_yellow = new_result.toner_yellow
-                        else:
-                            p.is_online = new_result["is_online"]
-                            p.status = "online"
-                        p.mac_status = _verify_mac(p, new_mac)
-                        logger.info(
-                            "Auto-relocated %s: %s -> %s (MAC %s)",
-                            p.store_name, old_ip, new_ip, p.mac_address,
+        for ip, (result, current_mac) in poll_results.items():
+            p = printer_map[ip]
+            previous_online = bool(p.is_online)
+            raw_online = bool(result and ((isinstance(result, dict) and result.get("is_online")) or (hasattr(result, "is_online") and result.is_online)))
+            effective_online = await apply_poll_outcome(
+                kind="printer",
+                entity_id=str(p.id),
+                previous_effective_online=previous_online,
+                probed_online=raw_online,
+                probed_error=result is None,
+            )
+            if result is None:
+                p.is_online = effective_online
+                p.status = "error" if not effective_online else (p.status or "online")
+                p.mac_status = "unavailable"
+                printer_polls_total.labels(
+                    mode="all",
+                    printer_type=p.printer_type,
+                    result="error" if not effective_online else "offline_pending",
+                ).inc()
+                if (not effective_online) and p.mac_address:
+                    offline_with_mac.append(p)
+            elif isinstance(result, dict):
+                p.is_online = effective_online
+                p.status = "online" if effective_online else "offline"
+                p.mac_status = None
+                printer_polls_total.labels(
+                    mode="all",
+                    printer_type=p.printer_type,
+                    result="online" if effective_online else "offline",
+                ).inc()
+                if (not effective_online) and p.mac_address:
+                    offline_with_mac.append(p)
+            else:
+                p.is_online = effective_online
+                if effective_online:
+                    p.status = result.status
+                    p.toner_black = result.toner_black
+                    p.toner_cyan = result.toner_cyan
+                    p.toner_magenta = result.toner_magenta
+                    p.toner_yellow = result.toner_yellow
+                else:
+                    p.status = "offline"
+                p.mac_status = _verify_mac(p, current_mac)
+                printer_polls_total.labels(
+                    mode="all",
+                    printer_type=p.printer_type,
+                    result="online" if effective_online else "offline",
+                ).inc()
+                if effective_online and current_mac:
+                    online_macs[ip] = current_mac
+                elif (not effective_online) and p.mac_address:
+                    offline_with_mac.append(p)
+            p.last_polled_at = datetime.now(UTC)
+            session.add(p)
+
+        # Phase 2: try to relocate offline printers by MAC
+        if offline_with_mac:
+            # Check scan cache for known MACs at new IPs
+            for p in offline_with_mac:
+                new_ip = await _find_by_mac_in_scan_cache(p.mac_address)
+                if new_ip and new_ip != p.ip_address:
+                    conflict = session.exec(
+                        select(Printer).where(
+                            Printer.ip_address == new_ip,
+                            Printer.id != p.id,
                         )
-                    else:
-                        p.ip_address = old_ip
-                    session.add(p)
+                    ).first()
+                    if not conflict:
+                        old_ip = p.ip_address
+                        p.ip_address = new_ip
+                        # Re-poll at new IP
+                        _, new_result, new_mac = await asyncio.to_thread(_poll_one, p)
+                        if new_result and (isinstance(new_result, dict) and new_result.get("is_online") or hasattr(new_result, 'is_online') and new_result.is_online):
+                            if not isinstance(new_result, dict):
+                                p.is_online = True
+                                p.status = new_result.status
+                                p.toner_black = new_result.toner_black
+                                p.toner_cyan = new_result.toner_cyan
+                                p.toner_magenta = new_result.toner_magenta
+                                p.toner_yellow = new_result.toner_yellow
+                            else:
+                                p.is_online = new_result["is_online"]
+                                p.status = "online"
+                            p.mac_status = _verify_mac(p, new_mac)
+                            logger.info(
+                                "Auto-relocated %s: %s -> %s (MAC %s)",
+                                p.store_name, old_ip, new_ip, p.mac_address,
+                            )
+                        else:
+                            p.ip_address = old_ip
+                        session.add(p)
 
-    session.commit()
-    # Re-fetch all printers (including USB) for the response
-    result_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
-    set_device_counts(
-        kind="printer",
-        total=len(result_printers),
-        online=sum(1 for p in result_printers if p.is_online),
-    )
+        session.commit()
+        # Re-fetch all printers (including USB) for the response
+        result_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+        set_device_counts(
+            kind="printer",
+            total=len(result_printers),
+            online=sum(1 for p in result_printers if p.is_online),
+        )
 
-    await _invalidate_printer_cache()
-    return PrintersPublic(data=result_printers, count=len(result_printers))
+        await _invalidate_printer_cache()
+        return PrintersPublic(data=result_printers, count=len(result_printers))
+    finally:
+        if lock_acquired:
+            try:
+                r = await get_redis()
+                await r.delete(lock_key)
+            except Exception:
+                pass

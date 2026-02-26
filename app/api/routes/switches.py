@@ -2,13 +2,17 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.redis import get_redis
 from app.models import NetworkSwitch
 from app.observability.metrics import (
+    network_bulk_operation_duration_seconds,
+    network_bulk_processed_total,
     set_device_counts,
     switch_ops_total,
     switch_port_op_duration_seconds,
@@ -34,6 +38,7 @@ from app.schemas import (
 )
 from app.services.cisco_ssh import get_access_points, poe_cycle_ap, reboot_ap
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
 from app.services.switches import resolve_switch_provider
 
 logger = logging.getLogger(__name__)
@@ -227,39 +232,88 @@ async def poll_all_switches(
     current_user: CurrentUser,
 ) -> Message:
     del current_user
+    started = perf_counter()
+    lock_key = "lock:poll-all:switches"
+    lock_acquired = True
+    try:
+        r = await get_redis()
+        lock_acquired = bool(await r.set(lock_key, "1", ex=45, nx=True))
+    except Exception:
+        lock_acquired = True
+    if not lock_acquired:
+        logger.info("Skipping duplicate poll-all request for switches: lock busy")
+        return Message(message="Switch poll already in progress")
     switches = session.exec(select(NetworkSwitch)).all()
+    error_count = 0
 
     semaphore = asyncio.Semaphore(12)
 
     async def _poll_one(sw: NetworkSwitch) -> tuple[NetworkSwitch, object | None, Exception | None]:
         try:
             async with semaphore:
+                await poll_jitter_async()
                 provider = resolve_switch_provider(sw)
                 info = await asyncio.to_thread(provider.poll_switch, sw)
                 return sw, info, None
         except Exception as exc:  # pragma: no cover - defensive
             return sw, None, exc
 
-    results = await asyncio.gather(*[_poll_one(sw) for sw in switches])
-    for switch, info, exc in results:
-        try:
-            if exc:
-                raise exc
-            if info is None:
-                raise RuntimeError("poll returned no data")
-            switch.is_online = info.is_online
-            switch.hostname = info.hostname or switch.hostname
-            switch.model_info = info.model_info or switch.model_info
-            switch.ios_version = info.ios_version or switch.ios_version
-            switch.uptime = info.uptime or switch.uptime
-            switch.last_polled_at = datetime.now(UTC)
-            switch_ops_total.labels(operation="poll_all", result="online" if info.is_online else "offline").inc()
-            session.add(switch)
-        except Exception as exc:
-            logger.warning("Bulk switch poll failed for %s (%s): %s", switch.name, switch.ip_address, exc)
-            switch_ops_total.labels(operation="poll_all", result="error").inc()
-    session.commit()
-    return Message(message="Switches polled")
+    try:
+        poll_targets: list[NetworkSwitch] = []
+        for sw in switches:
+            if await is_circuit_open("switch", str(sw.id)):
+                switch_ops_total.labels(operation="poll_all", result="skipped").inc()
+                continue
+            poll_targets.append(sw)
+
+        results = await asyncio.gather(*[_poll_one(sw) for sw in poll_targets]) if poll_targets else []
+        for switch, info, exc in results:
+            try:
+                if exc:
+                    raise exc
+                if info is None:
+                    raise RuntimeError("poll returned no data")
+                effective_online = await apply_poll_outcome(
+                    kind="switch",
+                    entity_id=str(switch.id),
+                    previous_effective_online=bool(switch.is_online),
+                    probed_online=bool(info.is_online),
+                    probed_error=False,
+                )
+                switch.is_online = effective_online
+                switch.hostname = info.hostname or switch.hostname
+                switch.model_info = info.model_info or switch.model_info
+                switch.ios_version = info.ios_version or switch.ios_version
+                switch.uptime = info.uptime or switch.uptime
+                switch.last_polled_at = datetime.now(UTC)
+                switch_ops_total.labels(operation="poll_all", result="online" if effective_online else "offline").inc()
+                session.add(switch)
+            except Exception as exc:
+                logger.warning("Bulk switch poll failed for %s (%s): %s", switch.name, switch.ip_address, exc)
+                switch.is_online = await apply_poll_outcome(
+                    kind="switch",
+                    entity_id=str(switch.id),
+                    previous_effective_online=bool(switch.is_online),
+                    probed_online=False,
+                    probed_error=True,
+                )
+                switch.last_polled_at = datetime.now(UTC)
+                session.add(switch)
+                switch_ops_total.labels(operation="poll_all", result="error").inc()
+                error_count += 1
+        session.commit()
+        network_bulk_processed_total.labels(operation="switch_poll_all", result="success").inc(max(len(switches) - error_count, 0))
+        if error_count:
+            network_bulk_processed_total.labels(operation="switch_poll_all", result="error").inc(error_count)
+        network_bulk_operation_duration_seconds.labels(operation="switch_poll_all").observe(max(perf_counter() - started, 0))
+        return Message(message="Switches polled")
+    finally:
+        if lock_acquired:
+            try:
+                r = await get_redis()
+                await r.delete(lock_key)
+            except Exception:
+                pass
 
 
 @router.get("/{switch_id}/access-points", response_model=list[AccessPointInfo])

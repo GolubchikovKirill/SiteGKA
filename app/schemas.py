@@ -68,6 +68,7 @@ class UserPublic(BaseModel):
     full_name: str | None = None
     is_active: bool = True
     is_superuser: bool = False
+    last_seen_at: datetime | None = None
     created_at: datetime
 
 

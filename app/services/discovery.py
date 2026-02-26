@@ -12,6 +12,11 @@ import httpx
 
 from app.core.config import settings
 from app.core.redis import get_redis
+from app.observability.metrics import (
+    network_bulk_operation_duration_seconds,
+    network_discovery_devices_total,
+    network_discovery_runs_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +24,36 @@ DISCOVERY_TTL = 600
 _DISCOVERY_TCP_SEMAPHORE = asyncio.Semaphore(max(settings.SCAN_TCP_CONCURRENCY, 1))
 _DISCOVERY_HTTP_TIMEOUT = 2.0
 _DISCOVERY_IDENTIFY_CONCURRENCY = 32
+
+_PRINTER_HINTS = (
+    "printer",
+    "laserjet",
+    "deskjet",
+    "officejet",
+    "ricoh",
+    "xerox",
+    "brother",
+    "kyocera",
+    "zebra",
+    "epson",
+    "canon",
+    "mfp",
+)
+
+_SWITCH_HINTS = (
+    "switch",
+    "cisco ios",
+    "catalyst",
+    "nexus",
+    "routeros",
+    "mikrotik",
+    "d-link",
+    "arubaos",
+    "procurve",
+    "juniper",
+    "ethernet",
+    "bridge",
+)
 
 
 @dataclass
@@ -137,7 +172,14 @@ def _normalize_vendor(value: str | None) -> str | None:
 
 async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[str, str | None]:
     try:
-        from pysnmp.hlapi.asyncio import CommunityData, ContextData, ObjectIdentity, ObjectType, SnmpEngine, UdpTransportTarget
+        from pysnmp.hlapi.asyncio import (
+            CommunityData,
+            ContextData,
+            ObjectIdentity,
+            ObjectType,
+            SnmpEngine,
+            UdpTransportTarget,
+        )
         from pysnmp.hlapi.asyncio.cmdgen import getCmd
     except Exception:
         return {}
@@ -148,6 +190,7 @@ async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[s
     engine = SnmpEngine()
     oid_sys_descr = "1.3.6.1.2.1.1.1.0"
     oid_sys_name = "1.3.6.1.2.1.1.5.0"
+    oid_sys_object_id = "1.3.6.1.2.1.1.2.0"
     try:
         err_indication, err_status, _, var_binds = await getCmd(
             engine,
@@ -156,10 +199,11 @@ async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[s
             ContextData(),
             ObjectType(ObjectIdentity(oid_sys_descr)),
             ObjectType(ObjectIdentity(oid_sys_name)),
+            ObjectType(ObjectIdentity(oid_sys_object_id)),
         )
         if err_indication or err_status:
             return {}
-        values: dict[str, str | None] = {"model_info": None, "hostname": None}
+        values: dict[str, str | None] = {"model_info": None, "hostname": None, "sys_object_id": None}
         for oid, val in var_binds:
             oid_str = str(oid)
             val_str = str(val).strip()
@@ -167,9 +211,40 @@ async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[s
                 values["model_info"] = val_str
             elif oid_sys_name in oid_str:
                 values["hostname"] = val_str
+            elif oid_sys_object_id in oid_str:
+                values["sys_object_id"] = val_str
+
+        identity_text = " ".join(
+            x for x in (values.get("model_info"), values.get("hostname"), values.get("sys_object_id")) if x
+        ).lower()
+        if any(h in identity_text for h in _PRINTER_HINTS):
+            return {}
+        if not any(h in identity_text for h in _SWITCH_HINTS):
+            return {}
         return values
     except Exception:
         return {}
+
+
+def _is_likely_iconbit_response(main_text: str, status_xml_text: str | None, now_text: str | None) -> bool:
+    text = main_text.lower()
+    if any(h in text for h in _PRINTER_HINTS):
+        return False
+    page_hints = (
+        "delete?file=" in text
+        or "/play" in text
+        or "/stop" in text
+        or "iconbit" in text
+    )
+    status_hints = False
+    if status_xml_text:
+        xml = status_xml_text.lower()
+        status_hints = all(tag in xml for tag in ("<state>", "<position>", "<duration>"))
+    now_hints = False
+    if now_text:
+        now_l = now_text.lower()
+        now_hints = "<b>" in now_l or "now playing" in now_l or "playing" in now_l
+    return page_hints or status_hints or now_hints
 
 
 async def _iconbit_fingerprint(ip: str) -> dict[str, str | None]:
@@ -181,17 +256,13 @@ async def _iconbit_fingerprint(ip: str) -> dict[str, str | None]:
             if main.status_code != 200:
                 return {}
             text = main.text[:5000]
-            hints = (
-                "status.xml" in text
-                or "/now" in text
-                or "delete?file=" in text
-                or "iconbit" in text.lower()
-            )
-            if not hints:
-                status_xml = await client.get(f"{base}/status.xml")
-                now = await client.get(f"{base}/now")
-                hints = status_xml.status_code == 200 or now.status_code == 200
-            if not hints:
+            status_xml = await client.get(f"{base}/status.xml")
+            now = await client.get(f"{base}/now")
+            if not _is_likely_iconbit_response(
+                text,
+                status_xml.text[:5000] if status_xml.status_code == 200 else None,
+                now.text[:5000] if now.status_code == 200 else None,
+            ):
                 return {}
             model_match = re.search(r"<title>([^<]+)</title>", text, re.IGNORECASE)
             model = model_match.group(1).strip() if model_match else "Iconbit"
@@ -300,9 +371,17 @@ async def run_discovery_scan(kind: str, subnet: str, ports_str: str, known_devic
         result = [asdict(d) for d in devices]
         await r.setex(_results_key(kind), DISCOVERY_TTL, json.dumps(result))
         await _update_progress(kind, "done", len(all_ips), len(all_ips), len(result))
+        network_discovery_runs_total.labels(kind=kind, result="success").inc()
+        network_discovery_devices_total.labels(kind=kind).inc(len(result))
         return result
+    except Exception:
+        network_discovery_runs_total.labels(kind=kind, result="error").inc()
+        raise
     finally:
         await r.delete(lock_key)
+        network_bulk_operation_duration_seconds.labels(operation=f"{kind}_discovery_scan").observe(
+            max(perf_counter() - started, 0)
+        )
         logger.info("Discovery scan '%s' completed in %.2fs", kind, max(perf_counter() - started, 0))
 
 

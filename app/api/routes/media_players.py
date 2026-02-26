@@ -3,7 +3,9 @@ import json
 import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from time import perf_counter
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile
 from sqlmodel import func, select
@@ -14,6 +16,8 @@ from app.models import MediaPlayer
 from app.observability.metrics import (
     media_player_ops_total,
     media_player_polls_total,
+    network_bulk_operation_duration_seconds,
+    network_bulk_processed_total,
     set_device_counts,
 )
 from app.schemas import (
@@ -26,8 +30,8 @@ from app.schemas import (
     ScanProgress,
     ScanRequest,
 )
-from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.device_poll import find_device_by_mac, find_devices_by_macs, poll_device_sync
+from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
 )
@@ -49,6 +53,8 @@ from app.services.iconbit import (
 from app.services.iconbit import (
     upload_file as iconbit_upload_file,
 )
+from app.services.ping import check_port as check_tcp_port
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +62,16 @@ router = APIRouter(tags=["media-players"])
 
 MAX_POLL_WORKERS = 20
 CACHE_TTL = 30
+
+
+@dataclass
+class _LightPollResult:
+    is_online: bool
+    hostname: str | None = None
+    os_info: str | None = None
+    uptime: str | None = None
+    open_ports: list[int] | None = None
+    mac_address: str | None = None
 
 
 async def _run_iconbit_discovery(subnet: str, ports: str, known_players: list[dict]) -> None:
@@ -260,6 +276,10 @@ async def delete_media_player(session: SessionDep, player_id: uuid.UUID) -> Mess
 
 def _poll_one(player: MediaPlayer) -> tuple[str, object | None]:
     try:
+        poll_jitter_sync()
+        if player.device_type == "iconbit":
+            is_online = check_tcp_port(player.ip_address, port=8081, timeout=2.5)
+            return player.ip_address, _LightPollResult(is_online=is_online, open_ports=[8081] if is_online else [])
         result = poll_device_sync(player.ip_address)
         return player.ip_address, result
     except Exception as e:
@@ -273,9 +293,12 @@ def _apply_poll_result(player: MediaPlayer, result) -> None:
         player.is_online = False
     else:
         player.is_online = True
-        player.hostname = result.hostname
-        player.os_info = result.os_info
-        player.uptime = result.uptime
+        if result.hostname:
+            player.hostname = result.hostname
+        if result.os_info:
+            player.os_info = result.os_info
+        if result.uptime:
+            player.uptime = result.uptime
         player.open_ports = ",".join(str(p) for p in result.open_ports) if result.open_ports else None
         if result.mac_address and not player.mac_address:
             player.mac_address = result.mac_address
@@ -323,6 +346,14 @@ async def poll_all_players(
     current_user: CurrentUser,
     device_type: str | None = Query(default=None),
 ) -> MediaPlayersPublic:
+    started = perf_counter()
+    lock_key = f"lock:poll-all:media:{device_type or 'all'}"
+    lock_acquired = True
+    try:
+        r = await get_redis()
+        lock_acquired = bool(await r.set(lock_key, "1", ex=45, nx=True))
+    except Exception:
+        lock_acquired = True
     statement = select(MediaPlayer)
     if device_type:
         statement = statement.where(MediaPlayer.device_type == device_type)
@@ -332,69 +363,108 @@ async def poll_all_players(
         total=len(players),
         online=sum(1 for p in players if p.is_online),
     )
+    if not lock_acquired:
+        logger.info("Skipping duplicate poll-all request for media players (%s): lock busy", device_type or "all")
+        return MediaPlayersPublic(data=players, count=len(players))
     if not players:
         return MediaPlayersPublic(data=[], count=0)
 
-    results: dict[str, object | None] = {}
-    with ThreadPoolExecutor(max_workers=min(MAX_POLL_WORKERS, len(players))) as pool:
-        futures = {pool.submit(_poll_one, p): p.ip_address for p in players}
-        for future in as_completed(futures):
-            ip = futures[future]
-            try:
-                _, result = future.result()
-            except Exception as e:
-                logger.warning("Poll failed for %s: %s", ip, e)
-                result = None
-            results[ip] = result
+    try:
+        poll_targets: list[MediaPlayer] = []
+        skipped_ids: set[uuid.UUID] = set()
+        for player in players:
+            if await is_circuit_open("media_player", str(player.id)):
+                media_player_polls_total.labels(mode="all", device_type=player.device_type, result="skipped").inc()
+                skipped_ids.add(player.id)
+                continue
+            poll_targets.append(player)
 
-    # Apply results and collect offline devices with MAC for rediscovery
-    offline_with_mac: list[MediaPlayer] = []
-    for player in players:
-        result = results.get(player.ip_address)
-        _apply_poll_result(player, result)
-        media_player_polls_total.labels(
-            mode="all",
-            device_type=player.device_type,
-            result="online" if player.is_online else "offline",
-        ).inc()
-        if not player.is_online and player.mac_address:
-            offline_with_mac.append(player)
-        player.last_polled_at = datetime.now(UTC)
-        session.add(player)
+        results: dict[str, object | None] = {}
+        if poll_targets:
+            with ThreadPoolExecutor(max_workers=min(MAX_POLL_WORKERS, len(poll_targets))) as pool:
+                futures = {pool.submit(_poll_one, p): p.ip_address for p in poll_targets}
+                for future in as_completed(futures):
+                    ip = futures[future]
+                    try:
+                        _, result = future.result()
+                    except Exception as e:
+                        logger.warning("Poll failed for %s: %s", ip, e)
+                        result = None
+                    results[ip] = result
 
-    # Try to rediscover offline devices by MAC (one sweep for all)
-    if offline_with_mac:
-        logger.info("Trying MAC rediscovery for %d offline devices...", len(offline_with_mac))
-        mac_to_ip = await find_devices_by_macs([p.mac_address for p in offline_with_mac if p.mac_address])
-        for player in offline_with_mac:
-            new_ip = mac_to_ip.get((player.mac_address or "").lower())
-            if new_ip and new_ip != player.ip_address:
-                logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
-                player.ip_address = new_ip
-                _, result = await asyncio.to_thread(_poll_one, player)
-                _apply_poll_result(player, result)
-                media_player_polls_total.labels(
-                    mode="all",
-                    device_type=player.device_type,
-                    result="online" if player.is_online else "offline",
-                ).inc()
-                player.last_polled_at = datetime.now(UTC)
+        # Apply results and collect offline devices with MAC for rediscovery
+        offline_with_mac: list[MediaPlayer] = []
+        for player in players:
+            if player.id in skipped_ids:
                 session.add(player)
+                continue
 
-    session.commit()
+            result = results.get(player.ip_address)
+            previous_online = bool(player.is_online)
+            raw_online = bool(result and result.is_online)
+            effective_online = await apply_poll_outcome(
+                kind="media_player",
+                entity_id=str(player.id),
+                previous_effective_online=previous_online,
+                probed_online=raw_online,
+                probed_error=result is None,
+            )
+            _apply_poll_result(player, result)
+            player.is_online = effective_online
+            media_player_polls_total.labels(
+                mode="all",
+                device_type=player.device_type,
+                result="online" if effective_online else "offline",
+            ).inc()
+            if (not effective_online) and player.mac_address:
+                offline_with_mac.append(player)
+            player.last_polled_at = datetime.now(UTC)
+            session.add(player)
 
-    result_statement = select(MediaPlayer)
-    if device_type:
-        result_statement = result_statement.where(MediaPlayer.device_type == device_type)
-    all_players = session.exec(result_statement).all()
-    set_device_counts(
-        kind="media_player",
-        total=len(all_players),
-        online=sum(1 for p in all_players if p.is_online),
-    )
+        # Try to rediscover offline devices by MAC (one sweep for all)
+        if offline_with_mac:
+            logger.info("Trying MAC rediscovery for %d offline devices...", len(offline_with_mac))
+            mac_to_ip = await find_devices_by_macs([p.mac_address for p in offline_with_mac if p.mac_address])
+            for player in offline_with_mac:
+                new_ip = mac_to_ip.get((player.mac_address or "").lower())
+                if new_ip and new_ip != player.ip_address:
+                    logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+                    player.ip_address = new_ip
+                    _, result = await asyncio.to_thread(_poll_one, player)
+                    _apply_poll_result(player, result)
+                    media_player_polls_total.labels(
+                        mode="all",
+                        device_type=player.device_type,
+                        result="online" if player.is_online else "offline",
+                    ).inc()
+                    player.last_polled_at = datetime.now(UTC)
+                    session.add(player)
 
-    await _invalidate_cache()
-    return MediaPlayersPublic(data=all_players, count=len(all_players))
+        session.commit()
+        success_count = sum(1 for p in players if p.is_online)
+        network_bulk_processed_total.labels(operation="media_poll_all", result="success").inc(success_count)
+        network_bulk_processed_total.labels(operation="media_poll_all", result="offline").inc(max(len(players) - success_count, 0))
+        network_bulk_operation_duration_seconds.labels(operation="media_poll_all").observe(max(perf_counter() - started, 0))
+
+        result_statement = select(MediaPlayer)
+        if device_type:
+            result_statement = result_statement.where(MediaPlayer.device_type == device_type)
+        all_players = session.exec(result_statement).all()
+        set_device_counts(
+            kind="media_player",
+            total=len(all_players),
+            online=sum(1 for p in all_players if p.is_online),
+        )
+
+        await _invalidate_cache()
+        return MediaPlayersPublic(data=all_players, count=len(all_players))
+    finally:
+        if lock_acquired:
+            try:
+                r = await get_redis()
+                await r.delete(lock_key)
+            except Exception:
+                pass
 
 
 # ── Rediscovery ──────────────────────────────────────────────────
@@ -406,6 +476,7 @@ async def rediscover_devices(
     current_user: CurrentUser,
 ) -> MediaPlayersPublic:
     """Find devices that changed IP by scanning subnets for known MACs."""
+    started = perf_counter()
     players = session.exec(select(MediaPlayer).where(MediaPlayer.mac_address.isnot(None))).all()
     if not players:
         return MediaPlayersPublic(data=[], count=0)
@@ -429,6 +500,9 @@ async def rediscover_devices(
 
     logger.info("Rediscovery complete: %d/%d devices updated", updated, len(players))
     media_player_ops_total.labels(operation="rediscover", result="success").inc()
+    network_bulk_processed_total.labels(operation="media_rediscover", result="success").inc(updated)
+    network_bulk_processed_total.labels(operation="media_rediscover", result="unchanged").inc(max(len(players) - updated, 0))
+    network_bulk_operation_duration_seconds.labels(operation="media_rediscover").observe(max(perf_counter() - started, 0))
     all_players = session.exec(select(MediaPlayer)).all()
     return MediaPlayersPublic(data=all_players, count=len(all_players))
 

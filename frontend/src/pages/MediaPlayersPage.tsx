@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace, Radar } from "lucide-react";
 import {
@@ -16,14 +16,6 @@ import {
   type MediaPlayer,
   type DeviceType,
 } from "../client";
-import {
-  AUTO_REFRESH_INTERVAL_OPTIONS,
-  type AutoRefreshMinutes,
-  readAutoRefreshEnabled,
-  readAutoRefreshIntervalMinutes,
-  writeAutoRefreshEnabled,
-  writeAutoRefreshIntervalMinutes,
-} from "../autoRefresh";
 import { useAuth } from "../auth";
 import MediaPlayerCard from "../components/MediaPlayerCard";
 import MediaPlayerForm from "../components/MediaPlayerForm";
@@ -51,8 +43,6 @@ export default function MediaPlayersPage() {
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(() => readAutoRefreshEnabled());
-  const [autoRefreshMinutes, setAutoRefreshMinutes] = useState<AutoRefreshMinutes>(() => readAutoRefreshIntervalMinutes());
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const replaceFileRef = useRef<HTMLInputElement>(null);
 
@@ -125,16 +115,6 @@ export default function MediaPlayersPage() {
     if (confirm("Удалить устройство?")) deleteMut.mutate(id);
   };
 
-  useEffect(() => {
-    if (!autoRefreshEnabled) return;
-    const timer = setInterval(() => {
-      pollAllMediaPlayers(deviceTypeParam)
-        .then(() => queryClient.invalidateQueries({ queryKey: ["media-players"] }))
-        .catch(() => undefined);
-    }, autoRefreshMinutes * 60_000);
-    return () => clearInterval(timer);
-  }, [autoRefreshEnabled, autoRefreshMinutes, deviceTypeParam, queryClient]);
-
   const showBulkResult = (res: { success: number; failed: number }) => {
     setBulkMsg(`Успешно: ${res.success}, ошибок: ${res.failed}`);
     setTimeout(() => setBulkMsg(null), 4000);
@@ -200,35 +180,6 @@ export default function MediaPlayersPage() {
           <p className="text-sm text-slate-500 mt-1">Неттопы, Iconbit и Twix устройства</p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-xs text-slate-600 px-2">
-            <input
-              type="checkbox"
-              checked={autoRefreshEnabled}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setAutoRefreshEnabled(checked);
-                writeAutoRefreshEnabled(checked);
-              }}
-              className="h-4 w-4"
-            />
-            Авто
-          </label>
-          <select
-            value={autoRefreshMinutes}
-            onChange={(e) => {
-              const minutes = Number(e.target.value) as AutoRefreshMinutes;
-              setAutoRefreshMinutes(minutes);
-              writeAutoRefreshIntervalMinutes(minutes);
-            }}
-            className="app-input px-2 py-2 text-xs"
-            title="Интервал автообновления"
-          >
-            {AUTO_REFRESH_INTERVAL_OPTIONS.map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {minutes} мин
-              </option>
-            ))}
-          </select>
           <button
             onClick={() => pollAllMut.mutate()}
             disabled={pollAllMut.isPending}

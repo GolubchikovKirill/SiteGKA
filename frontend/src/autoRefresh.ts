@@ -1,10 +1,10 @@
 export const AUTO_REFRESH_ENABLED_KEY = "infrascope:auto-refresh-enabled";
-export const AUTO_REFRESH_INTERVAL_KEY = "infrascope:auto-refresh-interval-minutes";
+export const AUTO_REFRESH_INTERVAL_KEY = "infrascope:auto-refresh-interval-minutes-v2";
 export const AUTO_REFRESH_INTERVAL_OPTIONS = [5, 10, 15] as const;
 export type AutoRefreshMinutes = (typeof AUTO_REFRESH_INTERVAL_OPTIONS)[number];
 
 const DEFAULT_ENABLED = true;
-const DEFAULT_INTERVAL: AutoRefreshMinutes = 10;
+const DEFAULT_INTERVAL: AutoRefreshMinutes = 15;
 
 export function readAutoRefreshEnabled(): boolean {
   if (typeof window === "undefined") return DEFAULT_ENABLED;

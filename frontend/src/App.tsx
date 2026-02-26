@@ -1,5 +1,8 @@
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./auth";
+import { pollAllMediaPlayers, pollAllPrinters, pollAllSwitches } from "./client";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -7,8 +10,29 @@ import MediaPlayersPage from "./pages/MediaPlayersPage";
 import SwitchesPage from "./pages/SwitchesPage";
 import UsersPage from "./pages/Users";
 
+const GLOBAL_AUTO_REFRESH_MS = 15 * 60_000;
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!user) return;
+    const timer = setInterval(() => {
+      Promise.allSettled([
+        pollAllPrinters("laser"),
+        pollAllPrinters("label"),
+        pollAllMediaPlayers(),
+        pollAllSwitches(),
+      ]).finally(() => {
+        queryClient.invalidateQueries({ queryKey: ["printers"] });
+        queryClient.invalidateQueries({ queryKey: ["media-players"] });
+        queryClient.invalidateQueries({ queryKey: ["switches"] });
+      });
+    }, GLOBAL_AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [queryClient, user]);
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">

@@ -11,6 +11,7 @@ class User(SQLModel, table=True):
     full_name: str | None = Field(default=None, max_length=255)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
+    last_seen_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = Field(default=None)
 

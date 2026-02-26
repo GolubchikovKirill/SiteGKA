@@ -135,3 +135,51 @@ groups:
         annotations:
           summary: "Высокий fail-rate write операций по портам"
           description: "Доля ошибок write-операций по портам выше 30% ({{ $labels.vendor }}) за 15 минут."
+
+      - alert: InfraScopeApiErrorBudgetBurnFast
+        expr: |
+          (
+            sum(rate(http_requests_total{job="infrascope-backend",status=~"5.."}[5m])) /
+            clamp_min(sum(rate(http_requests_total{job="infrascope-backend"}[5m])), 0.001)
+          ) > 0.0144
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Быстрое сжигание error budget (API)"
+          description: "5xx rate превышает fast-burn порог для SLO 99%."
+
+      - alert: InfraScopeApiErrorBudgetBurnSlow
+        expr: |
+          (
+            sum(rate(http_requests_total{job="infrascope-backend",status=~"5.."}[1h])) /
+            clamp_min(sum(rate(http_requests_total{job="infrascope-backend"}[1h])), 0.001)
+          ) > 0.006
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Медленное сжигание error budget (API)"
+          description: "5xx rate превышает slow-burn порог для SLO 99%."
+
+      - alert: InfraScopeDeviceAvailabilitySLOBreach
+        expr: |
+          (
+            sum(infrascope_devices_online{kind=~"printer|media_player|switch"}) /
+            clamp_min(sum(infrascope_devices_total{kind=~"printer|media_player|switch"}), 1)
+          ) < 0.95
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SLO доступности устройств нарушен"
+          description: "Доступность устройств ниже 95% дольше 15 минут."
+
+      - alert: InfraScopeCircuitBreakerOpenBurst
+        expr: sum(increase(infrascope_poll_resilience_events_total{event="circuit_opened"}[10m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Массовое открытие circuit breaker"
+          description: "Более 10 circuit-open событий за 10 минут (проверьте сеть/доступность устройств)."

@@ -115,3 +115,33 @@ def test_iconbit_discovery_add_and_update_ip(client: TestClient, admin_token: st
     assert update_resp.status_code == 200
     assert update_resp.json()["ip_address"] == "10.10.98.122"
     assert update_resp.json()["mac_address"] == "aa:bb:cc:dd:ee:12"
+
+
+def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token: str, monkeypatch):
+    created = client.post(
+        "/api/v1/media-players/",
+        json={
+            "device_type": "iconbit",
+            "name": "Iconbit Room",
+            "model": "Iconbit",
+            "ip_address": "10.10.10.88",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+
+    monkeypatch.setattr(media_routes, "check_tcp_port", lambda _ip, port=8081, timeout=2.5: port == 8081)
+
+    def _should_not_be_called(_address: str):
+        raise RuntimeError("generic poll should not be used for iconbit in bulk")
+
+    monkeypatch.setattr(media_routes, "poll_device_sync", _should_not_be_called)
+
+    polled = client.post(
+        "/api/v1/media-players/poll-all",
+        params={"device_type": "iconbit"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert polled.status_code == 200
+    assert polled.json()["count"] == 1
+    assert polled.json()["data"][0]["is_online"] is True

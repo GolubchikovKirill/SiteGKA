@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import jwt
@@ -56,6 +57,14 @@ async def get_current_user(session: SessionDep, token: TokenDep) -> User:
     if not user.is_active:
         auth_events_total.labels(result="failure", reason="inactive_user").inc()
         raise HTTPException(status_code=400, detail="Inactive user")
+    now = datetime.now(UTC)
+    last_seen = user.last_seen_at
+    if last_seen is not None and last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=UTC)
+    if last_seen is None or (now - last_seen) >= timedelta(seconds=60):
+        user.last_seen_at = now
+        session.add(user)
+        session.commit()
     auth_events_total.labels(result="success", reason="token_valid").inc()
     return user
 

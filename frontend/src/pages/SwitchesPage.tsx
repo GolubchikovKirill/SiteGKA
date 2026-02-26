@@ -1,17 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, RefreshCw, Search, Network } from "lucide-react";
 import { useAuth } from "../auth";
 import type { NetworkSwitch } from "../client";
 import { getSwitches, createSwitch, updateSwitch, deleteSwitch, pollSwitch, pollAllSwitches } from "../client";
-import {
-  AUTO_REFRESH_INTERVAL_OPTIONS,
-  type AutoRefreshMinutes,
-  readAutoRefreshEnabled,
-  readAutoRefreshIntervalMinutes,
-  writeAutoRefreshEnabled,
-  writeAutoRefreshIntervalMinutes,
-} from "../autoRefresh";
 import SwitchForm from "../components/SwitchForm";
 import SwitchCard from "../components/SwitchCard";
 import SwitchPortsTable from "../components/SwitchPortsTable";
@@ -28,8 +20,6 @@ export default function SwitchesPage() {
   const [editTarget, setEditTarget] = useState<NetworkSwitch | null>(null);
   const [pollingId, setPollingId] = useState<string | null>(null);
   const [portsTarget, setPortsTarget] = useState<NetworkSwitch | null>(null);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(() => readAutoRefreshEnabled());
-  const [autoRefreshMinutes, setAutoRefreshMinutes] = useState<AutoRefreshMinutes>(() => readAutoRefreshIntervalMinutes());
 
   const { data, isLoading } = useQuery({
     queryKey: ["switches", search],
@@ -77,16 +67,6 @@ export default function SwitchesPage() {
     if (confirm("Удалить свитч?")) deleteMut.mutate(id);
   };
 
-  useEffect(() => {
-    if (!autoRefreshEnabled) return;
-    const timer = setInterval(() => {
-      pollAllSwitches()
-        .then(() => queryClient.invalidateQueries({ queryKey: ["switches"] }))
-        .catch(() => undefined);
-    }, autoRefreshMinutes * 60_000);
-    return () => clearInterval(timer);
-  }, [autoRefreshEnabled, autoRefreshMinutes, queryClient]);
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -101,35 +81,6 @@ export default function SwitchesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-xs text-slate-600 px-2">
-            <input
-              type="checkbox"
-              checked={autoRefreshEnabled}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setAutoRefreshEnabled(checked);
-                writeAutoRefreshEnabled(checked);
-              }}
-              className="h-4 w-4"
-            />
-            Авто
-          </label>
-          <select
-            value={autoRefreshMinutes}
-            onChange={(e) => {
-              const minutes = Number(e.target.value) as AutoRefreshMinutes;
-              setAutoRefreshMinutes(minutes);
-              writeAutoRefreshIntervalMinutes(minutes);
-            }}
-            className="app-input px-2 py-2 text-xs"
-            title="Интервал автообновления"
-          >
-            {AUTO_REFRESH_INTERVAL_OPTIONS.map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {minutes} мин
-              </option>
-            ))}
-          </select>
           <button
             onClick={() => pollAllMut.mutate()}
             disabled={pollAllMut.isPending}

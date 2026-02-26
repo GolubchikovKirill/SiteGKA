@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Plus, Search, Printer as PrinterIcon, Tag, Wifi } from "lucide-react";
 import {
@@ -11,14 +11,6 @@ import {
   type Printer,
   type PrinterType,
 } from "../client";
-import {
-  AUTO_REFRESH_INTERVAL_OPTIONS,
-  type AutoRefreshMinutes,
-  readAutoRefreshEnabled,
-  readAutoRefreshIntervalMinutes,
-  writeAutoRefreshEnabled,
-  writeAutoRefreshIntervalMinutes,
-} from "../autoRefresh";
 import { useAuth } from "../auth";
 import PrinterCard from "../components/PrinterCard";
 import ZebraCard from "../components/ZebraCard";
@@ -44,8 +36,6 @@ export default function Dashboard() {
   const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(() => readAutoRefreshEnabled());
-  const [autoRefreshMinutes, setAutoRefreshMinutes] = useState<AutoRefreshMinutes>(() => readAutoRefreshIntervalMinutes());
 
   const printerTab = activeTab === "laser" || activeTab === "label" ? activeTab : "laser";
 
@@ -111,16 +101,6 @@ export default function Dashboard() {
     if (confirm("Удалить принтер?")) deleteMut.mutate(id);
   };
 
-  useEffect(() => {
-    if (!autoRefreshEnabled || activeTab === "scanner") return;
-    const timer = setInterval(() => {
-      pollAllPrinters(printerTab)
-        .then(() => queryClient.invalidateQueries({ queryKey: ["printers"] }))
-        .catch(() => undefined);
-    }, autoRefreshMinutes * 60_000);
-    return () => clearInterval(timer);
-  }, [activeTab, autoRefreshEnabled, autoRefreshMinutes, printerTab, queryClient]);
-
   const printers = data?.data ?? [];
   const sortedPrinters = [...printers].sort((a, b) => {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
@@ -147,35 +127,6 @@ export default function Dashboard() {
         </div>
         {activeTab !== "scanner" && (
           <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2 text-xs text-slate-600 px-2">
-              <input
-                type="checkbox"
-                checked={autoRefreshEnabled}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setAutoRefreshEnabled(checked);
-                  writeAutoRefreshEnabled(checked);
-                }}
-                className="h-4 w-4"
-              />
-              Авто
-            </label>
-            <select
-              value={autoRefreshMinutes}
-              onChange={(e) => {
-                const minutes = Number(e.target.value) as AutoRefreshMinutes;
-                setAutoRefreshMinutes(minutes);
-                writeAutoRefreshIntervalMinutes(minutes);
-              }}
-              className="app-input px-2 py-2 text-xs"
-              title="Интервал автообновления"
-            >
-              {AUTO_REFRESH_INTERVAL_OPTIONS.map((minutes) => (
-                <option key={minutes} value={minutes}>
-                  {minutes} мин
-                </option>
-              ))}
-            </select>
             <button
               onClick={() => pollAllMut.mutate()}
               disabled={pollAllMut.isPending}

@@ -108,6 +108,37 @@ worker_task_status_checks_total = Counter(
     ["state"],
 )
 
+network_bulk_operation_duration_seconds = Histogram(
+    "infrascope_network_bulk_operation_duration_seconds",
+    "Duration of bulk network operations.",
+    ["operation"],
+    buckets=(0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300),
+)
+
+network_bulk_processed_total = Counter(
+    "infrascope_network_bulk_processed_total",
+    "Number of devices processed by bulk network operations.",
+    ["operation", "result"],
+)
+
+network_discovery_runs_total = Counter(
+    "infrascope_network_discovery_runs_total",
+    "Discovery scan runs by kind and result.",
+    ["kind", "result"],
+)
+
+network_discovery_devices_total = Counter(
+    "infrascope_network_discovery_devices_total",
+    "Devices identified by discovery scans.",
+    ["kind"],
+)
+
+poll_resilience_events_total = Counter(
+    "infrascope_poll_resilience_events_total",
+    "Polling resilience state machine and circuit breaker events.",
+    ["kind", "event"],
+)
+
 devices_total = Gauge(
     "infrascope_devices_total",
     "Total number of configured devices by kind.",
