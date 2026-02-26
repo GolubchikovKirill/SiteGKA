@@ -15,6 +15,11 @@ export default function SwitchForm({ initial, onSave, onCancel }: Props) {
   const [enablePwd, setEnablePwd] = useState("");
   const [port, setPort] = useState(initial?.ssh_port ?? 22);
   const [vlan, setVlan] = useState(initial?.ap_vlan ?? 20);
+  const [vendor, setVendor] = useState(initial?.vendor ?? "cisco");
+  const [protocol, setProtocol] = useState(initial?.management_protocol ?? "snmp+ssh");
+  const [snmpVersion, setSnmpVersion] = useState(initial?.snmp_version ?? "2c");
+  const [snmpRo, setSnmpRo] = useState(initial?.snmp_community_ro ?? "public");
+  const [snmpRw, setSnmpRw] = useState(initial?.snmp_community_rw ?? "");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +29,12 @@ export default function SwitchForm({ initial, onSave, onCancel }: Props) {
       ssh_username: username.trim(),
       ssh_port: port,
       ap_vlan: vlan,
+      vendor,
+      management_protocol: protocol,
+      snmp_version: snmpVersion,
+      snmp_community_ro: snmpRo.trim(),
     };
+    if (snmpRw.trim()) data.snmp_community_rw = snmpRw.trim();
     if (password) data.ssh_password = password;
     if (enablePwd) data.enable_password = enablePwd;
     if (!initial) {
@@ -78,6 +88,33 @@ export default function SwitchForm({ initial, onSave, onCancel }: Props) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Вендор</label>
+            <select
+              value={vendor}
+              onChange={(e) => setVendor(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            >
+              <option value="cisco">Cisco</option>
+              <option value="dlink">D-Link</option>
+              <option value="generic">Generic SNMP</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Протокол</label>
+            <select
+              value={protocol}
+              onChange={(e) => setProtocol(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            >
+              <option value="snmp+ssh">SNMP + SSH</option>
+              <option value="snmp">SNMP</option>
+              <option value="ssh">SSH</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">SSH логин</label>
             <input
               value={username}
@@ -95,6 +132,36 @@ export default function SwitchForm({ initial, onSave, onCancel }: Props) {
               min={1}
               max={4094}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">SNMP ver</label>
+            <select
+              value={snmpVersion}
+              onChange={(e) => setSnmpVersion(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            >
+              <option value="2c">2c</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">SNMP RO</label>
+            <input
+              value={snmpRo}
+              onChange={(e) => setSnmpRo(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">SNMP RW</label>
+            <input
+              value={snmpRw}
+              onChange={(e) => setSnmpRw(e.target.value)}
+              placeholder="optional"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             />
           </div>
         </div>

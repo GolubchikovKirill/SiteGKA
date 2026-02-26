@@ -52,6 +52,19 @@ switch_ops_total = Counter(
     ["operation", "result"],
 )
 
+switch_port_ops_total = Counter(
+    "infrascope_switch_port_ops_total",
+    "Switch port operation outcomes.",
+    ["vendor", "operation", "result"],
+)
+
+switch_port_op_duration_seconds = Histogram(
+    "infrascope_switch_port_op_duration_seconds",
+    "Duration of switch port operations.",
+    ["vendor", "operation"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30),
+)
+
 snmp_operations_total = Counter(
     "infrascope_snmp_operations_total",
     "SNMP operation outcomes.",

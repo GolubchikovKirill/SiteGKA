@@ -182,6 +182,48 @@
       ],
       "title": "Device Health Snapshot",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "id": 7,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (vendor, operation, result) (increase(infrascope_switch_port_ops_total[15m]))",
+          "legendFormat": "{{vendor}} {{operation}} {{result}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Switch Port Operations (15m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "id": 8,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(infrascope_switch_port_op_duration_seconds_bucket[5m])) by (le, vendor, operation))",
+          "legendFormat": "{{vendor}} {{operation}} p95",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Switch Port Operation Latency p95",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -194,6 +236,6 @@
   "timezone": "",
   "title": "InfraScope Operations & Reliability",
   "uid": "infrascope-ops-reliability",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

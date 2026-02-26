@@ -31,6 +31,7 @@ ICONBIT_PORT = 8081
 TIMEOUT = 8
 
 AUTH_CREDS = ("admin", "admin")
+_FIRMWARE_HINTS: dict[str, str] = {}
 
 
 @dataclass
@@ -124,33 +125,53 @@ def get_status(ip: str) -> IconbitStatus:
 
     # 1. Main page — file list and free space
     main_resp = _get(base)
+    if main_resp is None:
+        # Device is unreachable right now; avoid retry storm on other endpoints.
+        return status
     if main_resp and main_resp.status_code == 200:
         html = main_resp.text
         file_matches = re.findall(r'delete\?file=([^"&\']+)', html, re.IGNORECASE)
         status.files = [f.strip() for f in file_matches if f.strip()]
         status.free_space = _parse_free_space(html)
 
-    # 2. Try /status.xml first (old firmware, more info)
-    xml_resp = _get(f"{base}/status.xml")
-    if xml_resp and xml_resp.status_code == 200:
-        parsed = _parse_status_xml(xml_resp.text)
-        if parsed:
-            status.state = parsed["state"]
-            status.is_playing = parsed["state"] in ("playing", "paused")
-            if parsed["file"]:
-                status.now_playing = parsed["file"]
-            status.position = parsed["position"]
-            status.duration = parsed["duration"]
-            return status
+    # Probe preferred endpoint first based on cached firmware hint.
+    # This avoids repeated status.xml=404 for new firmware and speeds up polling.
+    hint = _FIRMWARE_HINTS.get(ip)
+    prefer_now = hint == "new"
+    endpoint_order = ["now", "status.xml"] if prefer_now else ["status.xml", "now"]
 
-    # 3. Fallback: /now (new firmware)
-    now_resp = _get(f"{base}/now")
-    if now_resp and now_resp.status_code == 200:
-        track = _parse_now_html(now_resp.text)
-        if track:
-            status.now_playing = track
-            status.is_playing = True
-            status.state = "playing"
+    for endpoint in endpoint_order:
+        if endpoint == "status.xml":
+            xml_resp = _get(f"{base}/status.xml")
+            if not xml_resp:
+                continue
+            if xml_resp.status_code == 200:
+                parsed = _parse_status_xml(xml_resp.text)
+                if parsed:
+                    _FIRMWARE_HINTS[ip] = "old"
+                    status.state = parsed["state"]
+                    status.is_playing = parsed["state"] in ("playing", "paused")
+                    if parsed["file"]:
+                        status.now_playing = parsed["file"]
+                    status.position = parsed["position"]
+                    status.duration = parsed["duration"]
+                    return status
+            # New firmware commonly returns 404 on /status.xml.
+            if xml_resp.status_code == 404:
+                _FIRMWARE_HINTS[ip] = "new"
+                continue
+        else:
+            now_resp = _get(f"{base}/now")
+            if not now_resp:
+                continue
+            if now_resp.status_code == 200:
+                _FIRMWARE_HINTS[ip] = "new"
+                track = _parse_now_html(now_resp.text)
+                if track:
+                    status.now_playing = track
+                    status.is_playing = True
+                    status.state = "playing"
+                return status
 
     return status
 

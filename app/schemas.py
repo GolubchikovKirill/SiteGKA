@@ -329,6 +329,11 @@ class NetworkSwitchCreate(BaseModel):
     enable_password: str = ""
     ssh_port: int = 22
     ap_vlan: int = 20
+    vendor: str = "cisco"
+    management_protocol: str = "snmp+ssh"
+    snmp_version: str = "2c"
+    snmp_community_ro: str = "public"
+    snmp_community_rw: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -357,6 +362,50 @@ class NetworkSwitchCreate(BaseModel):
             raise ValueError("ap_vlan must be 1-4094")
         return v
 
+    @field_validator("vendor")
+    @classmethod
+    def validate_vendor(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        allowed = {"cisco", "dlink", "generic"}
+        if normalized not in allowed:
+            raise ValueError("vendor must be one of: cisco, dlink, generic")
+        return normalized
+
+    @field_validator("management_protocol")
+    @classmethod
+    def validate_protocol(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        allowed = {"snmp", "ssh", "snmp+ssh"}
+        if normalized not in allowed:
+            raise ValueError("management_protocol must be one of: snmp, ssh, snmp+ssh")
+        return normalized
+
+    @field_validator("snmp_version")
+    @classmethod
+    def validate_snmp_version(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"2c"}:
+            raise ValueError("snmp_version currently supports only '2c'")
+        return normalized
+
+    @field_validator("snmp_community_ro")
+    @classmethod
+    def validate_snmp_ro(cls, v: str) -> str:
+        value = v.strip()
+        if not value or len(value) > 255:
+            raise ValueError("snmp_community_ro must be 1-255 characters")
+        return value
+
+    @field_validator("snmp_community_rw")
+    @classmethod
+    def validate_snmp_rw(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if len(value) > 255:
+            raise ValueError("snmp_community_rw must be <= 255 characters")
+        return value or None
+
 
 class NetworkSwitchUpdate(BaseModel):
     name: str | None = None
@@ -366,6 +415,11 @@ class NetworkSwitchUpdate(BaseModel):
     enable_password: str | None = None
     ssh_port: int | None = None
     ap_vlan: int | None = None
+    vendor: str | None = None
+    management_protocol: str | None = None
+    snmp_version: str | None = None
+    snmp_community_ro: str | None = None
+    snmp_community_rw: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -383,6 +437,48 @@ class NetworkSwitchUpdate(BaseModel):
             return _validate_ip(v)
         return v
 
+    @field_validator("vendor")
+    @classmethod
+    def validate_vendor(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        allowed = {"cisco", "dlink", "generic"}
+        if normalized not in allowed:
+            raise ValueError("vendor must be one of: cisco, dlink, generic")
+        return normalized
+
+    @field_validator("management_protocol")
+    @classmethod
+    def validate_protocol(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        allowed = {"snmp", "ssh", "snmp+ssh"}
+        if normalized not in allowed:
+            raise ValueError("management_protocol must be one of: snmp, ssh, snmp+ssh")
+        return normalized
+
+    @field_validator("snmp_version")
+    @classmethod
+    def validate_snmp_version(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if normalized not in {"2c"}:
+            raise ValueError("snmp_version currently supports only '2c'")
+        return normalized
+
+    @field_validator("snmp_community_ro", "snmp_community_rw")
+    @classmethod
+    def validate_communities(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if len(value) > 255:
+            raise ValueError("SNMP community must be <= 255 characters")
+        return value or None
+
 
 class NetworkSwitchPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -393,6 +489,11 @@ class NetworkSwitchPublic(BaseModel):
     ssh_username: str
     ssh_port: int = 22
     ap_vlan: int = 20
+    vendor: str = "cisco"
+    management_protocol: str = "snmp+ssh"
+    snmp_version: str = "2c"
+    snmp_community_ro: str = "public"
+    snmp_community_rw: str | None = None
     model_info: str | None = None
     ios_version: str | None = None
     hostname: str | None = None
@@ -416,6 +517,72 @@ class AccessPointInfo(BaseModel):
     cdp_platform: str | None = None
     poe_power: str | None = None
     poe_status: str | None = None
+
+
+class SwitchPortInfo(BaseModel):
+    port: str
+    if_index: int
+    description: str | None = None
+    admin_status: str | None = None
+    oper_status: str | None = None
+    speed_mbps: int | None = None
+    duplex: str | None = None
+    vlan: int | None = None
+    poe_enabled: bool | None = None
+    poe_power_w: float | None = None
+    mac_count: int | None = None
+
+
+class SwitchPortsPublic(BaseModel):
+    data: list[SwitchPortInfo]
+    count: int
+
+
+class SwitchPortAdminStateUpdate(BaseModel):
+    admin_state: str
+
+    @field_validator("admin_state")
+    @classmethod
+    def validate_admin_state(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"up", "down"}:
+            raise ValueError("admin_state must be 'up' or 'down'")
+        return normalized
+
+
+class SwitchPortDescriptionUpdate(BaseModel):
+    description: str
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: str) -> str:
+        value = v.strip()
+        if len(value) > 255:
+            raise ValueError("description must be <= 255 characters")
+        return value
+
+
+class SwitchPortVlanUpdate(BaseModel):
+    vlan: int
+
+    @field_validator("vlan")
+    @classmethod
+    def validate_vlan(cls, v: int) -> int:
+        if v < 1 or v > 4094:
+            raise ValueError("vlan must be 1-4094")
+        return v
+
+
+class SwitchPortPoeUpdate(BaseModel):
+    action: str
+
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"on", "off", "cycle"}:
+            raise ValueError("action must be one of: on, off, cycle")
+        return normalized
 
 
 # ── MediaPlayer schemas ─────────────────────────────────────────

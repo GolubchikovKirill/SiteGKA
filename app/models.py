@@ -48,6 +48,11 @@ class NetworkSwitch(SQLModel, table=True):
     enable_password: str = Field(max_length=255, default="")
     ssh_port: int = Field(default=22)
     ap_vlan: int = Field(default=20)
+    vendor: str = Field(default="cisco", max_length=32, index=True)
+    management_protocol: str = Field(default="snmp+ssh", max_length=32)
+    snmp_version: str = Field(default="2c", max_length=10)
+    snmp_community_ro: str = Field(default="public", max_length=255)
+    snmp_community_rw: str | None = Field(default=None, max_length=255)
 
     model_info: str | None = Field(default=None, max_length=255)
     ios_version: str | None = Field(default=None, max_length=255)

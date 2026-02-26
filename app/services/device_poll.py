@@ -17,6 +17,8 @@ import struct
 import warnings
 from dataclasses import dataclass, field
 
+warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
+
 from pysnmp.hlapi.asyncio import (  # noqa: E402
     CommunityData,
     ContextData,
@@ -27,9 +29,7 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
 )
 from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd  # noqa: E402
 
-from app.observability.metrics import media_player_ops_total
-
-warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
+from app.observability.metrics import media_player_ops_total  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

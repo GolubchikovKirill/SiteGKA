@@ -6,6 +6,7 @@ import type { NetworkSwitch } from "../client";
 import { getSwitches, createSwitch, updateSwitch, deleteSwitch, pollSwitch } from "../client";
 import SwitchForm from "../components/SwitchForm";
 import SwitchCard from "../components/SwitchCard";
+import SwitchPortsTable from "../components/SwitchPortsTable";
 
 export default function SwitchesPage() {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ export default function SwitchesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<NetworkSwitch | null>(null);
   const [pollingId, setPollingId] = useState<string | null>(null);
+  const [portsTarget, setPortsTarget] = useState<NetworkSwitch | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["switches", search],
@@ -104,6 +106,7 @@ export default function SwitchesPage() {
               onPoll={(id) => pollMut.mutate(id)}
               onEdit={(s) => { setEditTarget(s); setShowForm(true); }}
               onDelete={handleDelete}
+              onOpenPorts={(s) => setPortsTarget(s)}
               isPolling={pollingId === sw.id}
               isSuperuser={isSuperuser}
             />
@@ -130,6 +133,13 @@ export default function SwitchesPage() {
           initial={editTarget ?? undefined}
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditTarget(null); }}
+        />
+      )}
+      {portsTarget && (
+        <SwitchPortsTable
+          sw={portsTarget}
+          isSuperuser={isSuperuser}
+          onClose={() => setPortsTarget(null)}
         />
       )}
     </div>

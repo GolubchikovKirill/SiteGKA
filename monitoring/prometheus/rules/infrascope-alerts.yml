@@ -113,3 +113,25 @@ groups:
         annotations:
           summary: "Скачок ошибок worker задач"
           description: "Более 5 failed worker tasks за 10 минут."
+
+      - alert: InfraScopeSwitchPortOpsErrorBurst
+        expr: sum(increase(infrascope_switch_port_ops_total{result="error"}[10m])) > 10
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Всплеск ошибок операций с портами"
+          description: "Более 10 неуспешных операций по портам свитчей за 10 минут."
+
+      - alert: InfraScopeSwitchPortWriteFailRateHigh
+        expr: |
+          (
+            sum by (vendor) (increase(infrascope_switch_port_ops_total{operation=~"admin_state|description|vlan|poe",result="error"}[15m])) /
+            clamp_min(sum by (vendor) (increase(infrascope_switch_port_ops_total{operation=~"admin_state|description|vlan|poe"}[15m])), 1)
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Высокий fail-rate write операций по портам"
+          description: "Доля ошибок write-операций по портам выше 30% ({{ $labels.vendor }}) за 15 минут."

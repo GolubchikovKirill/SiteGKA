@@ -393,6 +393,11 @@ export interface NetworkSwitch {
   ssh_username: string;
   ssh_port: number;
   ap_vlan: number;
+  vendor: "cisco" | "dlink" | "generic";
+  management_protocol: "snmp" | "ssh" | "snmp+ssh";
+  snmp_version: "2c";
+  snmp_community_ro: string;
+  snmp_community_rw: string | null;
   model_info: string | null;
   ios_version: string | null;
   hostname: string | null;
@@ -418,6 +423,25 @@ export interface AccessPoint {
   poe_status: string | null;
 }
 
+export interface SwitchPort {
+  port: string;
+  if_index: number;
+  description: string | null;
+  admin_status: string | null;
+  oper_status: string | null;
+  speed_mbps: number | null;
+  duplex: string | null;
+  vlan: number | null;
+  poe_enabled: boolean | null;
+  poe_power_w: number | null;
+  mac_count: number | null;
+}
+
+export interface SwitchPortsResponse {
+  data: SwitchPort[];
+  count: number;
+}
+
 export async function getSwitches(name?: string) {
   const params: Record<string, string> = {};
   if (name) params.name = name;
@@ -433,6 +457,11 @@ export async function createSwitch(sw: {
   enable_password: string;
   ssh_port: number;
   ap_vlan: number;
+  vendor: "cisco" | "dlink" | "generic";
+  management_protocol: "snmp" | "ssh" | "snmp+ssh";
+  snmp_version: "2c";
+  snmp_community_ro: string;
+  snmp_community_rw?: string;
 }) {
   const { data } = await api.post<NetworkSwitch>("/switches/", sw);
   return data;
@@ -460,4 +489,35 @@ export async function getSwitchAPs(id: string) {
 export async function rebootAP(switchId: string, iface: string, method: string = "poe") {
   const { data } = await api.post(`/switches/${switchId}/reboot-ap`, { interface: iface, method });
   return data;
+}
+
+export async function getSwitchPorts(id: string, q?: string, skip = 0, limit = 100) {
+  const params: Record<string, string | number> = { skip, limit };
+  if (q) params.q = q;
+  const { data } = await api.get<SwitchPortsResponse>(`/switches/${id}/ports`, { params });
+  return data;
+}
+
+export async function setSwitchPortAdminState(id: string, port: string, admin_state: "up" | "down") {
+  const encoded = encodeURIComponent(port);
+  const { data } = await api.post(`/switches/${id}/ports/${encoded}/admin-state`, { admin_state });
+  return data as { message: string };
+}
+
+export async function setSwitchPortDescription(id: string, port: string, description: string) {
+  const encoded = encodeURIComponent(port);
+  const { data } = await api.post(`/switches/${id}/ports/${encoded}/description`, { description });
+  return data as { message: string };
+}
+
+export async function setSwitchPortVlan(id: string, port: string, vlan: number) {
+  const encoded = encodeURIComponent(port);
+  const { data } = await api.post(`/switches/${id}/ports/${encoded}/vlan`, { vlan });
+  return data as { message: string };
+}
+
+export async function setSwitchPortPoe(id: string, port: string, action: "on" | "off" | "cycle") {
+  const encoded = encodeURIComponent(port);
+  const { data } = await api.post(`/switches/${id}/ports/${encoded}/poe`, { action });
+  return data as { message: string };
 }

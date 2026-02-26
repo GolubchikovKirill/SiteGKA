@@ -12,6 +12,7 @@ interface Props {
   onPoll: (id: string) => void;
   onEdit: (sw: NetworkSwitch) => void;
   onDelete: (id: string) => void;
+  onOpenPorts: (sw: NetworkSwitch) => void;
   isPolling: boolean;
   isSuperuser: boolean;
 }
@@ -82,7 +83,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
   );
 }
 
-export default function SwitchCard({ sw, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
+export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, isPolling, isSuperuser }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const { data: aps, isLoading: loadingAPs } = useQuery({
@@ -107,7 +108,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, isPolling, is
             </div>
             <div>
               <div className="font-medium text-sm text-gray-900">{sw.name}</div>
-              <div className="text-xs text-gray-500">{sw.model_info || "Cisco"}</div>
+              <div className="text-xs text-gray-500">{sw.model_info || sw.vendor.toUpperCase()}</div>
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
@@ -156,6 +157,13 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, isPolling, is
           Точки доступа (VLAN {sw.ap_vlan})
           {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           {aps && <span className="text-gray-400 font-normal">({aps.length})</span>}
+        </button>
+        <button
+          onClick={() => onOpenPorts(sw)}
+          className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 transition"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Порты свитча
         </button>
 
         {/* AP List */}

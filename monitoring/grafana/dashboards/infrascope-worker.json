@@ -190,6 +190,26 @@
       ],
       "title": "Worker Task Duration p95",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "id": 8,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (vendor, operation, result) (increase(infrascope_switch_port_ops_total[15m]))",
+          "legendFormat": "{{vendor}} {{operation}} {{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Switch Port Operations From Worker/API (15m)",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -202,6 +222,6 @@
   "timezone": "",
   "title": "InfraScope Worker",
   "uid": "infrascope-worker",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
