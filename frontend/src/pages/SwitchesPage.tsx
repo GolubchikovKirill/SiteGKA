@@ -60,20 +60,20 @@ export default function SwitchesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="app-toolbar p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Network className="h-6 w-6 text-teal-600" />
             Сетевое оборудование
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-slate-500 mt-1">
             {switches.length} свитч(ей) &middot; {onlineCount} онлайн
           </p>
         </div>
         {isSuperuser && (
           <button
             onClick={() => { setEditTarget(null); setShowForm(true); }}
-            className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 transition shadow-sm"
+            className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm transition shadow-sm bg-gradient-to-br from-teal-600 to-cyan-600"
           >
             <Plus className="h-4 w-4" />
             Добавить свитч
@@ -88,7 +88,7 @@ export default function SwitchesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Поиск по названию..."
-          className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
+          className="app-input w-full pl-10 pr-4 py-2 text-sm"
         />
       </div>
 

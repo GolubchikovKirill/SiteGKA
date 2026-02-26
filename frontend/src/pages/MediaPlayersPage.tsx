@@ -168,16 +168,16 @@ export default function MediaPlayersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="app-toolbar p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Медиаплееры</h1>
-          <p className="text-sm text-gray-500 mt-1">Неттопы, Iconbit и Twix устройства</p>
+          <h1 className="text-2xl font-bold text-slate-900">Медиаплееры</h1>
+          <p className="text-sm text-slate-500 mt-1">Неттопы, Iconbit и Twix устройства</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => pollAllMut.mutate()}
             disabled={pollAllMut.isPending}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition"
+            className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
           >
             <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
             {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
@@ -185,7 +185,7 @@ export default function MediaPlayersPage() {
           <button
             onClick={() => rediscoverMut.mutate()}
             disabled={rediscoverMut.isPending}
-            className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition"
+            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm text-blue-700 border-blue-300 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 transition"
             title="Найти устройства с изменившимся IP по MAC-адресу"
           >
             <Radar className={`h-4 w-4 ${rediscoverMut.isPending ? "animate-ping" : ""}`} />
@@ -194,7 +194,7 @@ export default function MediaPlayersPage() {
           {isSuperuser && (
             <button
               onClick={() => { setEditingPlayer(null); setFormError(null); setShowForm(true); }}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
             >
               <Plus className="h-4 w-4" />
               Добавить
@@ -218,19 +218,19 @@ export default function MediaPlayersPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Поиск по названию..."
-          className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="app-input w-full pl-10 pr-4 py-2 text-sm"
         />
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+      <div className="app-tabbar flex gap-1 p-1.5 w-fit">
         {FILTERS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setActiveFilter(key)}
-            className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
+            className={`app-tab inline-flex items-center gap-2 px-4 py-2 text-sm font-medium ${
               activeFilter === key
-                ? "bg-white text-gray-900 shadow-sm"
+                ? "active"
                 : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -242,7 +242,7 @@ export default function MediaPlayersPage() {
 
       {/* Iconbit bulk controls */}
       {showIconbitBulk && (
-        <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4 space-y-3">
+        <div className="app-panel border-purple-200 bg-purple-50/60 p-4 space-y-3">
           <div className="text-sm font-semibold text-purple-800">Управление всеми Iconbit</div>
           <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -331,7 +331,7 @@ export default function MediaPlayersPage() {
 
 function Stat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
   return (
-    <div className={`rounded-xl ${bg} px-4 py-3`}>
+    <div className={`app-stat ${bg} px-4 py-3`}>
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
     </div>

@@ -15,22 +15,26 @@ export default function Layout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
+    <div className="min-h-screen flex flex-col app-shell">
+      <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <Server className="h-6 w-6 text-blue-600" />
-              <span className="text-lg font-semibold text-gray-900">InfraScope</span>
-              <span className="text-sm text-gray-400 hidden sm:inline">IT Monitoring</span>
+              <div className="rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 p-2 shadow-md">
+                <Server className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <span className="text-lg font-semibold text-slate-900">InfraScope</span>
+                <span className="ml-2 text-xs text-slate-500 hidden sm:inline">IT Monitoring</span>
+              </div>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-slate-600 max-w-56 truncate">
                 {user?.full_name || user?.email}
               </span>
               <button
                 onClick={logout}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition"
               >
                 <LogOut className="h-4 w-4" />
                 Выход
@@ -39,7 +43,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
 
           {/* Navigation tabs */}
-          <nav className="-mb-px flex gap-6">
+          <nav className="-mb-px flex gap-2 pb-2 overflow-x-auto">
             {navItems
               .filter((item) => item.visible)
               .map(({ to, label, icon: Icon }) => (
@@ -48,10 +52,10 @@ export default function Layout({ children }: { children: ReactNode }) {
                   to={to}
                   end
                   className={({ isActive }) =>
-                    `inline-flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium transition ${
+                    `inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition whitespace-nowrap ${
                       isActive
-                        ? "border-blue-600 text-blue-600"
-                        : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                        ? "border-blue-200 bg-blue-50 text-blue-700"
+                        : "border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-700"
                     }`
                   }
                 >

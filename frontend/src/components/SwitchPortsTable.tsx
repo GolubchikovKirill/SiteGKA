@@ -71,21 +71,21 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-7xl max-h-[90vh] overflow-hidden border border-gray-200 shadow-xl">
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between gap-3">
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="app-panel w-full max-w-7xl max-h-[90vh] overflow-hidden border-slate-200/70 shadow-2xl">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Порты: {sw.name}</h3>
-            <p className="text-xs text-gray-500">{sw.ip_address} · {sw.vendor.toUpperCase()}</p>
+            <h3 className="text-lg font-semibold text-slate-900">Порты: {sw.name}</h3>
+            <p className="text-xs text-slate-500">{sw.ip_address} · {sw.vendor.toUpperCase()}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Фильтр по порту/описанию"
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm w-64"
+              className="app-input px-3 py-2 text-sm w-64"
             />
-            <button onClick={onClose} className="px-3 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">
+            <button onClick={onClose} className="app-btn-secondary px-3 py-2 text-sm">
               Закрыть
             </button>
           </div>
@@ -95,8 +95,8 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
             <div className="p-8 text-sm text-gray-500 text-center">Загрузка портов...</div>
           ) : (
             <table className="w-full text-xs">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr className="text-left text-gray-600">
+              <thead className="bg-slate-50 sticky top-0 z-10">
+                <tr className="text-left text-slate-600">
                   <th className="px-3 py-2">Порт</th>
                   <th className="px-3 py-2">Admin/Oper</th>
                   <th className="px-3 py-2">VLAN</th>
@@ -108,7 +108,7 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.port} className="border-t border-gray-100 align-top">
+                  <tr key={row.port} className="border-t border-slate-100 align-top hover:bg-slate-50/60">
                     <td className="px-3 py-2 font-mono">{row.port}</td>
                     <td className="px-3 py-2">{formatStatus(row.admin_status)} / {formatStatus(row.oper_status)}</td>
                     <td className="px-3 py-2">
@@ -116,12 +116,12 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                         <input
                           value={vlanDraft[row.port] ?? String(row.vlan ?? "")}
                           onChange={(e) => setVlanDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
-                          className="w-16 rounded border border-gray-300 px-2 py-1 text-xs"
+                          className="app-input w-16 px-2 py-1 text-xs"
                         />
                         {isSuperuser && (
                           <button
                             onClick={() => saveVlan(row)}
-                            className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                            className="app-btn-secondary px-2 py-1 text-xs"
                           >
                             Save
                           </button>
@@ -138,12 +138,12 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                         <input
                           value={descDraft[row.port] ?? row.description ?? ""}
                           onChange={(e) => setDescDraft((prev) => ({ ...prev, [row.port]: e.target.value }))}
-                          className="w-52 rounded border border-gray-300 px-2 py-1 text-xs"
+                          className="app-input w-52 px-2 py-1 text-xs"
                         />
                         {isSuperuser && (
                           <button
                             onClick={() => saveDescription(row)}
-                            className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                            className="app-btn-secondary px-2 py-1 text-xs"
                           >
                             Save
                           </button>

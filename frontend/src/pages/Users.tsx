@@ -72,14 +72,14 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="app-toolbar p-4 sm:p-5 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Управление пользователями</h1>
-          <p className="text-sm text-gray-500 mt-1">Создание аккаунтов и назначение ролей</p>
+          <h1 className="text-2xl font-bold text-slate-900">Управление пользователями</h1>
+          <p className="text-sm text-slate-500 mt-1">Создание аккаунтов и назначение ролей</p>
         </div>
         <button
           onClick={() => { setEditingUser(null); setFormError(null); setShowForm(true); }}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition"
+          className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
         >
           <Plus className="h-4 w-4" />
           Создать
@@ -87,15 +87,15 @@ export default function UsersPage() {
       </div>
 
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3">
-        <div className="rounded-xl bg-gray-100 px-4 py-3">
+        <div className="app-stat bg-gray-100 px-4 py-3">
           <div className="text-2xl font-bold text-gray-900">{users.length}</div>
           <div className="text-xs text-gray-500 mt-0.5">Всего</div>
         </div>
-        <div className="rounded-xl bg-blue-50 px-4 py-3">
+        <div className="app-stat bg-blue-50 px-4 py-3">
           <div className="text-2xl font-bold text-blue-700">{users.filter((u) => u.is_superuser).length}</div>
           <div className="text-xs text-gray-500 mt-0.5">Администраторы</div>
         </div>
-        <div className="rounded-xl bg-emerald-50 px-4 py-3">
+        <div className="app-stat bg-emerald-50 px-4 py-3">
           <div className="text-2xl font-bold text-emerald-700">{users.filter((u) => u.is_active).length}</div>
           <div className="text-xs text-gray-500 mt-0.5">Активные</div>
         </div>
@@ -110,7 +110,7 @@ export default function UsersPage() {
           <p className="text-lg">Нет пользователей</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="app-panel overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

@@ -116,17 +116,17 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="app-toolbar p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Мониторинг принтеров</h1>
-          <p className="text-sm text-gray-500 mt-1">Состояние оборудования и доступность</p>
+          <h1 className="text-2xl font-bold text-slate-900">Мониторинг принтеров</h1>
+          <p className="text-sm text-slate-500 mt-1">Состояние оборудования, доступность и расходники</p>
         </div>
         {activeTab !== "scanner" && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => pollAllMut.mutate()}
               disabled={pollAllMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition"
+              className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
             >
               <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
               {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
@@ -134,7 +134,7 @@ export default function Dashboard() {
             {isSuperuser && (
               <button
                 onClick={() => { setEditingPrinter(null); setFormError(null); setShowForm(true); }}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
               >
                 <Plus className="h-4 w-4" />
                 Добавить
@@ -165,20 +165,20 @@ export default function Dashboard() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск по магазину... (А = A)"
-            className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="app-input w-full pl-10 pr-4 py-2 text-sm"
           />
         </div>
       )}
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+      <div className="app-tabbar flex gap-1 p-1.5 w-fit">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
+            className={`app-tab inline-flex items-center gap-2 px-4 py-2 text-sm font-medium ${
               activeTab === key
-                ? "bg-white text-gray-900 shadow-sm"
+                ? "active"
                 : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -257,7 +257,7 @@ export default function Dashboard() {
 
 function Stat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
   return (
-    <div className={`rounded-xl ${bg} px-4 py-3`}>
+    <div className={`app-stat ${bg} px-4 py-3`}>
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
     </div>

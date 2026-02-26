@@ -1,5 +1,107 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: #0f172a;
+  background:
+    radial-gradient(1200px 420px at 0% -10%, rgba(59, 130, 246, 0.13), transparent 55%),
+    radial-gradient(900px 340px at 100% 0%, rgba(20, 184, 166, 0.12), transparent 50%),
+    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::selection {
+  color: white;
+  background: #2563eb;
+}
+
+.app-shell {
+  background: transparent;
+}
+
+.app-panel {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.app-toolbar {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+}
+
+.app-input {
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  background: white;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.app-input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  outline: none;
+}
+
+.app-btn-primary {
+  border-radius: 12px;
+  color: white;
+  font-weight: 600;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25);
+}
+
+.app-btn-primary:hover {
+  filter: brightness(1.06);
+}
+
+.app-btn-secondary {
+  border-radius: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.app-btn-secondary:hover {
+  background: #f8fafc;
+}
+
+.app-stat {
+  border: 1px solid rgba(203, 213, 225, 0.65);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.app-tabbar {
+  border-radius: 14px;
+  border: 1px solid rgba(203, 213, 225, 0.55);
+  background: rgba(248, 250, 252, 0.95);
+}
+
+.app-tab {
+  border-radius: 10px;
+  transition: all .2s ease;
+}
+
+.app-tab.active {
+  color: #0f172a;
+  background: white;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.12);
+}
+
 @keyframes eq1 {
   0%, 100% { height: 30%; }
   50% { height: 100%; }

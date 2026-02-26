@@ -26,16 +26,18 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <Server className="h-8 w-8 text-blue-600" />
+          <div className="rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 p-2 shadow-lg">
+            <Server className="h-6 w-6 text-white" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900">InfraScope</h1>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-5"
+          className="app-panel p-6 space-y-5"
         >
           <h2 className="text-lg font-semibold text-center text-gray-800">
             Вход в систему
@@ -54,7 +56,7 @@ export default function Login() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="app-input w-full px-3 py-2 text-sm"
               placeholder="admin@infrascope.dev"
             />
           </div>
@@ -66,14 +68,14 @@ export default function Login() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="app-input w-full px-3 py-2 text-sm"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition"
+            className="app-btn-primary w-full px-4 py-2.5 text-sm disabled:opacity-50 transition"
           >
             {loading ? "Вход..." : "Войти"}
           </button>
