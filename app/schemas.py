@@ -699,6 +699,7 @@ class MediaPlayerCreate(BaseModel):
     name: str
     model: str = ""
     ip_address: str
+    hostname: str | None = None
     mac_address: str | None = None
 
     @field_validator("device_type")
@@ -729,6 +730,20 @@ class MediaPlayerCreate(BaseModel):
     def validate_ip(cls, v: str) -> str:
         return _validate_ip_or_hostname(v)
 
+    @field_validator("hostname")
+    @classmethod
+    def validate_hostname(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 255:
+            raise ValueError("hostname must be <= 255 characters")
+        if not re.match(_HOSTNAME_PATTERN, value):
+            raise ValueError("hostname format is invalid")
+        return value
+
     @model_validator(mode="after")
     def set_default_model(self) -> MediaPlayerCreate:
         if not self.model:
@@ -741,6 +756,7 @@ class MediaPlayerUpdate(BaseModel):
     name: str | None = None
     model: str | None = None
     ip_address: str | None = None
+    hostname: str | None = None
     mac_address: str | None = None
 
     @field_validator("name")
@@ -767,6 +783,20 @@ class MediaPlayerUpdate(BaseModel):
         if v is not None:
             return _validate_ip_or_hostname(v)
         return v
+
+    @field_validator("hostname")
+    @classmethod
+    def validate_hostname(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 255:
+            raise ValueError("hostname must be <= 255 characters")
+        if not re.match(_HOSTNAME_PATTERN, value):
+            raise ValueError("hostname format is invalid")
+        return value
 
 
 class MediaPlayerPublic(BaseModel):

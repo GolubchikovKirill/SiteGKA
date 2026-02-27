@@ -381,6 +381,7 @@ export async function createMediaPlayer(player: {
   name: string;
   model: string;
   ip_address: string;
+  hostname?: string;
   mac_address?: string;
 }) {
   const { data } = await api.post<MediaPlayer>("/media-players/", player);

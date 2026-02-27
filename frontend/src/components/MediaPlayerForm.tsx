@@ -4,7 +4,14 @@ import type { MediaPlayer, DeviceType } from "../client";
 
 interface Props {
   player?: MediaPlayer | null;
-  onSave: (data: { device_type: DeviceType; name: string; model: string; ip_address: string; mac_address?: string }) => void;
+  onSave: (data: {
+    device_type: DeviceType;
+    name: string;
+    model: string;
+    ip_address: string;
+    hostname?: string;
+    mac_address?: string;
+  }) => void;
   onClose: () => void;
   loading: boolean;
   error?: string | null;
@@ -21,6 +28,7 @@ export default function MediaPlayerForm({ player, onSave, onClose, loading, erro
   const [name, setName] = useState(player?.name ?? "");
   const [model, setModel] = useState(player?.model ?? "");
   const [ipAddress, setIpAddress] = useState(player?.ip_address ?? "");
+  const [hostname, setHostname] = useState(player?.hostname ?? "");
   const [macAddress, setMacAddress] = useState(player?.mac_address ?? "");
 
   const isNettop = deviceType === "nettop";
@@ -32,6 +40,7 @@ export default function MediaPlayerForm({ player, onSave, onClose, loading, erro
       name: name.trim(),
       model: isNettop ? "Неттоп" : model.trim(),
       ip_address: ipAddress.trim(),
+      hostname: hostname.trim() || undefined,
       mac_address: macAddress.trim() || undefined,
     });
   };
@@ -103,7 +112,7 @@ export default function MediaPlayerForm({ player, onSave, onClose, loading, erro
 
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">
-              {isNettop ? "IP-адрес или hostname" : "IP-адрес"}
+              IP-адрес
             </label>
             <input
               required
@@ -112,10 +121,20 @@ export default function MediaPlayerForm({ player, onSave, onClose, loading, erro
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder={isNettop ? "10.10.98.50" : "192.168.1.100"}
             />
-            {isNettop && (
-              <p className="text-[11px] text-gray-400">IP-адрес надёжнее для Docker-сети</p>
-            )}
           </div>
+
+          {isNettop && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">Hostname</label>
+              <input
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="NETTOP-01"
+              />
+              <p className="text-[11px] text-gray-400">Для NetSupport используется только hostname.</p>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">MAC-адрес</label>
