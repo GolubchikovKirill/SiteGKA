@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Monitor, Music, ExternalLink, Clock, Cpu,
-  Network, Wifi, Play, Square, Volume2, Upload, X, FileAudio,
+  Network, Wifi, Play, Square, Volume2, Upload, X, FileAudio, Copy,
 } from "lucide-react";
 import type { MediaPlayer } from "../client";
 import {
@@ -219,12 +219,29 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
   const Icon = style.icon;
   const deviceLabel = DEVICE_LABELS[player.device_type] ?? player.device_type;
   const isIconbit = player.device_type === "iconbit";
+  const isNettop = player.device_type === "nettop";
 
   const polledAt = player.last_polled_at
     ? new Date(player.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
 
   const ports = player.open_ports?.split(",").filter(Boolean) ?? [];
+  const netSupportTarget = (player.hostname || player.ip_address || "").trim();
+
+  const openNetSupport = () => {
+    if (!netSupportTarget) return;
+    // Best-effort launch for custom protocol handler (NetSupport Manager).
+    window.location.href = `nsm://${netSupportTarget}`;
+  };
+
+  const copyNetSupportTarget = async () => {
+    if (!netSupportTarget || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(netSupportTarget);
+    } catch {
+      // Ignore clipboard errors in unsupported environments.
+    }
+  };
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
@@ -266,6 +283,15 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <Monitor className="h-3 w-3 text-gray-400" />
               <span>{player.hostname}</span>
+              {isNettop && (
+                <button
+                  onClick={copyNetSupportTarget}
+                  className="inline-flex items-center rounded p-0.5 text-gray-400 hover:text-rose-600 hover:bg-gray-100 transition"
+                  title="Скопировать hostname для NetSupport"
+                >
+                  <Copy className="h-3 w-3" />
+                </button>
+              )}
             </div>
           )}
 
@@ -313,15 +339,26 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />
             </button>
-            <a
-              href={webPanelUrl(player)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition"
-              title="Веб-панель"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+            {isNettop ? (
+              <button
+                onClick={openNetSupport}
+                disabled={!netSupportTarget}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition disabled:opacity-40"
+                title="Открыть в NetSupport Manager"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <a
+                href={webPanelUrl(player)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition"
+                title="Веб-панель"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
             {isSuperuser && (
               <>
                 <button
