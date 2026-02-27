@@ -92,9 +92,11 @@ if (-not $exe) {
 Write-Log "Using executable: $exe"
 
 try {
-    # Always send connect command; NetSupport usually forwards it to existing instance.
-    Start-Process -FilePath $exe -ArgumentList @("/C", $target, "/VC")
-    Write-Log "Connect command sent: /C $target /VC"
+    # Force TCP/IP and provide hostname in both name/address forms.
+    # /C <name> populates client name, /C >address populates address entry.
+    $args = @("/U", "TC", "/C", $target, "/C", ">$target", "/VC")
+    Start-Process -FilePath $exe -ArgumentList $args
+    Write-Log "Connect command sent: $($args -join ' ')"
 } catch {
     Show-Error "Не удалось запустить NetSupport Manager: $($_.Exception.Message)"
     exit 1

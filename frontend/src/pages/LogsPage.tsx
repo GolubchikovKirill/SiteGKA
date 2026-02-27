@@ -93,6 +93,7 @@ export default function LogsPage() {
               <li>Выполните: <code>powershell -ExecutionPolicy Bypass -File .\Install-InfraScopeNetSupportHelper.ps1</code></li>
               <li>Проверьте в <code>Win + R</code>: <code>infrascope-nsm://NETTOP-01</code></li>
               <li>Если не сработало: откройте лог <code>%TEMP%\infrascope-nsm.log</code>.</li>
+              <li>После обновлений helper запускайте Install-скрипт повторно.</li>
             </ol>
           </div>
 
