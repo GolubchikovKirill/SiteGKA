@@ -49,6 +49,11 @@ function Find-NetSupportExecutable {
     return $null
 }
 
+function Is-NetSupportAlreadyOpen {
+    $proc = Get-Process -Name "Pcictlui" -ErrorAction SilentlyContinue | Select-Object -First 1
+    return $null -ne $proc
+}
+
 $target = Resolve-TargetFromUri -rawUri $Uri
 if (-not $target) {
     Show-Error "Не удалось определить hostname из ссылки: $Uri"
@@ -61,4 +66,9 @@ if (-not $exe) {
     exit 1
 }
 
-Start-Process -FilePath $exe -ArgumentList "/C `"$target`" /VC"
+if (Is-NetSupportAlreadyOpen) {
+    # Do not spawn duplicate Manager window.
+    exit 0
+}
+
+Start-Process -FilePath $exe -ArgumentList @("/C", $target, "/VC")

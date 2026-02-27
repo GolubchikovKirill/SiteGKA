@@ -135,6 +135,12 @@ export async function getEventLogs(params?: {
   return data;
 }
 
+export function getNetSupportHelperDownloadUrl(
+  filename: "Install-InfraScopeNetSupportHelper.ps1" | "NetSupportUriHandler.ps1" | "Uninstall-InfraScopeNetSupportHelper.ps1",
+) {
+  return `/api/v1/support-tools/netsupport-helper/${encodeURIComponent(filename)}`;
+}
+
 // ── Printers ──
 
 export type PrinterType = "laser" | "label";
