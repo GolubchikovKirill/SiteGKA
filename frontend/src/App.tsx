@@ -2,13 +2,14 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./auth";
-import { pollAllMediaPlayers, pollAllPrinters, pollAllSwitches } from "./client";
+import { pollAllCashRegisters, pollAllMediaPlayers, pollAllPrinters, pollAllSwitches } from "./client";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import MediaPlayersPage from "./pages/MediaPlayersPage";
 import SwitchesPage from "./pages/SwitchesPage";
 import LogsPage from "./pages/LogsPage";
+import CashRegistersPage from "./pages/CashRegistersPage";
 import UsersPage from "./pages/Users";
 
 const GLOBAL_AUTO_REFRESH_MS = 15 * 60_000;
@@ -25,10 +26,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         pollAllPrinters("label"),
         pollAllMediaPlayers(),
         pollAllSwitches(),
+        pollAllCashRegisters(),
       ]).finally(() => {
         queryClient.invalidateQueries({ queryKey: ["printers"] });
         queryClient.invalidateQueries({ queryKey: ["media-players"] });
         queryClient.invalidateQueries({ queryKey: ["switches"] });
+        queryClient.invalidateQueries({ queryKey: ["cash-registers"] });
       });
     }, GLOBAL_AUTO_REFRESH_MS);
     return () => clearInterval(timer);
@@ -64,7 +67,9 @@ export default function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/media-players" element={<MediaPlayersPage />} />
                 <Route path="/switches" element={<SwitchesPage />} />
-                <Route path="/logs" element={<LogsPage />} />
+                <Route path="/cash-registers" element={<CashRegistersPage />} />
+                <Route path="/settings" element={<LogsPage />} />
+                <Route path="/logs" element={<Navigate to="/settings" replace />} />
                 <Route
                   path="/users"
                   element={

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth";
-import { LogOut, Server, Printer, Users, Monitor, Network, Moon, Sun, ScrollText } from "lucide-react";
+import { LogOut, Server, Printer, Users, Monitor, Network, Moon, Sun, ScrollText, Wallet } from "lucide-react";
 import { readThemeMode, setThemeMode, type ThemeMode } from "../theme";
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -13,7 +13,8 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/", label: "Принтеры", icon: Printer, visible: true },
     { to: "/media-players", label: "Медиаплееры", icon: Monitor, visible: true },
     { to: "/switches", label: "Сетевое оборудование", icon: Network, visible: true },
-    { to: "/logs", label: "Логи", icon: ScrollText, visible: true },
+    { to: "/cash-registers", label: "Кассы", icon: Wallet, visible: true },
+    { to: "/settings", label: "Настройки", icon: ScrollText, visible: true },
     { to: "/users", label: "Пользователи", icon: Users, visible: isSuperuser },
   ];
 

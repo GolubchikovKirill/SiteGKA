@@ -100,6 +100,138 @@ class EventLogsPublic(BaseModel):
     count: int
 
 
+class CashRegisterCreate(BaseModel):
+    kkm_number: str
+    store_code: str | None = None
+    serial_number: str | None = None
+    inventory_number: str | None = None
+    terminal_id_rs: str | None = None
+    terminal_id_sber: str | None = None
+    windows_version: str | None = None
+    kkm_type: str = "retail"
+    cash_number: str | None = None
+    hostname: str
+    comment: str | None = None
+
+    @field_validator("kkm_number", "hostname")
+    @classmethod
+    def validate_required_short_text(cls, v: str) -> str:
+        value = v.strip()
+        if not value or len(value) > 255:
+            raise ValueError("Field must be 1-255 characters")
+        return value
+
+    @field_validator("kkm_type")
+    @classmethod
+    def validate_kkm_type(cls, v: str) -> str:
+        value = v.strip().lower()
+        if value not in {"retail", "shtrih"}:
+            raise ValueError("kkm_type must be 'retail' or 'shtrih'")
+        return value
+
+    @field_validator(
+        "store_code",
+        "serial_number",
+        "inventory_number",
+        "terminal_id_rs",
+        "terminal_id_sber",
+        "windows_version",
+        "cash_number",
+        "comment",
+    )
+    @classmethod
+    def normalize_optional_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 1024:
+            raise ValueError("Field is too long")
+        return value
+
+
+class CashRegisterUpdate(BaseModel):
+    kkm_number: str | None = None
+    store_code: str | None = None
+    serial_number: str | None = None
+    inventory_number: str | None = None
+    terminal_id_rs: str | None = None
+    terminal_id_sber: str | None = None
+    windows_version: str | None = None
+    kkm_type: str | None = None
+    cash_number: str | None = None
+    hostname: str | None = None
+    comment: str | None = None
+
+    @field_validator("kkm_number", "hostname")
+    @classmethod
+    def validate_required_short_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value or len(value) > 255:
+            raise ValueError("Field must be 1-255 characters")
+        return value
+
+    @field_validator("kkm_type")
+    @classmethod
+    def validate_kkm_type(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip().lower()
+        if value not in {"retail", "shtrih"}:
+            raise ValueError("kkm_type must be 'retail' or 'shtrih'")
+        return value
+
+    @field_validator(
+        "store_code",
+        "serial_number",
+        "inventory_number",
+        "terminal_id_rs",
+        "terminal_id_sber",
+        "windows_version",
+        "cash_number",
+        "comment",
+    )
+    @classmethod
+    def normalize_optional_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 1024:
+            raise ValueError("Field is too long")
+        return value
+
+
+class CashRegisterPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kkm_number: str
+    store_code: str | None = None
+    serial_number: str | None = None
+    inventory_number: str | None = None
+    terminal_id_rs: str | None = None
+    terminal_id_sber: str | None = None
+    windows_version: str | None = None
+    kkm_type: str
+    cash_number: str | None = None
+    hostname: str
+    comment: str | None = None
+    is_online: bool | None = None
+    reachability_reason: str | None = None
+    last_polled_at: datetime | None = None
+    created_at: datetime
+
+
+class CashRegistersPublic(BaseModel):
+    data: list[CashRegisterPublic]
+    count: int
+
+
 # ── Printer schemas ──────────────────────────────────────────────
 
 

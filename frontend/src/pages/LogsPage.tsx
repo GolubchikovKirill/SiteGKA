@@ -11,11 +11,12 @@ const SEVERITIES: Array<{ key: EventSeverity | "all"; label: string }> = [
   { key: "critical", label: "Critical" },
 ];
 
-const DEVICE_KINDS: Array<{ key: "all" | "printer" | "media_player" | "switch"; label: string }> = [
+const DEVICE_KINDS: Array<{ key: "all" | "printer" | "media_player" | "switch" | "cash_register"; label: string }> = [
   { key: "all", label: "Все устройства" },
   { key: "printer", label: "Принтеры" },
   { key: "media_player", label: "Медиаплееры" },
   { key: "switch", label: "Сетевое оборудование" },
+  { key: "cash_register", label: "Кассы" },
 ];
 
 function severityBadge(severity: EventSeverity) {
@@ -34,7 +35,7 @@ function severityBadge(severity: EventSeverity) {
 export default function LogsPage() {
   const [section, setSection] = useState<"events" | "nsm-helper">("events");
   const [severity, setSeverity] = useState<EventSeverity | "all">("all");
-  const [deviceKind, setDeviceKind] = useState<"all" | "printer" | "media_player" | "switch">("all");
+  const [deviceKind, setDeviceKind] = useState<"all" | "printer" | "media_player" | "switch" | "cash_register">("all");
   const [search, setSearch] = useState("");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -55,8 +56,8 @@ export default function LogsPage() {
     <div className="space-y-6">
       <div className="app-toolbar p-4 sm:p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Логи</h1>
-          <p className="text-sm text-slate-500 mt-1">События устройств, смена IP и критические ошибки</p>
+          <h1 className="text-2xl font-bold text-slate-900">Настройки</h1>
+          <p className="text-sm text-slate-500 mt-1">Логи событий и инструкции для NetSupport Helper</p>
         </div>
         <button
           onClick={() => refetch()}
