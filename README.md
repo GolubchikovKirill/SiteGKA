@@ -184,6 +184,31 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - Для Linux можно использовать `docker-compose.prod.yml` (host network), если нужна максимальная точность ARP-сценариев.
 - Для macOS/Windows (Docker Desktop VM) больше опирайтесь на SNMP/HTTP fingerprint, чем на ARP.
 
+### NetSupport Manager (автозапуск по hostname)
+
+Для кнопки подключения к неттопу из UI нужен локальный Windows helper на ПК оператора.
+
+1. Скопируйте папку `tools/windows/netsupport-helper` на рабочий Windows ПК.
+2. Откройте PowerShell и запустите:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install-InfraScopeNetSupportHelper.ps1
+```
+
+3. Проверьте протокол вручную (`Win + R`):
+
+```text
+infrascope-nsm://NETTOP-01
+```
+
+4. Если открылся NetSupport Manager, кнопка в интерфейсе InfraScope будет работать автоматически.
+
+Удаление helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Uninstall-InfraScopeNetSupportHelper.ps1
+```
+
 ---
 
 ## Обновление

@@ -230,8 +230,8 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
 
   const openNetSupport = () => {
     if (!netSupportTarget) return;
-    // Best-effort launch for custom protocol handler (NetSupport Manager).
-    window.location.href = `nsm://${netSupportTarget}`;
+    // Opens local Windows protocol handler that launches NetSupport Manager.
+    window.location.href = `infrascope-nsm://${encodeURIComponent(netSupportTarget)}`;
   };
 
   const copyNetSupportTarget = async () => {
