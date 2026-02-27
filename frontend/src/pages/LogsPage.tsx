@@ -92,6 +92,7 @@ export default function LogsPage() {
               <li>Запустите PowerShell в этой папке от имени пользователя, который работает с InfraScope.</li>
               <li>Выполните: <code>powershell -ExecutionPolicy Bypass -File .\Install-InfraScopeNetSupportHelper.ps1</code></li>
               <li>Проверьте в <code>Win + R</code>: <code>infrascope-nsm://NETTOP-01</code></li>
+              <li>Если не сработало: откройте лог <code>%TEMP%\infrascope-nsm.log</code>.</li>
             </ol>
           </div>
 

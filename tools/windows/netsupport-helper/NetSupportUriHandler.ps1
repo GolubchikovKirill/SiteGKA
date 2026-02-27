@@ -3,9 +3,17 @@ param(
     [string]$Uri
 )
 
+$LogPath = Join-Path $env:TEMP "infrascope-nsm.log"
+
+function Write-Log([string]$text) {
+    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | $text"
+    Add-Content -Path $LogPath -Value $line -Encoding UTF8
+}
+
 function Show-Error($text) {
     Add-Type -AssemblyName PresentationFramework | Out-Null
     [System.Windows.MessageBox]::Show($text, "InfraScope NetSupport Helper") | Out-Null
+    Write-Log "ERROR: $text"
 }
 
 function Resolve-TargetFromUri([string]$rawUri) {
@@ -30,7 +38,7 @@ function Resolve-TargetFromUri([string]$rawUri) {
         return $null
     }
 
-    return [uri]::UnescapeDataString($payload).Trim()
+    return [uri]::UnescapeDataString($payload).Trim().Trim("/")
 }
 
 function Find-NetSupportExecutable {
@@ -46,29 +54,48 @@ function Find-NetSupportExecutable {
             return $path
         }
     }
+
+    try {
+        $appPath = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Pcictlui.exe" -ErrorAction Stop)."(Default)"
+        if ($appPath -and (Test-Path $appPath)) {
+            return $appPath
+        }
+    } catch {
+        # ignore
+    }
+
+    try {
+        $appPathWow = (Get-ItemProperty -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\Pcictlui.exe" -ErrorAction Stop)."(Default)"
+        if ($appPathWow -and (Test-Path $appPathWow)) {
+            return $appPathWow
+        }
+    } catch {
+        # ignore
+    }
+
     return $null
 }
 
-function Is-NetSupportAlreadyOpen {
-    $proc = Get-Process -Name "Pcictlui" -ErrorAction SilentlyContinue | Select-Object -First 1
-    return $null -ne $proc
-}
-
 $target = Resolve-TargetFromUri -rawUri $Uri
+Write-Log "Incoming URI: $Uri"
 if (-not $target) {
     Show-Error "Не удалось определить hostname из ссылки: $Uri"
     exit 1
 }
+Write-Log "Resolved target: $target"
 
 $exe = Find-NetSupportExecutable
 if (-not $exe) {
     Show-Error "Pcictlui.exe не найден. Установите NetSupport Manager на этот ПК."
     exit 1
 }
+Write-Log "Using executable: $exe"
 
-if (Is-NetSupportAlreadyOpen) {
-    # Do not spawn duplicate Manager window.
-    exit 0
+try {
+    # Always send connect command; NetSupport usually forwards it to existing instance.
+    Start-Process -FilePath $exe -ArgumentList @("/C", $target, "/VC")
+    Write-Log "Connect command sent: /C $target /VC"
+} catch {
+    Show-Error "Не удалось запустить NetSupport Manager: $($_.Exception.Message)"
+    exit 1
 }
-
-Start-Process -FilePath $exe -ArgumentList @("/C", $target, "/VC")
