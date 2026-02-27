@@ -98,8 +98,9 @@ Write-Log "Using executable: $exe"
 
 try {
     # Single deterministic command to avoid opening multiple NetSupport windows.
-    # Uses the requested workflow: TCP/IP + local location + hostname target.
-    $args = @("/U", "TC", "/D", "local", "/C", $target, "/VC")
+    # Uses TCP/IP and passes hostname as both client name and address.
+    # Address form uses >host per NetSupport CLI docs.
+    $args = @("/U", "TC", "/C", $target, "/C", "`">$target`"", "/VC")
     Start-Process -FilePath $exe -ArgumentList $args
     if (Is-NetSupportAlreadyOpen) {
         Write-Log "Connect command sent (app already open): $($args -join ' ')"
