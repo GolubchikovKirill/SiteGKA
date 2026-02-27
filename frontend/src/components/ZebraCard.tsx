@@ -91,11 +91,18 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
         {isUsb ? (
           printer.host_pc && (
             <div className="text-xs text-gray-400">
-              <span className="text-gray-500">ПК:</span> {printer.host_pc}
+              <span className="text-gray-500">Hostname / ПК:</span> {printer.host_pc}
             </div>
           )
         ) : (
-          <div className="text-xs text-gray-400 font-mono">{printer.ip_address}</div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-400 font-mono">{printer.ip_address}</div>
+            {printer.host_pc && (
+              <div className="text-xs text-gray-500">
+                <span className="text-gray-400">Hostname:</span> {printer.host_pc}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Footer */}

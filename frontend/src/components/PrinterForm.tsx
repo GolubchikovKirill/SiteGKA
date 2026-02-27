@@ -43,6 +43,7 @@ export default function PrinterForm({ printer, printerType, onSave, onClose, loa
       data.host_pc = hostPc.trim() || undefined;
     } else {
       data.ip_address = ipAddress.trim();
+      data.host_pc = hostPc.trim() || undefined;
     }
     onSave(data);
   };
@@ -120,14 +121,8 @@ export default function PrinterForm({ printer, printerType, onSave, onClose, loa
           </div>
 
           {isUsb ? (
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700">Подключён к ПК</label>
-              <input
-                value={hostPc}
-                onChange={(e) => setHostPc(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Имя компьютера или описание"
-              />
+            <div className="text-xs text-gray-500 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
+              USB-режим: IP-адрес не используется.
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -143,6 +138,16 @@ export default function PrinterForm({ printer, printerType, onSave, onClose, loa
               />
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-gray-700">{isUsb ? "Hostname / ПК" : "Hostname"}</label>
+            <input
+              value={hostPc}
+              onChange={(e) => setHostPc(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="printer-01 или PC-NAME"
+            />
+          </div>
 
           {!isLabel && (
             <div className="space-y-1.5">

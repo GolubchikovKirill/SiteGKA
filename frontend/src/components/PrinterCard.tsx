@@ -82,6 +82,11 @@ export default function PrinterCard({ printer, onPoll, onEdit, onDelete, isPolli
         {printer.ip_address && (
           <div className="text-xs text-gray-400 font-mono">{printer.ip_address}</div>
         )}
+        {printer.host_pc && (
+          <div className="text-xs text-gray-500">
+            <span className="text-gray-400">Hostname:</span> {printer.host_pc}
+          </div>
+        )}
 
         {/* Toner levels */}
         <div className="space-y-1.5">

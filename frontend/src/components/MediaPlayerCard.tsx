@@ -226,7 +226,7 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
     : null;
 
   const ports = player.open_ports?.split(",").filter(Boolean) ?? [];
-  const netSupportTarget = (player.hostname || player.ip_address || "").trim();
+  const netSupportTarget = (player.hostname || "").trim();
 
   const openNetSupport = () => {
     if (!netSupportTarget) return;
@@ -283,7 +283,7 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <Monitor className="h-3 w-3 text-gray-400" />
               <span>{player.hostname}</span>
-              {isNettop && (
+              {isNettop && netSupportTarget && (
                 <button
                   onClick={copyNetSupportTarget}
                   className="inline-flex items-center rounded p-0.5 text-gray-400 hover:text-rose-600 hover:bg-gray-100 transition"
@@ -344,7 +344,7 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
                 onClick={openNetSupport}
                 disabled={!netSupportTarget}
                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition disabled:opacity-40"
-                title="Открыть в NetSupport Manager"
+                title={netSupportTarget ? "Открыть в NetSupport Manager" : "Заполните hostname для подключения"}
               >
                 <ExternalLink className="h-3.5 w-3.5" />
               </button>
