@@ -76,6 +76,11 @@ function Find-NetSupportExecutable {
     return $null
 }
 
+function Is-NetSupportAlreadyOpen {
+    $proc = Get-Process -Name "Pcictlui" -ErrorAction SilentlyContinue | Select-Object -First 1
+    return $null -ne $proc
+}
+
 $target = Resolve-TargetFromUri -rawUri $Uri
 Write-Log "Incoming URI: $Uri"
 if (-not $target) {
@@ -92,11 +97,28 @@ if (-not $exe) {
 Write-Log "Using executable: $exe"
 
 try {
-    # Force TCP/IP and provide hostname in both name/address forms.
-    # /C <name> populates client name, /C >address populates address entry.
-    $args = @("/U", "TC", "/C", $target, "/C", ">$target", "/VC")
-    Start-Process -FilePath $exe -ArgumentList $args
-    Write-Log "Connect command sent: $($args -join ' ')"
+    # NetSupport behavior may differ by environment/profile.
+    # Try several CLI combinations for Local + TCP/IP using hostname in both
+    # "Client name" and "Address" forms.
+    $attempts = @(
+        @("/U", "TC", "/D", "local", "/C", $target, "/C", "`">$target`"", "/VC"),
+        @("/U", "TC", "/D", "local", "/C", $target, "/VC"),
+        @("/U", "TC", "/C", $target, "/C", "`">$target`"", "/VC"),
+        @("/U", "TC", "/C", $target, "/VC")
+    )
+
+    if (Is-NetSupportAlreadyOpen) {
+        $args = $attempts[0]
+        Start-Process -FilePath $exe -ArgumentList $args
+        Write-Log "Connect command sent (single, app already open): $($args -join ' ')"
+        exit 0
+    }
+
+    foreach ($args in $attempts) {
+        Start-Process -FilePath $exe -ArgumentList $args
+        Write-Log "Connect command sent: $($args -join ' ')"
+        Start-Sleep -Milliseconds 250
+    }
 } catch {
     Show-Error "Не удалось запустить NetSupport Manager: $($_.Exception.Message)"
     exit 1
