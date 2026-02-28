@@ -44,6 +44,9 @@ InfraScope — платформа мониторинга инфраструкт�
 - Kafka:
   - event-stream operational логов в топик `infrascope.events`;
   - UI для просмотра топиков и сообщений (`kafka-ui`).
+- Service Flow UI:
+  - интерактивная карта связей сервисов (как n8n-style canvas);
+  - live node/edge статусы, timeline, deep links в Jaeger/Kafka.
 
 ---
 
@@ -96,6 +99,7 @@ cp .env.example .env
   - default: `admin` / `admin`
 - Kafka UI: `http://127.0.0.1:8080`
 - Jaeger (trace UI): `http://127.0.0.1:16686`
+- Service Flow Map: `https://localhost/service-flow-map`
 
 > Для доступа по LAN настройте `HOST_IP`, hosts/DNS и при необходимости `PROMETHEUS_BIND` / `GRAFANA_BIND`.
 
@@ -171,6 +175,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
   - `INTERNAL_SERVICE_TOKEN`
   - `KAFKA_ENABLED`, `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_EVENT_TOPIC`
   - `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAMESPACE`
+  - `PROMETHEUS_API_URL`, `JAEGER_API_URL`, `JAEGER_UI_URL`, `KAFKA_UI_URL`
   - `ML_MIN_TRAIN_ROWS`, `ML_RETRAIN_HOUR_UTC`, `ML_SCORE_INTERVAL_MINUTES`
 - Monitoring:
   - `PROMETHEUS_BIND`, `PROMETHEUS_PORT`, `PROMETHEUS_RETENTION`
@@ -190,6 +195,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - Switches: `/switches/*`, `/switches/discover/*`
 - Tasks/Worker: `/tasks/*`
 - ML API: `/ml/*`
+- Observability API: `/observability/service-map`, `/observability/service-map/timeseries`
 - System: `/health`, `/metrics`
 
 Актуальная спецификация API: `https://localhost/docs`

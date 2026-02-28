@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.observability.metrics import observe_service_edge
 
 DEFAULT_TIMEOUT = 180.0
 
@@ -29,17 +31,24 @@ async def _proxy_request(
     files: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     url = f"{base_url.rstrip('/')}{path}"
+    target = (urlparse(base_url).hostname or "unknown").strip() or "unknown"
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.request(
-                method=method,
-                url=url,
-                params=params,
-                json=json_body,
-                data=data,
-                files=files,
-                headers=_headers(),
-            )
+        with observe_service_edge(
+            source="backend",
+            target=target,
+            transport="http",
+            operation=f"{method.upper()} {path}",
+        ):
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.request(
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json_body,
+                    data=data,
+                    files=files,
+                    headers=_headers(),
+                )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text if exc.response is not None else "internal service status error"

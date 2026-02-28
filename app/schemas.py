@@ -1045,3 +1045,66 @@ class MediaPlayerPublic(BaseModel):
 class MediaPlayersPublic(BaseModel):
     data: list[MediaPlayerPublic]
     count: int
+
+
+# ── Service Flow Map schemas ─────────────────────────────────────
+
+
+class ServiceFlowLinkPublic(BaseModel):
+    label: str
+    url: str
+
+
+class ServiceFlowNodePublic(BaseModel):
+    id: str
+    label: str
+    kind: str
+    status: str
+    req_rate: float | None = None
+    error_rate: float | None = None
+    p95_latency_ms: float | None = None
+    last_seen: datetime | None = None
+    links: list[ServiceFlowLinkPublic] = []
+
+
+class ServiceFlowEdgePublic(BaseModel):
+    source: str
+    target: str
+    transport: str
+    operation: str
+    status: str
+    req_rate: float | None = None
+    error_rate: float | None = None
+    p95_latency_ms: float | None = None
+
+
+class ServiceFlowRecentEventPublic(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    severity: str
+    category: str
+    event_type: str
+    message: str
+    device_kind: str | None = None
+    device_name: str | None = None
+    ip_address: str | None = None
+    trace_id: str | None = None
+
+
+class ServiceFlowMapPublic(BaseModel):
+    generated_at: datetime
+    nodes: list[ServiceFlowNodePublic]
+    edges: list[ServiceFlowEdgePublic]
+    recent_events: list[ServiceFlowRecentEventPublic]
+
+
+class ServiceFlowTimeseriesPointPublic(BaseModel):
+    timestamp: datetime
+    req_rate: float | None = None
+    error_rate: float | None = None
+    p95_latency_ms: float | None = None
+
+
+class ServiceFlowTimeseriesPublic(BaseModel):
+    entity: str
+    points: list[ServiceFlowTimeseriesPointPublic]

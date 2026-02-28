@@ -6,6 +6,7 @@ from app.api.routes import (
     logs,
     media_players,
     ml,
+    observability,
     printers,
     scanner,
     support_tools,
@@ -24,5 +25,6 @@ api_router.include_router(switches.router, prefix="/switches")
 api_router.include_router(cash_registers.router, prefix="/cash-registers")
 api_router.include_router(ml.router, prefix="/ml")
 api_router.include_router(logs.router, prefix="/logs")
+api_router.include_router(observability.router, prefix="/observability")
 api_router.include_router(support_tools.router, prefix="/support-tools")
 api_router.include_router(tasks.router, prefix="/tasks")

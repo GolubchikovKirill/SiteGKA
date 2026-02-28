@@ -10,6 +10,7 @@ import MediaPlayersPage from "./pages/MediaPlayersPage";
 import SwitchesPage from "./pages/SwitchesPage";
 import LogsPage from "./pages/LogsPage";
 import CashRegistersPage from "./pages/CashRegistersPage";
+import ServiceFlowMapPage from "./pages/ServiceFlowMapPage";
 import UsersPage from "./pages/Users";
 
 const GLOBAL_AUTO_REFRESH_MS = 15 * 60_000;
@@ -32,6 +33,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         queryClient.invalidateQueries({ queryKey: ["media-players"] });
         queryClient.invalidateQueries({ queryKey: ["switches"] });
         queryClient.invalidateQueries({ queryKey: ["cash-registers"] });
+        queryClient.invalidateQueries({ queryKey: ["service-flow-map"] });
       });
     }, GLOBAL_AUTO_REFRESH_MS);
     return () => clearInterval(timer);
@@ -68,6 +70,7 @@ export default function App() {
                 <Route path="/media-players" element={<MediaPlayersPage />} />
                 <Route path="/switches" element={<SwitchesPage />} />
                 <Route path="/cash-registers" element={<CashRegistersPage />} />
+                <Route path="/service-flow-map" element={<ServiceFlowMapPage />} />
                 <Route path="/settings" element={<LogsPage />} />
                 <Route path="/logs" element={<Navigate to="/settings" replace />} />
                 <Route

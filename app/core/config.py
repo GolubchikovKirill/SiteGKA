@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     OTEL_ENABLED: bool = False
     OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://jaeger:4318/v1/traces"
     OTEL_SERVICE_NAMESPACE: str = "infrascope"
+    PROMETHEUS_API_URL: str = "http://prometheus:9090"
+    JAEGER_API_URL: str = "http://jaeger:16686"
+    JAEGER_UI_URL: str = "http://127.0.0.1:16686"
+    KAFKA_UI_URL: str = "http://127.0.0.1:8080"
     ML_MIN_TRAIN_ROWS: int = 50
     ML_RETRAIN_HOUR_UTC: int = 2
     ML_SCORE_INTERVAL_MINUTES: int = 30

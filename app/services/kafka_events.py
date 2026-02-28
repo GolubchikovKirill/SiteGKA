@@ -4,8 +4,10 @@ import json
 import logging
 from threading import Lock
 from typing import Any
+from urllib.parse import urlparse
 
 from app.core.config import settings
+from app.observability.metrics import observe_service_edge
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,13 @@ def publish_event(payload: dict[str, Any]) -> None:
     if producer is None:
         return
     try:
-        producer.send(settings.KAFKA_EVENT_TOPIC, payload)
+        target = (urlparse(f"//{settings.KAFKA_BOOTSTRAP_SERVERS.split(',')[0].strip()}").hostname or "kafka").strip()
+        with observe_service_edge(
+            source="backend",
+            target=target or "kafka",
+            transport="kafka",
+            operation=f"produce {settings.KAFKA_EVENT_TOPIC}",
+        ):
+            producer.send(settings.KAFKA_EVENT_TOPIC, payload)
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Kafka event publish failed: %s", exc)

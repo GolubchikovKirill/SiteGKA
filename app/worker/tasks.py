@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 from time import perf_counter
+from urllib.parse import urlparse
 
 import httpx
 from celery import shared_task
@@ -16,6 +17,7 @@ from app.core.config import settings
 from app.core.db import engine
 from app.models import MediaPlayer, NetworkSwitch, Printer
 from app.observability.metrics import (
+    observe_service_edge,
     worker_task_duration_seconds,
     worker_task_executions_total,
     worker_tasks_in_progress,
@@ -49,13 +51,20 @@ def _service_json(
     params: dict | None = None,
     json_body: dict | None = None,
 ) -> dict:
-    with httpx.Client(timeout=timeout, headers=_internal_headers()) as client:
-        response = client.request(
-            method=method,
-            url=f"{base_url.rstrip('/')}{path}",
-            params=params,
-            json=json_body,
-        )
+    target = (urlparse(base_url).hostname or "unknown").strip() or "unknown"
+    with observe_service_edge(
+        source="worker",
+        target=target,
+        transport="http",
+        operation=f"{method.upper()} {path}",
+    ):
+        with httpx.Client(timeout=timeout, headers=_internal_headers()) as client:
+            response = client.request(
+                method=method,
+                url=f"{base_url.rstrip('/')}{path}",
+                params=params,
+                json=json_body,
+            )
     response.raise_for_status()
     data = response.json()
     if not isinstance(data, dict):

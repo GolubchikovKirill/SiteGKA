@@ -141,6 +141,92 @@ export function getNetSupportHelperDownloadUrl(
   return `/api/v1/support-tools/netsupport-helper/${encodeURIComponent(filename)}`;
 }
 
+// ── Observability / Service Flow ──
+
+export interface ServiceFlowLink {
+  label: string;
+  url: string;
+}
+
+export interface ServiceFlowNode {
+  id: string;
+  label: string;
+  kind: string;
+  status: "healthy" | "degraded" | "down" | "unknown" | string;
+  req_rate: number | null;
+  error_rate: number | null;
+  p95_latency_ms: number | null;
+  last_seen: string | null;
+  links: ServiceFlowLink[];
+}
+
+export interface ServiceFlowEdge {
+  source: string;
+  target: string;
+  transport: "http" | "kafka" | string;
+  operation: string;
+  status: "healthy" | "degraded" | "down" | "unknown" | string;
+  req_rate: number | null;
+  error_rate: number | null;
+  p95_latency_ms: number | null;
+}
+
+export interface ServiceFlowRecentEvent {
+  id: string;
+  created_at: string;
+  severity: EventSeverity | string;
+  category: string;
+  event_type: string;
+  message: string;
+  device_kind: EventDeviceKind | string;
+  device_name: string | null;
+  ip_address: string | null;
+  trace_id: string | null;
+}
+
+export interface ServiceFlowMapResponse {
+  generated_at: string;
+  nodes: ServiceFlowNode[];
+  edges: ServiceFlowEdge[];
+  recent_events: ServiceFlowRecentEvent[];
+}
+
+export interface ServiceFlowTimeseriesPoint {
+  timestamp: string;
+  req_rate: number | null;
+  error_rate: number | null;
+  p95_latency_ms: number | null;
+}
+
+export interface ServiceFlowTimeseriesResponse {
+  entity: string;
+  points: ServiceFlowTimeseriesPoint[];
+}
+
+export async function getServiceFlowMap() {
+  const { data } = await api.get<ServiceFlowMapResponse>("/observability/service-map");
+  return data;
+}
+
+export async function getServiceFlowTimeseries(params?: {
+  service?: string;
+  source?: string;
+  target?: string;
+  minutes?: number;
+  step_seconds?: number;
+}) {
+  const { data } = await api.get<ServiceFlowTimeseriesResponse>("/observability/service-map/timeseries", {
+    params: {
+      service: params?.service,
+      source: params?.source,
+      target: params?.target,
+      minutes: params?.minutes ?? 60,
+      step_seconds: params?.step_seconds ?? 30,
+    },
+  });
+  return data;
+}
+
 // ── ML ──
 
 export interface MLTonerPrediction {

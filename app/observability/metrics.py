@@ -183,6 +183,19 @@ devices_online = Gauge(
     ["kind"],
 )
 
+service_edge_requests_total = Counter(
+    "infrascope_service_edge_requests_total",
+    "Service-to-service request outcomes.",
+    ["source_service", "target_service", "transport", "operation", "result"],
+)
+
+service_edge_request_duration_seconds = Histogram(
+    "infrascope_service_edge_request_duration_seconds",
+    "Service-to-service request duration.",
+    ["source_service", "target_service", "transport", "operation"],
+    buckets=(0.01, 0.03, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30),
+)
+
 
 def set_device_counts(kind: str, total: int, online: int) -> None:
     devices_total.labels(kind=kind).set(max(total, 0))
@@ -196,4 +209,30 @@ def observe_duration(metric: Histogram):
         yield
     finally:
         metric.observe(max(perf_counter() - start, 0))
+
+
+@contextmanager
+def observe_service_edge(*, source: str, target: str, transport: str, operation: str):
+    start = perf_counter()
+    result = "success"
+    try:
+        yield
+    except Exception:
+        result = "error"
+        raise
+    finally:
+        elapsed = max(perf_counter() - start, 0)
+        service_edge_request_duration_seconds.labels(
+            source_service=source,
+            target_service=target,
+            transport=transport,
+            operation=operation,
+        ).observe(elapsed)
+        service_edge_requests_total.labels(
+            source_service=source,
+            target_service=target,
+            transport=transport,
+            operation=operation,
+            result=result,
+        ).inc()
 

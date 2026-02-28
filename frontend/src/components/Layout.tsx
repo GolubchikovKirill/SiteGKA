@@ -12,6 +12,7 @@ import {
   Sun,
   ScrollText,
   Wallet,
+  Workflow,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -34,6 +35,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/media-players", label: "Медиаплееры", icon: Monitor, visible: true },
     { to: "/switches", label: "Сетевое оборудование", icon: Network, visible: true },
     { to: "/cash-registers", label: "Кассы", icon: Wallet, visible: true },
+    { to: "/service-flow-map", label: "Service Flow", icon: Workflow, visible: true },
     { to: "/settings", label: "Настройки", icon: ScrollText, visible: true },
     { to: "/users", label: "Пользователи", icon: Users, visible: isSuperuser },
   ];
