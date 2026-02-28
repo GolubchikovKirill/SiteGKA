@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrascope-platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/GolubchikovKirill/SiteGKA.git
+    targetRevision: main
+    path: infra/k8s/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: infrascope-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

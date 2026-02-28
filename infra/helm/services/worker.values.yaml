@@ -1,0 +1,11 @@
+service:
+  name: worker
+  port: 9108
+  healthPath: /
+  metricsPath: /
+image:
+  repository: ghcr.io/golubchikovkirill/sitegka-worker
+  tag: latest
+replicaCount: 1
+ingress:
+  enabled: false

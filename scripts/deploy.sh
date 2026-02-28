@@ -55,7 +55,9 @@ check_health() {
   return 1
 }
 
-for service in backend worker ml-service polling-service discovery-service network-control-service kafka kafka-ui jaeger frontend; do
+DEPLOY_SERVICES="$(python3 tools/scaffold/list_deploy_services.py)"
+
+for service in $DEPLOY_SERVICES; do
   for _ in $(seq 1 30); do
     if check_health "$service"; then
       break

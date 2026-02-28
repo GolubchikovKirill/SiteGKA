@@ -1,0 +1,11 @@
+service:
+  name: ml-service
+  port: 8010
+  healthPath: /health
+  metricsPath: /metrics
+image:
+  repository: ghcr.io/golubchikovkirill/sitegka-ml-service
+  tag: latest
+replicaCount: 1
+ingress:
+  enabled: false

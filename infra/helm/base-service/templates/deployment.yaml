@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.service.name }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.service.name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.service.name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Values.service.name }}
+    spec:
+      containers:
+        - name: {{ .Values.service.name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+          env:
+{{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+{{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.service.healthPath }}
+              port: http
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.service.healthPath }}
+              port: http
+          resources:
+{{ toYaml .Values.resources | indent 12 }}

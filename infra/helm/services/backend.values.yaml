@@ -1,0 +1,13 @@
+service:
+  name: backend
+  port: 8000
+  healthPath: /health
+  metricsPath: /metrics
+image:
+  repository: ghcr.io/golubchikovkirill/sitegka-backend
+  tag: latest
+replicaCount: 2
+ingress:
+  enabled: true
+  host: api.infrascope.local
+  path: /

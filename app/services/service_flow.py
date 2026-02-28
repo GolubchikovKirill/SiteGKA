@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -18,29 +20,19 @@ from app.schemas import (
     ServiceFlowTimeseriesPublic,
 )
 
-_NODE_DEFS = [
-    {"id": "frontend", "label": "Frontend", "kind": "gateway", "job": ""},
-    {"id": "backend", "label": "API Gateway", "kind": "gateway", "job": "backend"},
-    {"id": "worker", "label": "Worker", "kind": "worker", "job": "worker"},
-    {"id": "polling-service", "label": "Polling", "kind": "service", "job": "polling-service"},
-    {"id": "discovery-service", "label": "Discovery", "kind": "service", "job": "discovery-service"},
-    {"id": "network-control-service", "label": "Network Control", "kind": "service", "job": "network-control-service"},
-    {"id": "ml-service", "label": "ML Service", "kind": "service", "job": "ml-service"},
-    {"id": "kafka", "label": "Kafka", "kind": "infra", "job": ""},
-    {"id": "jaeger", "label": "Jaeger", "kind": "infra", "job": ""},
-]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SERVICE_CATALOG_PATH = _REPO_ROOT / "services" / "catalog.yaml"
 
-_DEFAULT_EDGES = [
-    ("frontend", "backend", "http", "ui requests"),
-    ("backend", "polling-service", "http", "internal proxy"),
-    ("backend", "discovery-service", "http", "internal proxy"),
-    ("backend", "network-control-service", "http", "internal proxy"),
-    ("backend", "ml-service", "http", "ml calls"),
-    ("backend", "kafka", "kafka", "event publish"),
-    ("worker", "polling-service", "http", "task dispatch"),
-    ("worker", "discovery-service", "http", "task dispatch"),
-    ("worker", "ml-service", "http", "task dispatch"),
-]
+
+def _load_service_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not _SERVICE_CATALOG_PATH.exists():
+        return [], []
+    payload = yaml.safe_load(_SERVICE_CATALOG_PATH.read_text(encoding="utf-8")) or {}
+    nodes = payload.get("nodes") or []
+    edges = payload.get("edges") or []
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return [], []
+    return nodes, edges
 
 
 def _query_scalar(query: str) -> float | None:
@@ -127,8 +119,11 @@ def _node_links(node_id: str) -> list[ServiceFlowLinkPublic]:
 def _build_nodes() -> list[ServiceFlowNodePublic]:
     nodes: list[ServiceFlowNodePublic] = []
     now = datetime.now(UTC)
-    for node in _NODE_DEFS:
-        job = node["job"]
+    node_defs, _ = _load_service_catalog()
+    for node in node_defs:
+        if not node.get("service_map_enabled", True):
+            continue
+        job = str(node.get("prometheus_job", "")).strip()
         req_rate: float | None = None
         err_rate: float | None = None
         p95_latency_ms: float | None = None
@@ -153,15 +148,15 @@ def _build_nodes() -> list[ServiceFlowNodePublic]:
         status = _node_status(up, req_rate, err_rate)
         nodes.append(
             ServiceFlowNodePublic(
-                id=node["id"],
-                label=node["label"],
-                kind=node["kind"],
+                id=str(node.get("id", "unknown")),
+                label=str(node.get("label", node.get("id", "Unknown"))),
+                kind=str(node.get("kind", "service")),
                 status=status,
                 req_rate=req_rate,
                 error_rate=err_rate,
                 p95_latency_ms=p95_latency_ms,
                 last_seen=now if status in {"healthy", "degraded"} else None,
-                links=_node_links(node["id"]),
+                links=_node_links(str(node.get("id", "unknown"))),
             )
         )
     return nodes
@@ -201,7 +196,12 @@ def _build_edges() -> list[ServiceFlowEdgePublic]:
         )
         p95_map[key] = float(row.get("value", [0, 0])[1]) * 1000
 
-    for source, target, transport, operation in _DEFAULT_EDGES:
+    _, catalog_edges = _load_service_catalog()
+    for item in catalog_edges:
+        source = str(item.get("source", "unknown"))
+        target = str(item.get("target", "unknown"))
+        transport = str(item.get("transport", "http"))
+        operation = str(item.get("operation", "unknown"))
         edge_map.setdefault((source, target, transport, operation), {"req_rate": 0.0, "error_rate": 0.0})
 
     edges: list[ServiceFlowEdgePublic] = []

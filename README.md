@@ -145,6 +145,29 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - `prometheus` — сбор метрик
 - `grafana` — визуализация
 
+### Plug-and-play service platform
+
+Сервисная платформа переведена на descriptor-подход:
+
+- каждый сервис описывается в `services/<service>/service.yaml`;
+- topology для Service Flow берется из `services/catalog.yaml` (без hardcode);
+- есть scaffold-генератор нового сервиса: `tools/scaffold/new_service.py`;
+- есть schema validation: `tools/scaffold/validate_service_descriptors.py`.
+
+Добавление нового сервиса:
+
+```bash
+uv run python tools/scaffold/new_service.py --name inventory-service --port 8020
+uv run python tools/scaffold/validate_service_descriptors.py
+```
+
+Kubernetes-first артефакты:
+
+- `infra/helm/base-service` — базовый chart;
+- `infra/helm/services/*.values.yaml` — values по сервисам;
+- `infra/k8s/overlays/{dev,staging,prod}` — env overlays;
+- `infra/gitops/argocd-app.yaml` — gitops application example.
+
 ---
 
 ## Ключевые переменные окружения
@@ -294,6 +317,12 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-InfraScopeNetSupportHelper.
 ```bash
 git pull
 docker compose up -d --build
+```
+
+Production smoke/contract check:
+
+```bash
+./scripts/smoke-contract.sh
 ```
 
 ## Логи
