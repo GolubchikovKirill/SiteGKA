@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.db import engine, init_db
 from app.core.limiter import limiter
 from app.core.redis import close_redis
+from app.observability.tracing import setup_tracing
 from app.services.event_log import write_event_log
 
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +33,7 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
+setup_tracing(app, service_name="backend")
 
 # Expose Prometheus metrics for service monitoring and alerting.
 instrumentator = Instrumentator(

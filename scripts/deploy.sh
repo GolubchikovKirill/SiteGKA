@@ -55,7 +55,7 @@ check_health() {
   return 1
 }
 
-for service in backend worker ml-service polling-service discovery-service network-control-service kafka kafka-ui frontend; do
+for service in backend worker ml-service polling-service discovery-service network-control-service kafka kafka-ui jaeger frontend; do
   for _ in $(seq 1 30); do
     if check_health "$service"; then
       break

@@ -8,6 +8,20 @@ from app.services.kafka_events import publish_event
 _SEVERITIES = {"info", "warning", "error", "critical"}
 
 
+def _current_trace_id() -> str | None:
+    try:
+        from opentelemetry import trace
+    except Exception:
+        return None
+    span = trace.get_current_span()
+    if span is None:
+        return None
+    trace_id = span.get_span_context().trace_id
+    if not trace_id:
+        return None
+    return f"{trace_id:032x}"
+
+
 def write_event_log(
     session,
     *,
@@ -35,6 +49,7 @@ def write_event_log(
     publish_event(
         {
             "id": str(event.id),
+            "trace_id": _current_trace_id(),
             "severity": event.severity,
             "category": event.category,
             "event_type": event.event_type,

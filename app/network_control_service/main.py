@@ -18,6 +18,7 @@ from app.observability.metrics import (
     switch_port_op_duration_seconds,
     switch_port_ops_total,
 )
+from app.observability.tracing import setup_tracing
 from app.schemas import Message
 from app.services.cisco_ssh import poe_cycle_ap, reboot_ap
 from app.services.iconbit import (
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="InfraScope Network Control Service", lifespan=lifespan)
+setup_tracing(app, service_name="network-control-service")
 Instrumentator(excluded_handlers=["/metrics", "/health"]).instrument(app).expose(
     app, endpoint="/metrics", include_in_schema=False
 )

@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     KAFKA_ENABLED: bool = False
     KAFKA_BOOTSTRAP_SERVERS: str = "kafka:9092"
     KAFKA_EVENT_TOPIC: str = "infrascope.events"
+    OTEL_ENABLED: bool = False
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://jaeger:4318/v1/traces"
+    OTEL_SERVICE_NAMESPACE: str = "infrascope"
     ML_MIN_TRAIN_ROWS: int = 50
     ML_RETRAIN_HOUR_UTC: int = 2
     ML_SCORE_INTERVAL_MINUTES: int = 30

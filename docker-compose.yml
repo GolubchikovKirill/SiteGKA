@@ -72,6 +72,20 @@ services:
     networks:
       - internal
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    restart: unless-stopped
+    ports:
+      - "${JAEGER_BIND:-127.0.0.1}:${JAEGER_PORT:-16686}:16686"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:16686"]
+      interval: 20s
+      retries: 6
+      start_period: 20s
+      timeout: 5s
+    networks:
+      - internal
+
   backend:
     build:
       context: .
@@ -85,6 +99,9 @@ services:
       NETWORK_CONTROL_SERVICE_URL: http://network-control-service:8013
       KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     dns:
       - ${DNS_SERVER:-8.8.8.8}
     depends_on:
@@ -93,6 +110,8 @@ services:
       redis:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
       network-control-service:
         condition: service_healthy
@@ -119,12 +138,17 @@ services:
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9108}
       KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
       backend:
         condition: service_healthy
@@ -152,6 +176,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     command:
       - sh
       - -c
@@ -185,6 +212,9 @@ services:
       DISCOVERY_SERVICE_ENABLED: "false"
       KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     command:
       - sh
       - -c
@@ -218,6 +248,9 @@ services:
       DISCOVERY_SERVICE_ENABLED: "false"
       KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     command:
       - sh
       - -c
@@ -226,6 +259,8 @@ services:
       redis:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8012/health')"]
@@ -250,6 +285,9 @@ services:
       NETWORK_CONTROL_SERVICE_ENABLED: "false"
       KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     command:
       - sh
       - -c
@@ -260,6 +298,8 @@ services:
       redis:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8013/health')"]

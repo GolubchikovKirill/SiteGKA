@@ -14,6 +14,7 @@ from app.core.db import engine
 from app.ml.pipeline import run_scoring_cycle, run_training_cycle
 from app.models import MLModelRegistry
 from app.observability.metrics import ml_train_runs_total
+from app.observability.tracing import setup_tracing
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="InfraScope ML Service", lifespan=lifespan)
+setup_tracing(app, service_name="ml-service")
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 

@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.db import engine
 from app.core.redis import close_redis
 from app.models import CashRegister, MediaPlayer, NetworkSwitch, Printer
+from app.observability.tracing import setup_tracing
 from app.schemas import (
     CashRegisterPublic,
     CashRegistersPublic,
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="InfraScope Polling Service", lifespan=lifespan)
+setup_tracing(app, service_name="polling-service")
 Instrumentator(excluded_handlers=["/metrics", "/health"]).instrument(app).expose(
     app, endpoint="/metrics", include_in_schema=False
 )

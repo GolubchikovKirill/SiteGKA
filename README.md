@@ -53,6 +53,7 @@ InfraScope — платформа мониторинга инфраструкт�
 - Network: `pysnmp-lextudio`, `paramiko`, `httpx`
 - Frontend: `React`, `TypeScript`, `Vite`, `TanStack Query`
 - Monitoring: `Prometheus`, `Grafana`, `prometheus-fastapi-instrumentator`
+- Tracing: `OpenTelemetry`, `Jaeger`
 - Infra: `Docker Compose`, `Nginx` (TLS termination)
 
 ---
@@ -94,6 +95,7 @@ cp .env.example .env
 - Grafana: `http://127.0.0.1:3000` (по умолчанию bind на localhost)
   - default: `admin` / `admin`
 - Kafka UI: `http://127.0.0.1:8080`
+- Jaeger (trace UI): `http://127.0.0.1:16686`
 
 > Для доступа по LAN настройте `HOST_IP`, hosts/DNS и при необходимости `PROMETHEUS_BIND` / `GRAFANA_BIND`.
 
@@ -133,6 +135,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - `network-control-service` — отдельный runtime control операций (Iconbit, switch write ops) + `/metrics`
 - `kafka` — event bus для operational событий
 - `kafka-ui` — web-интерфейс Kafka
+- `jaeger` — distributed tracing (цепочки вызовов между сервисами)
 - `db` — PostgreSQL
 - `redis` — cache/locks/broker/backend
 - `prometheus` — сбор метрик
@@ -167,11 +170,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
   - `NETWORK_CONTROL_SERVICE_ENABLED`, `NETWORK_CONTROL_SERVICE_URL`
   - `INTERNAL_SERVICE_TOKEN`
   - `KAFKA_ENABLED`, `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_EVENT_TOPIC`
+  - `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAMESPACE`
   - `ML_MIN_TRAIN_ROWS`, `ML_RETRAIN_HOUR_UTC`, `ML_SCORE_INTERVAL_MINUTES`
 - Monitoring:
   - `PROMETHEUS_BIND`, `PROMETHEUS_PORT`, `PROMETHEUS_RETENTION`
   - `GRAFANA_BIND`, `GRAFANA_PORT`, `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`
   - `KAFKA_UI_BIND`, `KAFKA_UI_PORT`
+  - `JAEGER_BIND`, `JAEGER_PORT`
 
 ---
 
@@ -223,6 +228,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 2. Выберите кластер `infrascope`.
 3. Откройте топик `infrascope.events` — там operational события (offline/online, IP changes, critical errors и т.д.).
 
+Важно: Kafka UI показывает топики/сообщения/consumer lag, но не полноценную карту связей сервисов.
+Для визуализации цепочек "кто кого вызвал" используйте Jaeger.
+
 CLI-проверка из контейнера Kafka:
 
 ```bash
@@ -235,6 +243,18 @@ docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-s
 ```bash
 docker compose exec kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server kafka:9092 --topic infrascope.events
 ```
+
+### Tracing: карта связей между сервисами
+
+После деплоя откройте `http://127.0.0.1:16686`:
+
+1. Выберите сервис (`backend`, `polling-service`, `discovery-service`, `network-control-service`, `ml-service`).
+2. Нажмите **Find Traces** и посмотрите end-to-end цепочку запроса.
+3. Для переходов между API и Kafka используйте поле `trace_id` в сообщениях `infrascope.events`.
+
+`trace_id` теперь публикуется в Kafka payload и может быть использован для склейки событий и трейсов.
+
+Спецификация event-контракта: `docs/asyncapi.yml`.
 
 ### NetSupport Manager (автозапуск по hostname)
 
