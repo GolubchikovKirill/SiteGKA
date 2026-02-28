@@ -27,6 +27,12 @@ jobs:
       - name: Validate schema
         run: uv run python tools/scaffold/validate_service_descriptors.py
 
+      - name: Generate observability assets
+        run: uv run python tools/scaffold/generate_observability_assets.py
+
+      - name: Ensure generated assets are up to date
+        run: git diff --exit-code -- monitoring/prometheus/rules/service-targets.json monitoring/prometheus/rules/generated-service-alerts.yml monitoring/grafana/dashboards/infrascope-services-catalog.json
+
   build-service-matrix:
     name: Build Service Matrix
     runs-on: ubuntu-latest

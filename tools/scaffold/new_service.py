@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import textwrap
 from pathlib import Path
 
@@ -146,6 +147,12 @@ def main() -> int:
         encoding="utf-8",
     )
     print(f"Scaffolded service: {args.name}")
+    generator = repo_root / "tools" / "scaffold" / "generate_observability_assets.py"
+    subprocess.run(
+        ["python", str(generator)],
+        check=True,
+        cwd=repo_root,
+    )
     print("Next steps:")
     print(f" - implement service code in {service_dir}")
     print(f" - adjust tests in {tests_dir}")

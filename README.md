@@ -152,13 +152,15 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - каждый сервис описывается в `services/<service>/service.yaml`;
 - topology для Service Flow берется из `services/catalog.yaml` (без hardcode);
 - есть scaffold-генератор нового сервиса: `tools/scaffold/new_service.py`;
-- есть schema validation: `tools/scaffold/validate_service_descriptors.py`.
+- есть schema validation: `tools/scaffold/validate_service_descriptors.py`;
+- observability-артефакты (Prometheus targets/alerts + Grafana dashboard) автогенерируются из descriptor-ов: `tools/scaffold/generate_observability_assets.py`.
 
 Добавление нового сервиса:
 
 ```bash
 uv run python tools/scaffold/new_service.py --name inventory-service --port 8020
 uv run python tools/scaffold/validate_service_descriptors.py
+uv run python tools/scaffold/generate_observability_assets.py
 ```
 
 Kubernetes-first артефакты:
@@ -231,6 +233,7 @@ Kubernetes-first артефакты:
   - `infrascope-overview`
   - `infrascope-operations`
   - `infrascope-worker`
+  - `infrascope-services-catalog` (generated from `services/*/service.yaml`)
 - Алерты Prometheus покрывают:
   - backend/worker down;
   - API 5xx и latency;
