@@ -225,3 +225,40 @@ def test_switch_discovery_add_and_update_ip(client: TestClient, admin_token: str
     )
     assert update_resp.status_code == 200
     assert update_resp.json()["ip_address"] == "10.10.99.211"
+
+
+def test_switch_port_write_uses_network_control_service_when_enabled(client: TestClient, admin_token: str, monkeypatch):
+    async def _fake_proxy_request(**kwargs):
+        assert kwargs["path"].endswith("/vlan")
+        return {"message": "ok"}
+
+    monkeypatch.setattr(switch_routes.settings, "NETWORK_CONTROL_SERVICE_ENABLED", True)
+    monkeypatch.setattr(switch_routes, "_proxy_request", _fake_proxy_request)
+
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "SW-Proxy",
+            "ip_address": "10.10.10.41",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "dlink",
+            "management_protocol": "snmp",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    write_resp = client.post(
+        f"/api/v1/switches/{switch_id}/ports/Gi0%2F1/vlan",
+        json={"vlan": 100},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert write_resp.status_code == 200
+    assert write_resp.json()["message"] == "ok"

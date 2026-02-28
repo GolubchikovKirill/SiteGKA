@@ -3,11 +3,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Plus, Search, Printer as PrinterIcon, Tag, Wifi } from "lucide-react";
 import {
   getPrinters,
+  getOfflineRiskPredictions,
   pollAllPrinters,
   pollPrinter,
   createPrinter,
   updatePrinter,
   deletePrinter,
+  getTonerPredictions,
+  type MLOfflineRiskPrediction,
+  type MLTonerPrediction,
   type Printer,
   type PrinterType,
 } from "../client";
@@ -18,7 +22,7 @@ import PrinterForm from "../components/PrinterForm";
 import NetworkScanner from "../components/NetworkScanner";
 
 type TabKey = PrinterType | "scanner";
-type StatusFilter = "all" | "online" | "offline";
+type StatusFilter = "all" | "online" | "offline" | "low_toner";
 
 const TABS: { key: TabKey; label: string; icon: typeof PrinterIcon }[] = [
   { key: "laser", label: "Картриджные", icon: PrinterIcon },
@@ -45,6 +49,18 @@ export default function Dashboard() {
     queryKey: ["printers", printerTab, search],
     queryFn: () => getPrinters(search || undefined, printerTab),
     enabled: activeTab !== "scanner",
+  });
+  const { data: tonerPredictionsData } = useQuery({
+    queryKey: ["ml-toner-predictions"],
+    queryFn: () => getTonerPredictions(),
+    enabled: activeTab !== "scanner" && printerTab === "laser",
+    refetchInterval: 60_000,
+  });
+  const { data: riskPredictionsData } = useQuery({
+    queryKey: ["ml-offline-risk-printer"],
+    queryFn: () => getOfflineRiskPredictions("printer"),
+    enabled: activeTab !== "scanner",
+    refetchInterval: 60_000,
   });
 
   const pollAllMut = useMutation({
@@ -104,6 +120,26 @@ export default function Dashboard() {
   };
 
   const printers = data?.data ?? [];
+  const tonerPredictions = (tonerPredictionsData?.data ?? []) as MLTonerPrediction[];
+  const riskPredictions = (riskPredictionsData?.data ?? []) as MLOfflineRiskPrediction[];
+  const tonerDaysByPrinter = tonerPredictions.reduce<Record<string, Partial<Record<"black" | "cyan" | "magenta" | "yellow", number>>>>(
+    (acc, item) => {
+      if (!item.printer_id || item.days_to_replacement == null) return acc;
+      const color = item.toner_color as "black" | "cyan" | "magenta" | "yellow";
+      if (!acc[item.printer_id]) acc[item.printer_id] = {};
+      if (color === "black" || color === "cyan" || color === "magenta" || color === "yellow") {
+        if (acc[item.printer_id][color] == null) {
+          acc[item.printer_id][color] = item.days_to_replacement;
+        }
+      }
+      return acc;
+    },
+    {},
+  );
+  const riskByDeviceId = riskPredictions.reduce<Record<string, string>>((acc, item) => {
+    if (item.device_id && !acc[item.device_id]) acc[item.device_id] = item.risk_level;
+    return acc;
+  }, {});
   const sortedPrinters = [...printers].sort((a, b) => {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
     return rank(a.is_online) - rank(b.is_online);
@@ -111,6 +147,12 @@ export default function Dashboard() {
   const visiblePrinters = sortedPrinters.filter((printer) => {
     if (statusFilter === "online") return printer.is_online === true;
     if (statusFilter === "offline") return printer.is_online === false;
+    if (statusFilter === "low_toner") {
+      const levels = [printer.toner_black, printer.toner_cyan, printer.toner_magenta, printer.toner_yellow].filter(
+        (l): l is number => l !== null && l >= 0,
+      );
+      return levels.some((l) => l <= 15);
+    }
     return true;
   });
 
@@ -120,7 +162,7 @@ export default function Dashboard() {
   const lowToner = printerTab === "laser"
     ? printers.filter((p) => {
         const levels = [p.toner_black, p.toner_cyan, p.toner_magenta, p.toner_yellow].filter((l): l is number => l !== null && l >= 0);
-        return levels.some((l) => l < 15);
+        return levels.some((l) => l <= 15);
       }).length
     : 0;
 
@@ -162,7 +204,14 @@ export default function Dashboard() {
           <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
           <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
           {printerTab === "laser" && (
-            <Stat label="Мало тонера" value={lowToner} color="text-amber-700" bg="bg-amber-50" />
+            <Stat
+              label="Мало тонера (<=15%)"
+              value={lowToner}
+              color="text-amber-700"
+              bg="bg-amber-50"
+              isActive={statusFilter === "low_toner"}
+              onClick={() => setStatusFilter("low_toner")}
+            />
           )}
         </div>
       )}
@@ -186,7 +235,12 @@ export default function Dashboard() {
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            onClick={() => setActiveTab(key)}
+            onClick={() => {
+              setActiveTab(key);
+              if (key !== "laser" && statusFilter === "low_toner") {
+                setStatusFilter("all");
+              }
+            }}
             className={`app-tab inline-flex items-center gap-2 px-4 py-2 text-sm font-medium ${
               activeTab === key
                 ? "active"
@@ -226,6 +280,9 @@ export default function Dashboard() {
                     onDelete={handleDelete}
                     isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
                     isSuperuser={isSuperuser}
+                    showLowTonerDetails={statusFilter === "low_toner"}
+                    tonerPredictionDays={tonerDaysByPrinter[printer.id]}
+                    offlineRiskLevel={riskByDeviceId[printer.id]}
                   />
                 ) : (
                   <ZebraCard

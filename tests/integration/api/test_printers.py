@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+from app.api.routes import printers as printer_routes
+
 
 def test_create_printer_and_reject_duplicate_ip(client: TestClient, admin_token: str):
     payload = {
@@ -45,3 +47,19 @@ def test_poll_usb_printer_is_blocked(client: TestClient, admin_token: str):
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert poll.status_code == 400
+
+
+def test_poll_all_printers_uses_polling_service_when_enabled(client: TestClient, admin_token: str, monkeypatch):
+    async def _fake_proxy_request(**kwargs):
+        assert kwargs["path"] == "/poll/printers"
+        return {"data": [], "count": 0}
+
+    monkeypatch.setattr(printer_routes.settings, "POLLING_SERVICE_ENABLED", True)
+    monkeypatch.setattr(printer_routes, "_proxy_request", _fake_proxy_request)
+    response = client.post(
+        "/api/v1/printers/poll-all",
+        params={"printer_type": "laser"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 0

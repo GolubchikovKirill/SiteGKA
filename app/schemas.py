@@ -100,6 +100,63 @@ class EventLogsPublic(BaseModel):
     count: int
 
 
+class MLTonerPredictionPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    printer_id: uuid.UUID | None = None
+    printer_name: str | None = None
+    toner_color: str
+    toner_model: str | None = None
+    current_level: int | None = None
+    days_to_replacement: float | None = None
+    predicted_replacement_at: datetime | None = None
+    confidence: float
+    model_version: str
+    created_at: datetime
+
+
+class MLTonerPredictionsPublic(BaseModel):
+    data: list[MLTonerPredictionPublic]
+    count: int
+
+
+class MLOfflineRiskPredictionPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    device_kind: str
+    device_id: uuid.UUID | None = None
+    device_name: str | None = None
+    address: str | None = None
+    risk_score: float
+    risk_level: str
+    confidence: float
+    model_version: str
+    created_at: datetime
+
+
+class MLOfflineRiskPredictionsPublic(BaseModel):
+    data: list[MLOfflineRiskPredictionPublic]
+    count: int
+
+
+class MLModelStatusPublic(BaseModel):
+    model_family: str
+    version: str
+    status: str
+    train_rows: int
+    metric_primary: float | None = None
+    metric_secondary: float | None = None
+    trained_at: datetime
+    activated_at: datetime | None = None
+
+
+class MLModelsStatusPublic(BaseModel):
+    data: list[MLModelStatusPublic]
+    count: int
+
+
 class CashRegisterCreate(BaseModel):
     kkm_number: str
     store_code: str | None = None
@@ -255,6 +312,10 @@ class PrinterCreate(BaseModel):
     ip_address: str | None = None
     snmp_community: str = "public"
     host_pc: str | None = None
+    toner_black_name: str | None = None
+    toner_cyan_name: str | None = None
+    toner_magenta_name: str | None = None
+    toner_yellow_name: str | None = None
 
     @field_validator("store_name")
     @classmethod
@@ -311,6 +372,18 @@ class PrinterCreate(BaseModel):
                 return None
         return v
 
+    @field_validator("toner_black_name", "toner_cyan_name", "toner_magenta_name", "toner_yellow_name")
+    @classmethod
+    def validate_toner_names(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 128:
+            raise ValueError("toner name must be <= 128 characters")
+        return value
+
     @model_validator(mode="after")
     def check_ip_required_for_ip_type(self) -> PrinterCreate:
         if self.connection_type == "ip" and not self.ip_address:
@@ -324,6 +397,10 @@ class PrinterUpdate(BaseModel):
     ip_address: str | None = None
     snmp_community: str | None = None
     host_pc: str | None = None
+    toner_black_name: str | None = None
+    toner_cyan_name: str | None = None
+    toner_magenta_name: str | None = None
+    toner_yellow_name: str | None = None
 
     @field_validator("store_name")
     @classmethod
@@ -361,6 +438,18 @@ class PrinterUpdate(BaseModel):
                 return None
         return v
 
+    @field_validator("toner_black_name", "toner_cyan_name", "toner_magenta_name", "toner_yellow_name")
+    @classmethod
+    def validate_toner_names(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 128:
+            raise ValueError("toner name must be <= 128 characters")
+        return value
+
 
 class PrinterPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -380,6 +469,10 @@ class PrinterPublic(BaseModel):
     toner_cyan: int | None = None
     toner_magenta: int | None = None
     toner_yellow: int | None = None
+    toner_black_name: str | None = None
+    toner_cyan_name: str | None = None
+    toner_magenta_name: str | None = None
+    toner_yellow_name: str | None = None
     last_polled_at: datetime | None = None
     created_at: datetime
 

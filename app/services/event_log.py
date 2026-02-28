@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.models import EventLog
+from app.services.kafka_events import publish_event
 
 _SEVERITIES = {"info", "warning", "error", "critical"}
 
@@ -29,3 +32,16 @@ def write_event_log(
         ip_address=(ip_address or None),
     )
     session.add(event)
+    publish_event(
+        {
+            "id": str(event.id),
+            "severity": event.severity,
+            "category": event.category,
+            "event_type": event.event_type,
+            "message": event.message,
+            "device_kind": event.device_kind,
+            "device_name": event.device_name,
+            "ip_address": event.ip_address,
+            "created_at": (event.created_at or datetime.now(UTC)).isoformat(),
+        }
+    )

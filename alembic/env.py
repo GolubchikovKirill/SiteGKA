@@ -7,7 +7,18 @@ from alembic import context
 from app.core.config import settings
 
 # Ensure all models are imported so SQLModel picks up metadata
-from app.models import CashRegister, EventLog, MediaPlayer, NetworkSwitch, Printer, User  # noqa: F401
+from app.models import (  # noqa: F401
+    CashRegister,
+    EventLog,
+    MediaPlayer,
+    MLFeatureSnapshot,
+    MLModelRegistry,
+    MLOfflineRiskPrediction,
+    MLTonerPrediction,
+    NetworkSwitch,
+    Printer,
+    User,
+)
 
 config = context.config
 

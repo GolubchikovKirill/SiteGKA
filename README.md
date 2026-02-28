@@ -26,8 +26,12 @@ InfraScope — платформа мониторинга инфраструкт�
   - MAC/IP rediscovery.
 - Наблюдаемость:
   - `/metrics` на backend и worker;
-  - дашборды Grafana (`overview`, `operations`, `worker`);
+  - дашборды Grafana (`overview`, `operations`, `worker`, `ml`);
   - SLO/error-budget и эксплуатационные алерты Prometheus.
+- ML (self-learning foundation):
+  - daily retrain и scoring в отдельном `ml-service`;
+  - прогноз `days_to_replacement` по картриджам;
+  - prediction риска offline (low/medium/high).
 - Безопасность:
   - JWT + blacklist в Redis;
   - Argon2id;
@@ -37,6 +41,9 @@ InfraScope — платформа мониторинга инфраструкт�
 - Frontend:
   - сортировка online выше offline;
   - фиксированное глобальное автообновление всех устройств раз в 15 минут (без переключателей).
+- Kafka:
+  - event-stream operational логов в топик `infrascope.events`;
+  - UI для просмотра топиков и сообщений (`kafka-ui`).
 
 ---
 
@@ -70,7 +77,13 @@ cp .env.example .env
 ### 2) Старт
 
 ```bash
-docker compose up -d --build
+./scripts/deploy.sh
+```
+
+Для Linux host-network режима (максимум точности ARP/MAC):
+
+```bash
+./scripts/deploy.sh --prod-network
 ```
 
 ### 3) Доступ
@@ -80,6 +93,7 @@ docker compose up -d --build
 - Prometheus: `http://127.0.0.1:9090` (по умолчанию bind на localhost)
 - Grafana: `http://127.0.0.1:3000` (по умолчанию bind на localhost)
   - default: `admin` / `admin`
+- Kafka UI: `http://127.0.0.1:8080`
 
 > Для доступа по LAN настройте `HOST_IP`, hosts/DNS и при необходимости `PROMETHEUS_BIND` / `GRAFANA_BIND`.
 
@@ -111,8 +125,14 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ## Архитектура сервисов
 
 - `frontend` — SPA + Nginx + HTTPS
-- `backend` — API, бизнес-логика, polling/discovery, `/metrics`
+- `backend` — API gateway/orchestration, `/metrics`
 - `worker` — Celery worker для тяжёлых фоновых задач
+- `ml-service` — отдельный сервис обучения/скоринга ML + `/metrics`
+- `polling-service` — отдельный runtime polling устройств + `/metrics`
+- `discovery-service` — отдельный runtime discovery/scan + `/metrics`
+- `network-control-service` — отдельный runtime control операций (Iconbit, switch write ops) + `/metrics`
+- `kafka` — event bus для operational событий
+- `kafka-ui` — web-интерфейс Kafka
 - `db` — PostgreSQL
 - `redis` — cache/locks/broker/backend
 - `prometheus` — сбор метрик
@@ -140,9 +160,18 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
   - `POLL_RESILIENCE_STATE_TTL_SECONDS`
 - Worker:
   - `WORKER_CONCURRENCY`, `WORKER_POOL`, `WORKER_METRICS_PORT`
+- ML:
+  - `ML_ENABLED`, `ML_SERVICE_URL`
+  - `POLLING_SERVICE_ENABLED`, `POLLING_SERVICE_URL`
+  - `DISCOVERY_SERVICE_ENABLED`, `DISCOVERY_SERVICE_URL`
+  - `NETWORK_CONTROL_SERVICE_ENABLED`, `NETWORK_CONTROL_SERVICE_URL`
+  - `INTERNAL_SERVICE_TOKEN`
+  - `KAFKA_ENABLED`, `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_EVENT_TOPIC`
+  - `ML_MIN_TRAIN_ROWS`, `ML_RETRAIN_HOUR_UTC`, `ML_SCORE_INTERVAL_MINUTES`
 - Monitoring:
   - `PROMETHEUS_BIND`, `PROMETHEUS_PORT`, `PROMETHEUS_RETENTION`
   - `GRAFANA_BIND`, `GRAFANA_PORT`, `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`
+  - `KAFKA_UI_BIND`, `KAFKA_UI_PORT`
 
 ---
 
@@ -155,6 +184,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - Media Players: `/media-players/*`, `/media-players/discover/*`
 - Switches: `/switches/*`, `/switches/discover/*`
 - Tasks/Worker: `/tasks/*`
+- ML API: `/ml/*`
 - System: `/health`, `/metrics`
 
 Актуальная спецификация API: `https://localhost/docs`
@@ -183,6 +213,28 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - Массовые polling-ручки защищены от спама повторными кликами.
 - Для Linux можно использовать `docker-compose.prod.yml` (host network), если нужна максимальная точность ARP-сценариев.
 - Для macOS/Windows (Docker Desktop VM) больше опирайтесь на SNMP/HTTP fingerprint, чем на ARP.
+- Для предсказуемого апдейта на сервере используйте `./scripts/deploy.sh` (с флагами `--prod-network`, `--no-pull` при необходимости).
+
+### Kafka: как смотреть и пользоваться
+
+После `./scripts/deploy.sh` Kafka уже поднята автоматически, отдельной ручной настройки не требуется.
+
+1. Откройте UI: `http://127.0.0.1:8080`.
+2. Выберите кластер `infrascope`.
+3. Откройте топик `infrascope.events` — там operational события (offline/online, IP changes, critical errors и т.д.).
+
+CLI-проверка из контейнера Kafka:
+
+```bash
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic infrascope.events --from-beginning
+```
+
+Создать тестовое сообщение:
+
+```bash
+docker compose exec kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server kafka:9092 --topic infrascope.events
+```
 
 ### NetSupport Manager (автозапуск по hostname)
 

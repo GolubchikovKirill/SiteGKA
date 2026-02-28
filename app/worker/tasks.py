@@ -5,12 +5,14 @@ import uuid
 from datetime import UTC, datetime
 from time import perf_counter
 
+import httpx
 from celery import shared_task
 from sqlmodel import Session, select
 
 from app.api.routes import media_players as media_routes
 from app.api.routes import printers as printer_routes
 from app.api.routes import switches as switch_routes
+from app.core.config import settings
 from app.core.db import engine
 from app.models import MediaPlayer, NetworkSwitch, Printer
 from app.observability.metrics import (
@@ -30,6 +32,35 @@ def _task_finished(operation: str, started_at: float, result: str) -> None:
     worker_tasks_in_progress.labels(operation=operation).dec()
     worker_task_executions_total.labels(operation=operation, result=result).inc()
     worker_task_duration_seconds.labels(operation=operation).observe(max(perf_counter() - started_at, 0))
+
+
+def _internal_headers() -> dict[str, str]:
+    if settings.INTERNAL_SERVICE_TOKEN:
+        return {"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN}
+    return {}
+
+
+def _service_json(
+    *,
+    base_url: str,
+    method: str,
+    path: str,
+    timeout: float = 180.0,
+    params: dict | None = None,
+    json_body: dict | None = None,
+) -> dict:
+    with httpx.Client(timeout=timeout, headers=_internal_headers()) as client:
+        response = client.request(
+            method=method,
+            url=f"{base_url.rstrip('/')}{path}",
+            params=params,
+            json=json_body,
+        )
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, dict):
+        raise RuntimeError("internal service returned invalid payload")
+    return data
 
 
 @shared_task(
@@ -54,7 +85,20 @@ def scan_network_task(self, subnet: str, ports: str) -> dict:
                 }
                 for p in printers
             ]
-        devices = asyncio.run(scan_subnet(subnet, ports, known))
+        if settings.DISCOVERY_SERVICE_ENABLED:
+            payload_data = _service_json(
+                base_url=settings.DISCOVERY_SERVICE_URL,
+                method="POST",
+                path="/discover/printers/run",
+                json_body={
+                    "subnet": subnet,
+                    "ports": ports,
+                    "known_printers": known,
+                },
+            )
+            devices = payload_data.get("devices", [])
+        else:
+            devices = asyncio.run(scan_subnet(subnet, ports, known))
         payload = {
             "task_id": self.request.id,
             "operation": operation,
@@ -80,15 +124,28 @@ def poll_all_printers_task(self, printer_type: str = "laser") -> dict:
     operation = "poll_all_printers"
     started_at = _task_started(operation)
     try:
-        with Session(engine) as session:
-            asyncio.run(printer_routes.poll_all_printers(session=session, current_user=None, printer_type=printer_type))
-            all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+        if settings.POLLING_SERVICE_ENABLED:
+            payload_data = _service_json(
+                base_url=settings.POLLING_SERVICE_URL,
+                method="POST",
+                path="/poll/printers",
+                params={"printer_type": printer_type},
+            )
+            all_printers = payload_data.get("data", [])
+            online_count = sum(1 for p in all_printers if p.get("is_online"))
+            total_count = len(all_printers)
+        else:
+            with Session(engine) as session:
+                asyncio.run(printer_routes.poll_all_printers(session=session, current_user=None, printer_type=printer_type))
+                all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+            online_count = sum(1 for p in all_printers if p.is_online)
+            total_count = len(all_printers)
         payload = {
             "task_id": self.request.id,
             "operation": operation,
             "printer_type": printer_type,
-            "total": len(all_printers),
-            "online": sum(1 for p in all_printers if p.is_online),
+            "total": total_count,
+            "online": online_count,
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")
@@ -109,24 +166,37 @@ def poll_all_media_players_task(self, device_type: str | None = None) -> dict:
     operation = "poll_all_media_players"
     started_at = _task_started(operation)
     try:
-        with Session(engine) as session:
-            asyncio.run(
-                media_routes.poll_all_players(
-                    session=session,
-                    current_user=None,
-                    device_type=device_type,
-                )
+        if settings.POLLING_SERVICE_ENABLED:
+            payload_data = _service_json(
+                base_url=settings.POLLING_SERVICE_URL,
+                method="POST",
+                path="/poll/media-players",
+                params={"device_type": device_type} if device_type else None,
             )
-            statement = select(MediaPlayer)
-            if device_type:
-                statement = statement.where(MediaPlayer.device_type == device_type)
-            players = session.exec(statement).all()
+            players = payload_data.get("data", [])
+            total_count = len(players)
+            online_count = sum(1 for p in players if p.get("is_online"))
+        else:
+            with Session(engine) as session:
+                asyncio.run(
+                    media_routes.poll_all_players(
+                        session=session,
+                        current_user=None,
+                        device_type=device_type,
+                    )
+                )
+                statement = select(MediaPlayer)
+                if device_type:
+                    statement = statement.where(MediaPlayer.device_type == device_type)
+                players = session.exec(statement).all()
+            total_count = len(players)
+            online_count = sum(1 for p in players if p.is_online)
         payload = {
             "task_id": self.request.id,
             "operation": operation,
             "device_type": device_type,
-            "total": len(players),
-            "online": sum(1 for p in players if p.is_online),
+            "total": total_count,
+            "online": online_count,
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")
@@ -148,14 +218,25 @@ def poll_switch_task(self, switch_id: str) -> dict:
     started_at = _task_started(operation)
     try:
         switch_uuid = uuid.UUID(switch_id)
-        with Session(engine) as session:
-            sw = asyncio.run(switch_routes.poll_switch(switch_id=switch_uuid, session=session, current_user=None))
+        if settings.POLLING_SERVICE_ENABLED:
+            sw = _service_json(
+                base_url=settings.POLLING_SERVICE_URL,
+                method="POST",
+                path=f"/poll/switches/{switch_id}",
+            )
+            is_online = bool(sw.get("is_online"))
+            hostname = sw.get("hostname")
+        else:
+            with Session(engine) as session:
+                sw = asyncio.run(switch_routes.poll_switch(switch_id=switch_uuid, session=session, current_user=None))
+            is_online = bool(sw.is_online)
+            hostname = sw.hostname
         payload = {
             "task_id": self.request.id,
             "operation": operation,
             "switch_id": switch_id,
-            "is_online": bool(sw.is_online),
-            "hostname": sw.hostname,
+            "is_online": is_online,
+            "hostname": hostname,
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")
@@ -177,23 +258,74 @@ def poll_all_switches_task(self) -> dict:
     started_at = _task_started(operation)
     try:
         results: list[dict] = []
-        with Session(engine) as session:
-            switches = session.exec(select(NetworkSwitch)).all()
-            for sw in switches:
-                updated = asyncio.run(switch_routes.poll_switch(switch_id=sw.id, session=session, current_user=None))
-                results.append(
-                    {
-                        "switch_id": str(updated.id),
-                        "name": updated.name,
-                        "is_online": bool(updated.is_online),
-                    }
-                )
+        if settings.POLLING_SERVICE_ENABLED:
+            _service_json(
+                base_url=settings.POLLING_SERVICE_URL,
+                method="POST",
+                path="/poll/switches",
+            )
+            summary = _service_json(
+                base_url=settings.POLLING_SERVICE_URL,
+                method="GET",
+                path="/summary/switches",
+            )
+            total = int(summary.get("total", 0))
+            online = int(summary.get("online", 0))
+        else:
+            with Session(engine) as session:
+                switches = session.exec(select(NetworkSwitch)).all()
+                for sw in switches:
+                    updated = asyncio.run(switch_routes.poll_switch(switch_id=sw.id, session=session, current_user=None))
+                    results.append(
+                        {
+                            "switch_id": str(updated.id),
+                            "name": updated.name,
+                            "is_online": bool(updated.is_online),
+                        }
+                    )
+            total = len(results)
+            online = sum(1 for r in results if r["is_online"])
         payload = {
             "task_id": self.request.id,
             "operation": operation,
-            "total": len(results),
-            "online": sum(1 for r in results if r["is_online"]),
+            "total": total,
+            "online": online,
             "switches": results,
+            "finished_at": datetime.now(UTC).isoformat(),
+        }
+        _task_finished(operation, started_at, "success")
+        return payload
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+    name="tasks.ml_run_cycle",
+)
+def ml_run_cycle_task(self) -> dict:
+    operation = "ml_run_cycle"
+    started_at = _task_started(operation)
+    if not settings.ML_ENABLED:
+        _task_finished(operation, started_at, "skipped")
+        return {
+            "task_id": self.request.id,
+            "operation": operation,
+            "status": "skipped",
+            "reason": "ml_disabled",
+        }
+    try:
+        with httpx.Client(timeout=180) as client:
+            response = client.post(f"{settings.ML_SERVICE_URL.rstrip('/')}/run-cycle")
+        response.raise_for_status()
+        payload = {
+            "task_id": self.request.id,
+            "operation": operation,
+            "result": response.json(),
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")

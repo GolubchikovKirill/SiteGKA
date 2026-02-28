@@ -99,3 +99,18 @@ def test_get_task_status_revoked(client, user_token: str, monkeypatch):
         headers={"Authorization": f"Bearer {user_token}"},
     )
     assert response.status_code == 410
+
+
+def test_enqueue_ml_run_cycle_requires_superuser(client, admin_token: str, monkeypatch):
+    monkeypatch.setattr(
+        task_routes,
+        "ml_run_cycle_task",
+        SimpleNamespace(delay=lambda *_args, **_kwargs: SimpleNamespace(id="t-ml", state="PENDING")),
+    )
+    response = client.post(
+        "/api/v1/tasks/ml-run-cycle",
+        json={"force": True},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["operation"] == "ml_run_cycle"

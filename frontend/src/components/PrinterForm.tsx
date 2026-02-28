@@ -12,6 +12,10 @@ interface Props {
     snmp_community: string;
     connection_type?: ConnectionType;
     host_pc?: string;
+    toner_black_name?: string;
+    toner_cyan_name?: string;
+    toner_magenta_name?: string;
+    toner_yellow_name?: string;
   }) => void;
   onClose: () => void;
   loading: boolean;
@@ -26,6 +30,10 @@ export default function PrinterForm({ printer, printerType, onSave, onClose, loa
   const [ipAddress, setIpAddress] = useState(printer?.ip_address ?? "");
   const [community, setCommunity] = useState("public");
   const [hostPc, setHostPc] = useState(printer?.host_pc ?? "");
+  const [tonerBlackName, setTonerBlackName] = useState(printer?.toner_black_name ?? "");
+  const [tonerCyanName, setTonerCyanName] = useState(printer?.toner_cyan_name ?? "");
+  const [tonerMagentaName, setTonerMagentaName] = useState(printer?.toner_magenta_name ?? "");
+  const [tonerYellowName, setTonerYellowName] = useState(printer?.toner_yellow_name ?? "");
 
   const isUsb = isLabel && connectionType === "usb";
 
@@ -44,6 +52,12 @@ export default function PrinterForm({ printer, printerType, onSave, onClose, loa
     } else {
       data.ip_address = ipAddress.trim();
       data.host_pc = hostPc.trim() || undefined;
+    }
+    if (!isLabel) {
+      data.toner_black_name = tonerBlackName.trim() || undefined;
+      data.toner_cyan_name = tonerCyanName.trim() || undefined;
+      data.toner_magenta_name = tonerMagentaName.trim() || undefined;
+      data.toner_yellow_name = tonerYellowName.trim() || undefined;
     }
     onSave(data);
   };
@@ -158,6 +172,38 @@ export default function PrinterForm({ printer, printerType, onSave, onClose, loa
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="public"
               />
+            </div>
+          )}
+
+          {!isLabel && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-700">Наименования картриджей (опционально)</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  value={tonerBlackName}
+                  onChange={(e) => setTonerBlackName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="K (например CF259A)"
+                />
+                <input
+                  value={tonerCyanName}
+                  onChange={(e) => setTonerCyanName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="C (например 045C)"
+                />
+                <input
+                  value={tonerMagentaName}
+                  onChange={(e) => setTonerMagentaName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="M (например 045M)"
+                />
+                <input
+                  value={tonerYellowName}
+                  onChange={(e) => setTonerYellowName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Y (например 045Y)"
+                />
+              </div>
             </div>
           )}
 

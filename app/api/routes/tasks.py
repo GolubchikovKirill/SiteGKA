@@ -10,6 +10,7 @@ from app.api.deps import CurrentUser, get_current_active_superuser
 from app.observability.metrics import worker_task_status_checks_total, worker_tasks_enqueued_total
 from app.worker.celery_app import celery_app
 from app.worker.tasks import (
+    ml_run_cycle_task,
     poll_all_media_players_task,
     poll_all_printers_task,
     poll_all_switches_task,
@@ -52,6 +53,10 @@ class SwitchPollTaskRequest(BaseModel):
     switch_id: str
 
 
+class MLCycleTaskRequest(BaseModel):
+    force: bool = False
+
+
 @router.post(
     "/scan-network",
     response_model=TaskEnqueueResponse,
@@ -89,6 +94,14 @@ def enqueue_poll_switches(current_user: CurrentUser) -> TaskEnqueueResponse:
     task = poll_all_switches_task.delay()
     worker_tasks_enqueued_total.labels(operation="poll_all_switches").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_all_switches")
+
+
+@router.post("/ml-run-cycle", response_model=TaskEnqueueResponse, dependencies=[Depends(get_current_active_superuser)])
+def enqueue_ml_run_cycle(body: MLCycleTaskRequest) -> TaskEnqueueResponse:
+    del body
+    task = ml_run_cycle_task.delay()
+    worker_tasks_enqueued_total.labels(operation="ml_run_cycle").inc()
+    return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="ml_run_cycle")
 
 
 @router.get("/{task_id}", response_model=TaskStatusResponse)

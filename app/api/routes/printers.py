@@ -11,6 +11,7 @@ from sqlalchemy import or_
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.config import settings
 from app.core.redis import get_redis
 from app.models import Printer
 from app.observability.metrics import printer_polls_total, set_device_counts
@@ -22,6 +23,8 @@ from app.schemas import (
     PrinterUpdate,
 )
 from app.services.event_log import write_event_log
+from app.services.internal_services import _proxy_request
+from app.services.ml_snapshots import write_printer_snapshots
 from app.services.ping import check_port
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 from app.services.snmp import get_snmp_mac, poll_printer
@@ -351,6 +354,7 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
 
     printer.last_polled_at = datetime.now(UTC)
     _record_status_change(session, printer, was_online)
+    write_printer_snapshots(session, printer, source="single_poll")
     session.add(printer)
     session.commit()
     session.refresh(printer)
@@ -364,6 +368,15 @@ async def poll_all_printers(
     current_user: CurrentUser,
     printer_type: str = Query(default="laser"),
 ) -> PrintersPublic:
+    if settings.POLLING_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.POLLING_SERVICE_URL,
+            method="POST",
+            path="/poll/printers",
+            params={"printer_type": printer_type},
+        )
+        return PrintersPublic.model_validate(payload)
+
     lock_key = f"lock:poll-all:printers:{printer_type}"
     lock_acquired = True
     try:
@@ -458,6 +471,7 @@ async def poll_all_printers(
                     offline_with_mac.append(p)
             p.last_polled_at = datetime.now(UTC)
             _record_status_change(session, p, previous_online)
+            write_printer_snapshots(session, p, source="bulk_poll")
             session.add(p)
 
         # Phase 2: try to relocate offline printers by MAC
@@ -505,6 +519,7 @@ async def poll_all_printers(
                             )
                         else:
                             p.ip_address = old_ip
+                        write_printer_snapshots(session, p, source="bulk_poll_relocated")
                         session.add(p)
 
         session.commit()

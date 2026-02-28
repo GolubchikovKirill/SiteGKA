@@ -37,6 +37,21 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "infrascope"
 
     REDIS_URL: str = "redis://localhost:6379/0"
+    ML_ENABLED: bool = True
+    ML_SERVICE_URL: str = "http://ml-service:8010"
+    POLLING_SERVICE_ENABLED: bool = False
+    POLLING_SERVICE_URL: str = "http://polling-service:8011"
+    DISCOVERY_SERVICE_ENABLED: bool = False
+    DISCOVERY_SERVICE_URL: str = "http://discovery-service:8012"
+    NETWORK_CONTROL_SERVICE_ENABLED: bool = False
+    NETWORK_CONTROL_SERVICE_URL: str = "http://network-control-service:8013"
+    INTERNAL_SERVICE_TOKEN: str = ""
+    KAFKA_ENABLED: bool = False
+    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:9092"
+    KAFKA_EVENT_TOPIC: str = "infrascope.events"
+    ML_MIN_TRAIN_ROWS: int = 50
+    ML_RETRAIN_HOUR_UTC: int = 2
+    ML_SCORE_INTERVAL_MINUTES: int = 30
 
     SCAN_SUBNET: str = ""
     SCAN_PORTS: str = "9100,631,80,443"

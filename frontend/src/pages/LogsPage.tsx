@@ -43,7 +43,6 @@ export default function LogsPage() {
     queryFn: () => getEventLogs({ severity, device_kind: deviceKind, q: search || undefined, limit: 200 }),
     refetchInterval: 15_000,
   });
-
   const logs = data?.data ?? [];
   const total = data?.count ?? 0;
   const counts = useMemo(() => ({

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.config import settings
 from app.core.redis import get_redis
 from app.models import NetworkSwitch
 from app.observability.metrics import (
@@ -39,6 +40,8 @@ from app.schemas import (
 from app.services.cisco_ssh import get_access_points, poe_cycle_ap, reboot_ap
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.event_log import write_event_log
+from app.services.internal_services import _proxy_request
+from app.services.ml_snapshots import write_switch_snapshot
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
 from app.services.switches import resolve_switch_provider
 
@@ -108,6 +111,17 @@ def create_switch(session: SessionDep, switch_in: NetworkSwitchCreate) -> Networ
 async def discover_switch_scan(body: ScanRequest, session: SessionDep) -> dict:
     switches = session.exec(select(NetworkSwitch)).all()
     known = [{"id": str(s.id), "ip_address": s.ip_address, "mac_address": None} for s in switches]
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="POST",
+            path="/discover/switch/scan",
+            json_body={
+                "subnet": body.subnet,
+                "ports": body.ports,
+                "known_devices": known,
+            },
+        )
     asyncio.create_task(_run_switch_discovery(body.subnet, body.ports, known))
     return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
 
@@ -115,12 +129,25 @@ async def discover_switch_scan(body: ScanRequest, session: SessionDep) -> dict:
 @router.get("/discover/status", response_model=ScanProgress)
 async def discover_switch_status(current_user: CurrentUser) -> dict:
     del current_user
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="GET",
+            path="/discover/switch/status",
+        )
     return await get_discovery_progress("switch")
 
 
 @router.get("/discover/results", response_model=DiscoveryResults)
 async def discover_switch_results(current_user: CurrentUser) -> dict:
     del current_user
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="GET",
+            path="/discover/switch/results",
+        )
+        return DiscoveryResults.model_validate(payload).model_dump()
     progress = await get_discovery_progress("switch")
     devices = await get_discovery_results("switch")
     return {"progress": progress, "devices": devices}
@@ -233,7 +260,17 @@ def delete_switch(session: SessionDep, switch_id: uuid.UUID) -> Message:
 
 
 @router.post("/{switch_id}/poll", response_model=NetworkSwitchPublic)
-async def poll_switch(switch_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> NetworkSwitch:
+async def poll_switch(
+    switch_id: uuid.UUID, session: SessionDep, current_user: CurrentUser
+) -> NetworkSwitch | NetworkSwitchPublic:
+    if settings.POLLING_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.POLLING_SERVICE_URL,
+            method="POST",
+            path=f"/poll/switches/{switch_id}",
+        )
+        return NetworkSwitchPublic.model_validate(payload)
+
     switch = session.get(NetworkSwitch, switch_id)
     if not switch:
         raise HTTPException(status_code=404, detail="Switch not found")
@@ -250,6 +287,7 @@ async def poll_switch(switch_id: uuid.UUID, session: SessionDep, current_user: C
     switch.uptime = info.uptime or switch.uptime
     switch.last_polled_at = datetime.now(UTC)
     _record_status_change(session, switch, was_online)
+    write_switch_snapshot(session, switch, source="single_poll")
     session.add(switch)
     session.commit()
     session.refresh(switch)
@@ -262,6 +300,14 @@ async def poll_all_switches(
     current_user: CurrentUser,
 ) -> Message:
     del current_user
+    if settings.POLLING_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.POLLING_SERVICE_URL,
+            method="POST",
+            path="/poll/switches",
+        )
+        return Message.model_validate(payload)
+
     started = perf_counter()
     lock_key = "lock:poll-all:switches"
     lock_acquired = True
@@ -319,6 +365,7 @@ async def poll_all_switches(
                 switch.last_polled_at = datetime.now(UTC)
                 _record_status_change(session, switch, was_online)
                 switch_ops_total.labels(operation="poll_all", result="online" if effective_online else "offline").inc()
+                write_switch_snapshot(session, switch, source="bulk_poll")
                 session.add(switch)
             except Exception as exc:
                 logger.warning("Bulk switch poll failed for %s (%s): %s", switch.name, switch.ip_address, exc)
@@ -340,6 +387,7 @@ async def poll_all_switches(
                     probed_error=True,
                 )
                 switch.last_polled_at = datetime.now(UTC)
+                write_switch_snapshot(session, switch, source="bulk_poll_error")
                 session.add(switch)
                 switch_ops_total.labels(operation="poll_all", result="error").inc()
                 error_count += 1
@@ -403,6 +451,13 @@ async def reboot_access_point(
     current_user: CurrentUser,
     payload: dict,
 ) -> dict:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/switches/{switch_id}/reboot-ap",
+            json_body=payload,
+        )
     switch = session.get(NetworkSwitch, switch_id)
     if not switch:
         raise HTTPException(status_code=404, detail="Switch not found")
@@ -528,6 +583,15 @@ async def set_port_admin_state(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        _require_superuser(current_user)
+        payload = await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/switches/{switch_id}/ports/{port}/admin-state",
+            json_body={"admin_state": body.admin_state},
+        )
+        return Message.model_validate(payload)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
@@ -546,6 +610,15 @@ async def set_port_description(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        _require_superuser(current_user)
+        payload = await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/switches/{switch_id}/ports/{port}/description",
+            json_body={"description": body.description},
+        )
+        return Message.model_validate(payload)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
@@ -564,6 +637,15 @@ async def set_port_vlan(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        _require_superuser(current_user)
+        payload = await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/switches/{switch_id}/ports/{port}/vlan",
+            json_body={"vlan": body.vlan},
+        )
+        return Message.model_validate(payload)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
@@ -582,6 +664,15 @@ async def set_port_poe(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        _require_superuser(current_user)
+        payload = await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/switches/{switch_id}/ports/{port}/poe",
+            json_body={"action": body.action},
+        )
+        return Message.model_validate(payload)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
@@ -600,6 +691,20 @@ async def set_port_mode(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        _require_superuser(current_user)
+        payload = await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/switches/{switch_id}/ports/{port}/mode",
+            json_body={
+                "mode": body.mode,
+                "access_vlan": body.access_vlan,
+                "native_vlan": body.native_vlan,
+                "allowed_vlans": body.allowed_vlans,
+            },
+        )
+        return Message.model_validate(payload)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,

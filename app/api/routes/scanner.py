@@ -15,6 +15,7 @@ from app.schemas import (
     ScanResults,
 )
 from app.services.event_log import write_event_log
+from app.services.internal_services import _proxy_request
 from app.services.scanner import get_scan_progress, get_scan_results, scan_subnet
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,17 @@ async def start_scan(
         }
         for p in printers
     ]
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="POST",
+            path="/discover/printers/scan",
+            json_body={
+                "subnet": body.subnet,
+                "ports": body.ports,
+                "known_printers": known,
+            },
+        )
     background_tasks.add_task(_run_scan, body.subnet, body.ports, known)
     return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
 
@@ -57,12 +69,25 @@ async def start_scan(
 @router.get("/status", response_model=ScanProgress)
 async def scan_status(current_user: CurrentUser) -> dict:
     """Get current scan progress."""
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="GET",
+            path="/discover/printers/status",
+        )
     return await get_scan_progress()
 
 
 @router.get("/results", response_model=ScanResults)
 async def scan_results(current_user: CurrentUser) -> dict:
     """Get results of the last scan."""
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="GET",
+            path="/discover/printers/results",
+        )
+        return ScanResults.model_validate(payload).model_dump()
     progress = await get_scan_progress()
     devices = await get_scan_results()
     return {"progress": progress, "devices": devices}

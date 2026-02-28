@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.config import settings
 from app.core.redis import get_redis
 from app.models import MediaPlayer
 from app.observability.metrics import (
@@ -54,6 +55,8 @@ from app.services.iconbit import (
 from app.services.iconbit import (
     upload_file as iconbit_upload_file,
 )
+from app.services.internal_services import _proxy_request
+from app.services.ml_snapshots import write_media_player_snapshot
 from app.services.ping import check_port as check_tcp_port
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 
@@ -170,6 +173,17 @@ async def discover_iconbit_scan(
 ) -> dict:
     players = session.exec(select(MediaPlayer).where(MediaPlayer.device_type == "iconbit")).all()
     known = [{"id": str(p.id), "ip_address": p.ip_address, "mac_address": p.mac_address} for p in players]
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="POST",
+            path="/discover/iconbit/scan",
+            json_body={
+                "subnet": body.subnet,
+                "ports": body.ports,
+                "known_devices": known,
+            },
+        )
     asyncio.create_task(_run_iconbit_discovery(body.subnet, body.ports, known))
     return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
 
@@ -177,12 +191,25 @@ async def discover_iconbit_scan(
 @router.get("/discover/status", response_model=ScanProgress)
 async def discover_iconbit_status(current_user: CurrentUser) -> dict:
     del current_user
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="GET",
+            path="/discover/iconbit/status",
+        )
     return await get_discovery_progress("iconbit")
 
 
 @router.get("/discover/results", response_model=DiscoveryResults)
 async def discover_iconbit_results(current_user: CurrentUser) -> dict:
     del current_user
+    if settings.DISCOVERY_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.DISCOVERY_SERVICE_URL,
+            method="GET",
+            path="/discover/iconbit/results",
+        )
+        return DiscoveryResults.model_validate(payload).model_dump()
     progress = await get_discovery_progress("iconbit")
     devices = await get_discovery_results("iconbit")
     return {"progress": progress, "devices": devices}
@@ -374,6 +401,7 @@ async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_
 
     player.last_polled_at = datetime.now(UTC)
     _record_status_change(session, player, was_online)
+    write_media_player_snapshot(session, player, source="single_poll")
     session.add(player)
     session.commit()
     session.refresh(player)
@@ -387,6 +415,15 @@ async def poll_all_players(
     current_user: CurrentUser,
     device_type: str | None = Query(default=None),
 ) -> MediaPlayersPublic:
+    if settings.POLLING_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.POLLING_SERVICE_URL,
+            method="POST",
+            path="/poll/media-players",
+            params={"device_type": device_type} if device_type else None,
+        )
+        return MediaPlayersPublic.model_validate(payload)
+
     started = perf_counter()
     lock_key = f"lock:poll-all:media:{device_type or 'all'}"
     lock_acquired = True
@@ -461,6 +498,7 @@ async def poll_all_players(
                 offline_with_mac.append(player)
             player.last_polled_at = datetime.now(UTC)
             _record_status_change(session, player, previous_online)
+            write_media_player_snapshot(session, player, source="bulk_poll")
             session.add(player)
 
         # Try to rediscover offline devices by MAC (one sweep for all)
@@ -491,6 +529,7 @@ async def poll_all_players(
                         result="online" if player.is_online else "offline",
                     ).inc()
                     player.last_polled_at = datetime.now(UTC)
+                    write_media_player_snapshot(session, player, source="bulk_poll_relocated")
                     session.add(player)
 
         session.commit()
@@ -556,6 +595,7 @@ async def rediscover_devices(
             _, result = await asyncio.to_thread(_poll_one, player)
             _apply_poll_result(player, result)
             player.last_polled_at = datetime.now(UTC)
+            write_media_player_snapshot(session, player, source="rediscover")
             session.add(player)
 
     if updated:
@@ -576,6 +616,12 @@ async def rediscover_devices(
 
 @router.get("/{player_id}/iconbit/status")
 async def iconbit_status(player_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> dict:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="GET",
+            path=f"/iconbit/{player_id}/status",
+        )
     player = session.get(MediaPlayer, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Media player not found")
@@ -596,6 +642,12 @@ async def iconbit_status(player_id: uuid.UUID, session: SessionDep, current_user
 
 @router.post("/{player_id}/iconbit/play")
 async def iconbit_play_action(player_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> dict:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/iconbit/{player_id}/play",
+        )
     player = session.get(MediaPlayer, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Media player not found")
@@ -611,6 +663,12 @@ async def iconbit_play_action(player_id: uuid.UUID, session: SessionDep, current
 
 @router.post("/{player_id}/iconbit/stop")
 async def iconbit_stop_action(player_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> dict:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/iconbit/{player_id}/stop",
+        )
     player = session.get(MediaPlayer, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Media player not found")
@@ -631,6 +689,13 @@ async def iconbit_play_file_action(
     current_user: CurrentUser,
     filename: str = Body(embed=True),
 ) -> dict:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/iconbit/{player_id}/play-file",
+            json_body={"filename": filename},
+        )
     player = session.get(MediaPlayer, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Media player not found")
@@ -651,6 +716,13 @@ async def iconbit_delete_file_action(
     current_user: CurrentUser,
     filename: str = Body(embed=True),
 ) -> dict:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/iconbit/{player_id}/delete-file",
+            json_body={"filename": filename},
+        )
     player = session.get(MediaPlayer, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Media player not found")
@@ -671,6 +743,14 @@ async def iconbit_upload_action(
     current_user: CurrentUser,
     file: UploadFile = ...,
 ) -> dict:
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        content = await file.read()
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path=f"/iconbit/{player_id}/upload",
+            files={"file": (file.filename or "upload.mp3", content, file.content_type or "application/octet-stream")},
+        )
     player = session.get(MediaPlayer, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Media player not found")
@@ -695,6 +775,12 @@ def _get_all_iconbits(session) -> list[MediaPlayer]:
 @router.post("/iconbit/bulk-play")
 async def iconbit_bulk_play(session: SessionDep, current_user: CurrentUser) -> dict:
     """Start playback on all Iconbit devices."""
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path="/iconbit/bulk-play",
+        )
     players = _get_all_iconbits(session)
     if not players:
         return {"success": 0, "failed": 0}
@@ -713,6 +799,12 @@ async def iconbit_bulk_play(session: SessionDep, current_user: CurrentUser) -> d
 @router.post("/iconbit/bulk-stop")
 async def iconbit_bulk_stop(session: SessionDep, current_user: CurrentUser) -> dict:
     """Stop playback on all Iconbit devices."""
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path="/iconbit/bulk-stop",
+        )
     players = _get_all_iconbits(session)
     if not players:
         return {"success": 0, "failed": 0}
@@ -735,6 +827,14 @@ async def iconbit_bulk_upload(
     file: UploadFile = ...,
 ) -> dict:
     """Upload a media file to all Iconbit devices."""
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        content = await file.read()
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path="/iconbit/bulk-upload",
+            files={"file": (file.filename or "upload.mp3", content, file.content_type or "application/octet-stream")},
+        )
     players = _get_all_iconbits(session)
     if not players:
         return {"success": 0, "failed": 0}
@@ -759,6 +859,13 @@ async def iconbit_bulk_delete(
     filename: str = Body(embed=True),
 ) -> dict:
     """Delete a file from all Iconbit devices."""
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path="/iconbit/bulk-delete-file",
+            json_body={"filename": filename},
+        )
     players = _get_all_iconbits(session)
     if not players:
         return {"success": 0, "failed": 0}
@@ -781,6 +888,13 @@ async def iconbit_bulk_play_file(
     filename: str = Body(embed=True),
 ) -> dict:
     """Play a specific file on all Iconbit devices."""
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path="/iconbit/bulk-play-file",
+            json_body={"filename": filename},
+        )
     players = _get_all_iconbits(session)
     if not players:
         return {"success": 0, "failed": 0}
@@ -803,6 +917,14 @@ async def iconbit_bulk_replace(
     file: UploadFile = ...,
 ) -> dict:
     """Replace playlist on all Iconbit: delete old files, upload new, start playback."""
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        content = await file.read()
+        return await _proxy_request(
+            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+            method="POST",
+            path="/iconbit/bulk-replace",
+            files={"file": (file.filename or "upload.mp3", content, file.content_type or "application/octet-stream")},
+        )
     players = _get_all_iconbits(session)
     if not players:
         return {"success": 0, "failed": 0}

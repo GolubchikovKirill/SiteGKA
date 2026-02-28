@@ -145,3 +145,19 @@ def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token:
     assert polled.status_code == 200
     assert polled.json()["count"] == 1
     assert polled.json()["data"][0]["is_online"] is True
+
+
+def test_iconbit_bulk_play_uses_network_control_service_when_enabled(client: TestClient, admin_token: str, monkeypatch):
+    async def _fake_proxy_request(**kwargs):
+        assert kwargs["path"] == "/iconbit/bulk-play"
+        return {"success": 2, "failed": 0}
+
+    monkeypatch.setattr(media_routes.settings, "NETWORK_CONTROL_SERVICE_ENABLED", True)
+    monkeypatch.setattr(media_routes, "_proxy_request", _fake_proxy_request)
+
+    response = client.post(
+        "/api/v1/media-players/iconbit/bulk-play",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["success"] == 2

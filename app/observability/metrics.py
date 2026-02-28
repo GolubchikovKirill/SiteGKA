@@ -108,6 +108,38 @@ worker_task_status_checks_total = Counter(
     ["state"],
 )
 
+ml_train_runs_total = Counter(
+    "infrascope_ml_train_runs_total",
+    "ML training runs by model family and result.",
+    ["model_family", "result"],
+)
+
+ml_train_duration_seconds = Histogram(
+    "infrascope_ml_train_duration_seconds",
+    "Duration of ML training runs.",
+    ["model_family"],
+    buckets=(0.1, 0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300),
+)
+
+ml_inference_duration_seconds = Histogram(
+    "infrascope_ml_inference_duration_seconds",
+    "Duration of ML scoring/inference runs.",
+    ["operation"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30),
+)
+
+ml_predictions_total = Counter(
+    "infrascope_ml_predictions_total",
+    "Generated ML predictions by kind.",
+    ["prediction_kind", "risk_level"],
+)
+
+ml_model_active_info = Gauge(
+    "infrascope_ml_model_active_info",
+    "Active ML model info.",
+    ["model_family", "version"],
+)
+
 network_bulk_operation_duration_seconds = Histogram(
     "infrascope_network_bulk_operation_duration_seconds",
     "Duration of bulk network operations.",

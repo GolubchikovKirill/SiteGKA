@@ -10,6 +10,7 @@ from fastapi.responses import Response
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.config import settings
 from app.models import CashRegister
 from app.schemas import (
     CashRegisterCreate,
@@ -19,6 +20,7 @@ from app.schemas import (
     Message,
 )
 from app.services.event_log import write_event_log
+from app.services.internal_services import _proxy_request
 from app.services.ping import check_port
 
 router = APIRouter(tags=["cash-registers"])
@@ -132,8 +134,18 @@ def delete_cash_register(session: SessionDep, cash_id: uuid.UUID) -> Message:
 
 
 @router.post("/{cash_id}/poll", response_model=CashRegisterPublic)
-async def poll_cash_register(cash_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> CashRegister:
+async def poll_cash_register(
+    cash_id: uuid.UUID, session: SessionDep, current_user: CurrentUser
+) -> CashRegister | CashRegisterPublic:
     del current_user
+    if settings.POLLING_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.POLLING_SERVICE_URL,
+            method="POST",
+            path=f"/poll/cash-registers/{cash_id}",
+        )
+        return CashRegisterPublic.model_validate(payload)
+
     cash = session.get(CashRegister, cash_id)
     if not cash:
         raise HTTPException(status_code=404, detail="Cash register not found")
@@ -152,6 +164,14 @@ async def poll_cash_register(cash_id: uuid.UUID, session: SessionDep, current_us
 @router.post("/poll-all", response_model=CashRegistersPublic)
 async def poll_all_cash_registers(session: SessionDep, current_user: CurrentUser) -> CashRegistersPublic:
     del current_user
+    if settings.POLLING_SERVICE_ENABLED:
+        payload = await _proxy_request(
+            base_url=settings.POLLING_SERVICE_URL,
+            method="POST",
+            path="/poll/cash-registers",
+        )
+        return CashRegistersPublic.model_validate(payload)
+
     rows = session.exec(select(CashRegister)).all()
     for row in rows:
         prev_online = row.is_online

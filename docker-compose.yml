@@ -32,6 +32,46 @@ services:
     networks:
       - internal
 
+  kafka:
+    image: apache/kafka:3.9.0
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 20s
+      retries: 6
+      start_period: 40s
+      timeout: 10s
+    networks:
+      - internal
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_UI_BIND:-127.0.0.1}:${KAFKA_UI_PORT:-8080}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: infrascope
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - internal
+
   backend:
     build:
       context: .
@@ -41,12 +81,20 @@ services:
     environment:
       POSTGRES_SERVER: db
       REDIS_URL: redis://redis:6379/0
+      NETWORK_CONTROL_SERVICE_ENABLED: ${NETWORK_CONTROL_SERVICE_ENABLED:-true}
+      NETWORK_CONTROL_SERVICE_URL: http://network-control-service:8013
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     dns:
       - ${DNS_SERVER:-8.8.8.8}
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      network-control-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -69,10 +117,14 @@ services:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       WORKER_POOL: ${WORKER_POOL:-threads}
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9108}
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
       backend:
         condition: service_healthy
@@ -82,6 +134,135 @@ services:
       - celery -A app.worker.celery_app.celery_app worker --loglevel=INFO --pool=${WORKER_POOL:-threads} --concurrency=${WORKER_CONCURRENCY:-4}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${WORKER_METRICS_PORT:-9108}/')"]
+      interval: 20s
+      retries: 3
+      start_period: 30s
+      timeout: 5s
+    networks:
+      - internal
+
+  ml-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_SERVER: db
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    command:
+      - sh
+      - -c
+      - uvicorn app.ml_service.main:app --host 0.0.0.0 --port 8010
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 20s
+      retries: 3
+      start_period: 30s
+      timeout: 5s
+    networks:
+      - internal
+
+  polling-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_SERVER: db
+      REDIS_URL: redis://redis:6379/0
+      POLLING_SERVICE_ENABLED: "false"
+      DISCOVERY_SERVICE_ENABLED: "false"
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    command:
+      - sh
+      - -c
+      - uvicorn app.polling_service.main:app --host 0.0.0.0 --port 8011
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/health')"]
+      interval: 20s
+      retries: 3
+      start_period: 30s
+      timeout: 5s
+    networks:
+      - internal
+
+  discovery-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_SERVER: db
+      REDIS_URL: redis://redis:6379/0
+      POLLING_SERVICE_ENABLED: "false"
+      DISCOVERY_SERVICE_ENABLED: "false"
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    command:
+      - sh
+      - -c
+      - uvicorn app.discovery_service.main:app --host 0.0.0.0 --port 8012
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8012/health')"]
+      interval: 20s
+      retries: 3
+      start_period: 30s
+      timeout: 5s
+    networks:
+      - internal
+
+  network-control-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_SERVER: db
+      REDIS_URL: redis://redis:6379/0
+      POLLING_SERVICE_ENABLED: "false"
+      DISCOVERY_SERVICE_ENABLED: "false"
+      NETWORK_CONTROL_SERVICE_ENABLED: "false"
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    command:
+      - sh
+      - -c
+      - uvicorn app.network_control_service.main:app --host 0.0.0.0 --port 8013
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8013/health')"]
       interval: 20s
       retries: 3
       start_period: 30s
@@ -106,6 +287,14 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
+      ml-service:
+        condition: service_healthy
+      polling-service:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+      network-control-service:
+        condition: service_healthy
     networks:
       - internal
 
@@ -124,6 +313,14 @@ services:
       - prometheus_data:/prometheus
     depends_on:
       backend:
+        condition: service_healthy
+      polling-service:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+      network-control-service:
+        condition: service_healthy
+      ml-service:
         condition: service_healthy
     networks:
       - internal
@@ -151,6 +348,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  kafka_data:
   prometheus_data:
   grafana_data:
 

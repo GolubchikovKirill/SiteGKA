@@ -1,13 +1,33 @@
 import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth";
-import { LogOut, Server, Printer, Users, Monitor, Network, Moon, Sun, ScrollText, Wallet } from "lucide-react";
+import {
+  LogOut,
+  Server,
+  Printer,
+  Users,
+  Monitor,
+  Network,
+  Moon,
+  Sun,
+  ScrollText,
+  Wallet,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { readThemeMode, setThemeMode, type ThemeMode } from "../theme";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const isSuperuser = user?.is_superuser ?? false;
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => readThemeMode());
+  const [isSidebarVisible, setSidebarVisible] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("infrascope_sidebar_hidden") !== "1";
+    } catch {
+      return true;
+    }
+  });
 
   const navItems = [
     { to: "/", label: "Принтеры", icon: Printer, visible: true },
@@ -24,18 +44,40 @@ export default function Layout({ children }: { children: ReactNode }) {
     setThemeModeState(next);
   };
 
+  const handleToggleSidebar = () => {
+    setSidebarVisible((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("infrascope_sidebar_hidden", next ? "0" : "1");
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="min-h-screen app-shell md:flex">
-      <aside className="app-sidebar hidden md:flex md:w-72 md:flex-col md:sticky md:top-0 md:h-screen md:border-r">
+      <aside className={`${isSidebarVisible ? "hidden md:flex" : "hidden"} app-sidebar md:w-72 md:flex-col md:sticky md:top-0 md:h-screen md:border-r`}>
         <div className="px-5 py-5 border-b border-inherit">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-gradient-to-br from-red-700 to-rose-600 p-2 shadow-md">
-              <Server className="h-5 w-5 text-white" />
+          <div className="flex items-center gap-3 justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-gradient-to-br from-red-700 to-rose-600 p-2 shadow-md">
+                <Server className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-slate-900">InfraScope</div>
+                <div className="text-xs text-slate-500">Control Center</div>
+              </div>
             </div>
-            <div>
-              <div className="text-lg font-semibold text-slate-900">InfraScope</div>
-              <div className="text-xs text-slate-500">Control Center</div>
-            </div>
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              className="hidden md:inline-flex rounded-lg border px-2 py-1 text-slate-500 hover:text-slate-700 app-btn-secondary"
+              title="Скрыть меню"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
@@ -82,6 +124,19 @@ export default function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex-1 min-w-0">
+        {!isSidebarVisible && (
+          <div className="hidden md:flex px-3 sm:px-5 lg:px-8 pt-3">
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs app-btn-secondary"
+              title="Показать меню"
+            >
+              <ChevronRight className="h-4 w-4" />
+              Меню
+            </button>
+          </div>
+        )}
         <header className="app-header md:hidden sticky top-0 z-30 border-b backdrop-blur-xl">
           <div className="px-3 py-3 space-y-3">
             <div className="flex items-center justify-between gap-2">
