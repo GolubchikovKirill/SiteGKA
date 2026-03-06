@@ -3,24 +3,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-ARG NPM_REGISTRY=https://registry.npmjs.org/
-ENV npm_config_registry=${NPM_REGISTRY}
-
-RUN npm --version \
-    && npm config set fund false \
-    && npm config set audit false \
-    && npm config set fetch-retries 5 \
-    && npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 120000 \
-    && npm config set maxsockets 1 \
-    && success=0 \
-    && for i in 1 2 3 4 5; do \
-        if npm ci --no-audit --no-fund; then success=1; break; fi; \
-        echo "npm ci failed, retry $i/5"; \
-        npm cache clean --force; \
-        sleep $((i * 5)); \
-      done \
-    && [ "$success" -eq 1 ]
+RUN npm ci
 
 COPY . .
 
