@@ -159,7 +159,6 @@ class MLModelsStatusPublic(BaseModel):
 
 class CashRegisterCreate(BaseModel):
     kkm_number: str
-    store_number: str | None = None
     store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None
@@ -188,7 +187,6 @@ class CashRegisterCreate(BaseModel):
         return value
 
     @field_validator(
-        "store_number",
         "store_code",
         "serial_number",
         "inventory_number",
@@ -212,7 +210,6 @@ class CashRegisterCreate(BaseModel):
 
 class CashRegisterUpdate(BaseModel):
     kkm_number: str | None = None
-    store_number: str | None = None
     store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None
@@ -245,7 +242,6 @@ class CashRegisterUpdate(BaseModel):
         return value
 
     @field_validator(
-        "store_number",
         "store_code",
         "serial_number",
         "inventory_number",
@@ -272,7 +268,6 @@ class CashRegisterPublic(BaseModel):
 
     id: uuid.UUID
     kkm_number: str
-    store_number: str | None = None
     store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None

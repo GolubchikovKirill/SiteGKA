@@ -298,7 +298,6 @@ export async function runMLCycle() {
 export interface CashRegister {
   id: string;
   kkm_number: string;
-  store_number: string | null;
   store_code: string | null;
   serial_number: string | null;
   inventory_number: string | null;
@@ -329,7 +328,6 @@ export async function getCashRegisters(q?: string) {
 
 export async function createCashRegister(payload: {
   kkm_number: string;
-  store_number?: string;
   store_code?: string;
   serial_number?: string;
   inventory_number?: string;

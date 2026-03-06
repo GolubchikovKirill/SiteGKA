@@ -16,7 +16,6 @@ import {
 type StatusFilter = "all" | "online" | "offline";
 type CashForm = {
   kkm_number: string;
-  store_number: string;
   store_code: string;
   serial_number: string;
   inventory_number: string;
@@ -31,7 +30,6 @@ type CashForm = {
 
 const emptyForm: CashForm = {
   kkm_number: "",
-  store_number: "",
   store_code: "",
   serial_number: "",
   inventory_number: "",
@@ -116,7 +114,6 @@ export default function CashRegistersPage() {
     setEditing(item);
     setForm({
       kkm_number: item.kkm_number ?? "",
-      store_number: item.store_number ?? "",
       store_code: item.store_code ?? "",
       serial_number: item.serial_number ?? "",
       inventory_number: item.inventory_number ?? "",
@@ -194,7 +191,7 @@ export default function CashRegistersPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Поиск: № ККМ, № магазина, hostname, код, серийный..."
+            placeholder="Поиск: № ККМ, hostname, код, серийный..."
             className="app-input w-full pl-10 pr-4 py-2 text-sm"
           />
         </div>
@@ -236,7 +233,6 @@ export default function CashRegistersPage() {
                     </div>
                   )}
                   <div className="grid gap-1 text-xs text-gray-500 sm:grid-cols-2 lg:grid-cols-3">
-                    <div>№ магазина: {item.store_number || "—"}</div>
                     <div>Код ТТ: {item.store_code || "—"}</div>
                     <div>Серийный: {item.serial_number || "—"}</div>
                     <div>Инв. №: {item.inventory_number || "—"}</div>
@@ -284,11 +280,6 @@ export default function CashRegistersPage() {
             <h2 className="text-lg font-semibold text-slate-900">{editing ? "Редактировать кассу" : "Новая касса"}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input label="№ ККМ*" value={form.kkm_number} onChange={(v) => setForm((s) => ({ ...s, kkm_number: v }))} />
-              <Input
-                label="№ магазина"
-                value={form.store_number}
-                onChange={(v) => setForm((s) => ({ ...s, store_number: v }))}
-              />
               <Input
                 label="Hostname в сети*"
                 value={form.hostname}
