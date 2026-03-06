@@ -1,4 +1,14 @@
-import { RefreshCw, Pencil, Trash2, ExternalLink, Printer as PrinterIcon, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
+import {
+  ChevronDown,
+  ExternalLink,
+  Pencil,
+  Printer as PrinterIcon,
+  RefreshCw,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldQuestion,
+  Trash2,
+} from "lucide-react";
 import type { Printer } from "../client";
 import TonerBar from "./TonerBar";
 
@@ -124,10 +134,10 @@ export default function PrinterCard({
 
         {/* Toner levels */}
         <div className="space-y-1.5">
-          <TonerBar label={printer.toner_black_name ? `K (${printer.toner_black_name})` : "K"} level={printer.toner_black} color="bg-gray-800" bgColor="bg-gray-100" />
-          <TonerBar label={printer.toner_cyan_name ? `C (${printer.toner_cyan_name})` : "C"} level={printer.toner_cyan} color="bg-cyan-500" bgColor="bg-cyan-50" />
-          <TonerBar label={printer.toner_magenta_name ? `M (${printer.toner_magenta_name})` : "M"} level={printer.toner_magenta} color="bg-pink-500" bgColor="bg-pink-50" />
-          <TonerBar label={printer.toner_yellow_name ? `Y (${printer.toner_yellow_name})` : "Y"} level={printer.toner_yellow} color="bg-yellow-400" bgColor="bg-yellow-50" />
+          <TonerBar label="K" level={printer.toner_black} color="bg-gray-800" bgColor="bg-gray-100" />
+          <TonerBar label="C" level={printer.toner_cyan} color="bg-cyan-500" bgColor="bg-cyan-50" />
+          <TonerBar label="M" level={printer.toner_magenta} color="bg-pink-500" bgColor="bg-pink-50" />
+          <TonerBar label="Y" level={printer.toner_yellow} color="bg-yellow-400" bgColor="bg-yellow-50" />
         </div>
         {tonerPredictionDays && Object.keys(tonerPredictionDays).length > 0 && (
           <div className="text-[11px] text-gray-500">
@@ -215,6 +225,18 @@ export default function PrinterCard({
           <MacStatus printer={printer} />
         </div>
       )}
+      <details className="border-t border-gray-200">
+        <summary className="list-none cursor-pointer select-none px-5 py-2.5 text-xs text-gray-600 hover:bg-gray-50 flex items-center justify-between">
+          <span>Картриджи</span>
+          <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+        </summary>
+        <div className="px-5 pb-3 text-xs text-gray-600 grid gap-1">
+          <div>K: {printer.toner_black_name || "модель не указана"} - {printer.toner_black ?? "?"}%</div>
+          <div>C: {printer.toner_cyan_name || "модель не указана"} - {printer.toner_cyan ?? "?"}%</div>
+          <div>M: {printer.toner_magenta_name || "модель не указана"} - {printer.toner_magenta ?? "?"}%</div>
+          <div>Y: {printer.toner_yellow_name || "модель не указана"} - {printer.toner_yellow ?? "?"}%</div>
+        </div>
+      </details>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import ipaddress
 import socket
 import uuid
 from datetime import UTC, datetime
@@ -27,14 +28,40 @@ router = APIRouter(tags=["cash-registers"])
 
 
 def _probe_register(hostname: str) -> tuple[bool, str | None]:
-    # Resolve first so obvious DNS issues are treated as offline fast.
-    try:
-        socket.gethostbyname(hostname)
-    except OSError:
+    address = hostname.strip()
+    if not address:
         return False, "dns_unresolved"
-    # Try common Windows service ports.
-    if check_port(hostname, port=3389, timeout=1.5) or check_port(hostname, port=445, timeout=1.5):
-        return True, None
+
+    is_ip = False
+    try:
+        ipaddress.ip_address(address)
+        is_ip = True
+    except ValueError:
+        is_ip = False
+
+    targets: list[str] = [address]
+    resolved = False
+    candidates = [address]
+    if not is_ip and "." not in address:
+        candidates.extend([f"{address}.local", f"{address}.lan"])
+    for candidate in candidates:
+        try:
+            infos = socket.getaddrinfo(candidate, None, proto=socket.IPPROTO_TCP)
+        except OSError:
+            continue
+        resolved = True
+        for info in infos:
+            ip = info[4][0]
+            if ip not in targets:
+                targets.append(ip)
+
+    for target in targets:
+        # Try common Windows service ports.
+        if check_port(target, port=3389, timeout=1.5) or check_port(target, port=445, timeout=1.5):
+            return True, None
+
+    if not is_ip and not resolved:
+        return False, "dns_unresolved"
     return False, "port_closed"
 
 
@@ -89,6 +116,7 @@ def read_cash_registers(
         pattern = f"%{q}%"
         flt = (
             CashRegister.kkm_number.ilike(pattern)
+            | CashRegister.store_number.ilike(pattern)
             | CashRegister.hostname.ilike(pattern)
             | CashRegister.store_code.ilike(pattern)
             | CashRegister.serial_number.ilike(pattern)
@@ -198,6 +226,7 @@ def export_cash_registers_csv(
         pattern = f"%{q}%"
         statement = statement.where(
             CashRegister.kkm_number.ilike(pattern)
+            | CashRegister.store_number.ilike(pattern)
             | CashRegister.hostname.ilike(pattern)
             | CashRegister.store_code.ilike(pattern)
             | CashRegister.serial_number.ilike(pattern)
@@ -210,6 +239,7 @@ def export_cash_registers_csv(
     writer.writerow(
         [
             "№ ККМ",
+            "№ магазина",
             "Код ТТ",
             "Серийный номер",
             "Инвентаризационный №",
@@ -229,6 +259,7 @@ def export_cash_registers_csv(
         writer.writerow(
             [
                 row.kkm_number,
+                row.store_number or "",
                 row.store_code or "",
                 row.serial_number or "",
                 row.inventory_number or "",

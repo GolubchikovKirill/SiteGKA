@@ -104,6 +104,7 @@ class EventLog(SQLModel, table=True):
 class CashRegister(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     kkm_number: str = Field(max_length=64, index=True)
+    store_number: str | None = Field(default=None, max_length=64, index=True)
     store_code: str | None = Field(default=None, max_length=64, index=True)
     serial_number: str | None = Field(default=None, max_length=128, index=True)
     inventory_number: str | None = Field(default=None, max_length=128, index=True)
