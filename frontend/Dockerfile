@@ -14,12 +14,15 @@ RUN --mount=type=cache,target=/root/.npm npm --version \
     && npm config set fetch-retry-maxtimeout 120000 \
     && npm config set fetch-timeout 300000 \
     && npm config set maxsockets 1 \
+    && run_npm_ci() { \
+        node -e "const {spawn}=require('node:child_process');const c=spawn('npm',['ci','--no-audit','--no-fund','--prefer-offline'],{stdio:'inherit'});const t=setTimeout(()=>{console.error('npm ci timeout (10m)');c.kill('SIGKILL');process.exit(124);},600000);c.on('exit',code=>{clearTimeout(t);process.exit(code??1);});"; \
+      } \
     && install_with_retries() { \
         reg="$1"; \
         npm config set registry "$reg"; \
         success=0; \
         for i in 1 2 3 4 5; do \
-          if npm ci --no-audit --no-fund --prefer-offline; then success=1; break; fi; \
+          if run_npm_ci; then success=1; break; fi; \
           echo "npm ci failed on $reg, retry $i/5"; \
           npm cache clean --force; \
           sleep $((i * 5)); \
