@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.deps import SessionDep
-from app.api.deps import get_current_active_superuser
+from app.api.deps import SessionDep, get_current_active_superuser
 from app.schemas import GeneralSettingsPublic, GeneralSettingsUpdate
 from app.services.app_settings import get_general_settings, update_general_settings
 

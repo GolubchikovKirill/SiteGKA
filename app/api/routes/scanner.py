@@ -11,13 +11,13 @@ from app.schemas import (
     PrinterCreate,
     PrinterPublic,
     ScanProgress,
-    SmartNetworkSearchPublic,
-    SmartNetworkSearchRequest,
     ScanRequest,
     ScanResults,
+    SmartNetworkSearchPublic,
+    SmartNetworkSearchRequest,
 )
-from app.services.event_log import write_event_log
 from app.services.app_settings import get_general_settings
+from app.services.event_log import write_event_log
 from app.services.internal_services import _proxy_request
 from app.services.scanner import get_scan_progress, get_scan_results, scan_subnet, smart_probe_network
 from app.services.smart_search import text_matches_query

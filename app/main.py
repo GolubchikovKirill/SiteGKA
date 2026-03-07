@@ -5,8 +5,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
-from sqlalchemy import text
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 from sqlmodel import Session
 
 from app.api.main import api_router

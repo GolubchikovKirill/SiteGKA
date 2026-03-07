@@ -77,8 +77,8 @@ class Settings(BaseSettings):
 
     DOMAIN: str = "infrascope.local"
     DNS_SEARCH_SUFFIXES: str = ""
-    QR_SQL_LOGIN: str = "sa"
-    QR_SQL_PASSWORD: str = "Wincor2012"
+    QR_SQL_LOGIN: str = ""
+    QR_SQL_PASSWORD: str = ""
     QR_SQL_DATABASE: str = "CashDB51"
     ONEC_DUTY_FREE_API_URL: str = ""
     ONEC_DUTY_FREE_API_TOKEN: str = ""

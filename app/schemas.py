@@ -475,7 +475,7 @@ class OneCExchangeByBarcodeRequest(BaseModel):
         return result
 
     @model_validator(mode="after")
-    def migrate_legacy_hosts(self) -> "OneCExchangeByBarcodeRequest":
+    def migrate_legacy_hosts(self) -> OneCExchangeByBarcodeRequest:
         if not self.cash_register_identifiers and self.cash_register_hostnames:
             self.cash_register_identifiers = list(self.cash_register_hostnames)
             self.cash_register_identifier_kind = "hostname"
