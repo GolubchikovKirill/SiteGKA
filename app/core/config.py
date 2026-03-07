@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     POLL_RESILIENCE_STATE_TTL_SECONDS: int = 7200
 
     DOMAIN: str = "infrascope.local"
+    DNS_SERVER: str = ""
     DNS_SEARCH_SUFFIXES: str = ""
     QR_SQL_LOGIN: str = ""
     QR_SQL_PASSWORD: str = ""
