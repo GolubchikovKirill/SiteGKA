@@ -1,4 +1,5 @@
-import { RefreshCw, Pencil, Trash2, ExternalLink, Printer as PrinterIcon, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
+import { useState } from "react";
+import { RefreshCw, Pencil, Trash2, ExternalLink, Printer as PrinterIcon, ShieldCheck, ShieldAlert, ShieldQuestion, ChevronDown } from "lucide-react";
 import type { Printer } from "../client";
 import TonerBar from "./TonerBar";
 
@@ -70,6 +71,7 @@ export default function PrinterCard({
   tonerPredictionDays,
   offlineRiskLevel,
 }: Props) {
+  const [isTonerModelsOpen, setIsTonerModelsOpen] = useState(false);
   const polledAt = printer.last_polled_at
     ? new Date(printer.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
@@ -79,6 +81,27 @@ export default function PrinterCard({
     { key: "M", level: printer.toner_magenta, name: printer.toner_magenta_name },
     { key: "Y", level: printer.toner_yellow, name: printer.toner_yellow_name },
   ].filter((item) => item.level !== null && item.level <= 15);
+  const tonerModels = [
+    { key: "K", name: printer.toner_black_name },
+    { key: "C", name: printer.toner_cyan_name },
+    { key: "M", name: printer.toner_magenta_name },
+    { key: "Y", name: printer.toner_yellow_name },
+  ].filter((item) => Boolean(item.name));
+  const mlPredictionEntries = (["black", "cyan", "magenta", "yellow"] as const)
+    .map((key) => {
+      const days = tonerPredictionDays?.[key];
+      if (days == null) return null;
+      const value = Math.max(Math.round(days), 0);
+      const shortLabel = key[0].toUpperCase();
+      const toneClass =
+        value <= 7
+          ? "ml-chip-critical"
+          : value <= 21
+            ? "ml-chip-warning"
+            : "ml-chip-ok";
+      return { key, shortLabel, value, toneClass };
+    })
+    .filter(Boolean) as Array<{ key: "black" | "cyan" | "magenta" | "yellow"; shortLabel: string; value: number; toneClass: string }>;
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
@@ -124,18 +147,47 @@ export default function PrinterCard({
 
         {/* Toner levels */}
         <div className="space-y-1.5">
-          <TonerBar label={printer.toner_black_name ? `K (${printer.toner_black_name})` : "K"} level={printer.toner_black} color="bg-gray-800" bgColor="bg-gray-100" />
-          <TonerBar label={printer.toner_cyan_name ? `C (${printer.toner_cyan_name})` : "C"} level={printer.toner_cyan} color="bg-cyan-500" bgColor="bg-cyan-50" />
-          <TonerBar label={printer.toner_magenta_name ? `M (${printer.toner_magenta_name})` : "M"} level={printer.toner_magenta} color="bg-pink-500" bgColor="bg-pink-50" />
-          <TonerBar label={printer.toner_yellow_name ? `Y (${printer.toner_yellow_name})` : "Y"} level={printer.toner_yellow} color="bg-yellow-400" bgColor="bg-yellow-50" />
+          <TonerBar label="K" level={printer.toner_black} color="bg-gray-800" bgColor="bg-gray-100" />
+          <TonerBar label="C" level={printer.toner_cyan} color="bg-cyan-500" bgColor="bg-cyan-50" />
+          <TonerBar label="M" level={printer.toner_magenta} color="bg-pink-500" bgColor="bg-pink-50" />
+          <TonerBar label="Y" level={printer.toner_yellow} color="bg-yellow-400" bgColor="bg-yellow-50" />
         </div>
-        {tonerPredictionDays && Object.keys(tonerPredictionDays).length > 0 && (
-          <div className="text-[11px] text-gray-500">
-            ML прогноз:{" "}
-            {(["black", "cyan", "magenta", "yellow"] as const)
-              .filter((c) => tonerPredictionDays[c] != null)
-              .map((c) => `${c[0].toUpperCase()}: ${Math.max(Math.round(tonerPredictionDays[c] || 0), 0)} дн.`)
-              .join(" · ")}
+        {tonerModels.length > 0 && (
+          <div className="app-soft-panel rounded-lg px-3 py-2 text-xs text-gray-600">
+            <button
+              type="button"
+              onClick={() => setIsTonerModelsOpen((prev) => !prev)}
+              className="w-full flex items-center justify-between text-left font-medium text-gray-700"
+            >
+              <span>Модели картриджей</span>
+              <ChevronDown className={`h-3.5 w-3.5 text-gray-500 transition-transform ${isTonerModelsOpen ? "rotate-180" : ""}`} />
+            </button>
+            {isTonerModelsOpen && (
+              <div className="mt-2 grid gap-1 sm:grid-cols-2">
+                {tonerModels.map((item) => (
+                  <div key={item.key}>
+                    {item.key}: <span className="font-medium text-gray-800">{item.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {mlPredictionEntries.length > 0 && (
+          <div className="app-soft-panel rounded-lg px-3 py-2">
+            <div className="mb-1.5 text-[11px] font-medium text-slate-600">ML прогноз до замены</div>
+            <div className="flex flex-wrap gap-1.5">
+              {mlPredictionEntries.map((entry) => (
+                <span
+                  key={entry.key}
+                  className={`ml-chip inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${entry.toneClass}`}
+                  title={`${entry.value} дн. до замены (${entry.key})`}
+                >
+                  {entry.shortLabel}
+                  <span>{entry.value} дн.</span>
+                </span>
+              ))}
+            </div>
           </div>
         )}
         {showLowTonerDetails && lowTonerItems.length > 0 && (
@@ -207,10 +259,10 @@ export default function PrinterCard({
       {(printer.mac_address || printer.mac_status) && (
         <div className={`px-5 py-2 border-t rounded-b-xl ${
           printer.mac_status === "mismatch"
-            ? "bg-red-50 border-red-200"
+            ? "app-surface-danger border-red-200"
             : printer.mac_status === "verified"
-            ? "bg-emerald-50 border-emerald-200"
-            : "bg-gray-50 border-gray-200"
+            ? "app-surface-ok border-emerald-200"
+            : "app-soft-panel border-gray-200"
         }`}>
           <MacStatus printer={printer} />
         </div>

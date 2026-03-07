@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, RefreshCw, Search, Network } from "lucide-react";
 import { useAuth } from "../auth";
 import type { NetworkSwitch } from "../client";
@@ -7,7 +7,7 @@ import { getSwitches, createSwitch, updateSwitch, deleteSwitch, pollSwitch, poll
 import SwitchForm from "../components/SwitchForm";
 import SwitchCard from "../components/SwitchCard";
 import SwitchPortsTable from "../components/SwitchPortsTable";
-import NetworkDiscoveryModal from "../components/NetworkDiscoveryModal";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 type StatusFilter = "all" | "online" | "offline";
 
@@ -17,17 +17,18 @@ export default function SwitchesPage() {
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [showForm, setShowForm] = useState(false);
-  const [showDiscovery, setShowDiscovery] = useState(false);
   const [editTarget, setEditTarget] = useState<NetworkSwitch | null>(null);
   const [pollingId, setPollingId] = useState<string | null>(null);
   const [portsTarget, setPortsTarget] = useState<NetworkSwitch | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["switches", search],
-    queryFn: () => getSwitches(search || undefined),
+    queryKey: ["switches", debouncedSearch],
+    queryFn: () => getSwitches(debouncedSearch || undefined),
     staleTime: 10_000,
+    placeholderData: keepPreviousData,
   });
 
   const switches = data?.data ?? [];
@@ -79,8 +80,8 @@ export default function SwitchesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="app-toolbar p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
+      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="app-toolbar-title">
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Network className="h-6 w-6 text-rose-600" />
             Сетевое оборудование
@@ -89,7 +90,7 @@ export default function SwitchesPage() {
             {switches.length} свитч(ей) &middot; {onlineCount} онлайн
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="app-toolbar-actions">
           <button
             onClick={() => pollAllMut.mutate()}
             disabled={pollAllMut.isPending}
@@ -97,13 +98,6 @@ export default function SwitchesPage() {
           >
             <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
             {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
-          </button>
-          <button
-            onClick={() => setShowDiscovery(true)}
-            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
-          >
-            <Search className="h-4 w-4" />
-            Поиск сети
           </button>
           {isSuperuser && (
             <button
@@ -130,7 +124,7 @@ export default function SwitchesPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Поиск по названию..."
+          placeholder="Умный поиск: имя, hostname, IP, модель (A/А)"
           className="app-input w-full pl-10 pr-4 py-2 text-sm"
         />
       </div>
@@ -185,7 +179,6 @@ export default function SwitchesPage() {
           onClose={() => setPortsTarget(null)}
         />
       )}
-      {showDiscovery && <NetworkDiscoveryModal kind="switch" onClose={() => setShowDiscovery(false)} />}
     </div>
   );
 }

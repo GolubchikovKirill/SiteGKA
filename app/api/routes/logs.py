@@ -4,6 +4,7 @@ from sqlmodel import func, select
 from app.api.deps import CurrentUser, SessionDep
 from app.models import EventLog
 from app.schemas import EventLogsPublic
+from app.services.smart_search import build_ilike_filter
 
 router = APIRouter(tags=["logs"])
 
@@ -29,19 +30,19 @@ def read_logs(
         statement = statement.where(EventLog.device_kind == device_kind.lower())
         count_stmt = count_stmt.where(EventLog.device_kind == device_kind.lower())
     if q:
-        pattern = f"%{q}%"
-        statement = statement.where(
-            (EventLog.message.ilike(pattern))
-            | (EventLog.device_name.ilike(pattern))
-            | (EventLog.ip_address.ilike(pattern))
-            | (EventLog.event_type.ilike(pattern))
+        flt = build_ilike_filter(
+            [
+                EventLog.message,
+                EventLog.device_name,
+                EventLog.ip_address,
+                EventLog.event_type,
+                EventLog.category,
+            ],
+            q,
         )
-        count_stmt = count_stmt.where(
-            (EventLog.message.ilike(pattern))
-            | (EventLog.device_name.ilike(pattern))
-            | (EventLog.ip_address.ilike(pattern))
-            | (EventLog.event_type.ilike(pattern))
-        )
+        if flt is not None:
+            statement = statement.where(flt)
+            count_stmt = count_stmt.where(flt)
 
     count = session.exec(count_stmt).one()
     logs = session.exec(statement.order_by(EventLog.created_at.desc()).offset(skip).limit(limit)).all()

@@ -59,6 +59,7 @@ from app.services.internal_services import _proxy_request
 from app.services.ml_snapshots import write_media_player_snapshot
 from app.services.ping import check_port as check_tcp_port
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
+from app.services.smart_search import build_ilike_filter
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +138,20 @@ async def read_media_players(
         statement = statement.where(MediaPlayer.device_type == device_type)
         count_stmt = count_stmt.where(MediaPlayer.device_type == device_type)
     if name:
-        statement = statement.where(MediaPlayer.name.ilike(f"%{name}%"))
-        count_stmt = count_stmt.where(MediaPlayer.name.ilike(f"%{name}%"))
+        flt = build_ilike_filter(
+            [
+                MediaPlayer.name,
+                MediaPlayer.hostname,
+                MediaPlayer.ip_address,
+                MediaPlayer.model,
+                MediaPlayer.mac_address,
+                MediaPlayer.os_info,
+            ],
+            name,
+        )
+        if flt is not None:
+            statement = statement.where(flt)
+            count_stmt = count_stmt.where(flt)
 
     count = session.exec(count_stmt).one()
     players = session.exec(statement.offset(skip).limit(limit).order_by(MediaPlayer.name)).all()

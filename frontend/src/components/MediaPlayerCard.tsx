@@ -228,12 +228,6 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
   const ports = player.open_ports?.split(",").filter(Boolean) ?? [];
   const netSupportTarget = (player.hostname || "").trim();
 
-  const openNetSupport = () => {
-    if (!netSupportTarget) return;
-    // Opens local Windows protocol handler that launches NetSupport Manager.
-    window.location.href = `infrascope-nsm://${encodeURIComponent(netSupportTarget)}`;
-  };
-
   const copyNetSupportTarget = async () => {
     if (!netSupportTarget || !navigator.clipboard) return;
     try {
@@ -341,12 +335,12 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
             </button>
             {isNettop ? (
               <button
-                onClick={openNetSupport}
+                onClick={copyNetSupportTarget}
                 disabled={!netSupportTarget}
                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition disabled:opacity-40"
-                title={netSupportTarget ? "Открыть в NetSupport Manager" : "Заполните hostname для подключения"}
+                title={netSupportTarget ? "Скопировать hostname для ручного подключения" : "Заполните hostname для подключения"}
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <Copy className="h-3.5 w-3.5" />
               </button>
             ) : (
               <a

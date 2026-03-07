@@ -11,12 +11,16 @@ from app.schemas import (
     PrinterCreate,
     PrinterPublic,
     ScanProgress,
+    SmartNetworkSearchPublic,
+    SmartNetworkSearchRequest,
     ScanRequest,
     ScanResults,
 )
 from app.services.event_log import write_event_log
+from app.services.app_settings import get_general_settings
 from app.services.internal_services import _proxy_request
-from app.services.scanner import get_scan_progress, get_scan_results, scan_subnet
+from app.services.scanner import get_scan_progress, get_scan_results, scan_subnet, smart_probe_network
+from app.services.smart_search import text_matches_query
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +32,63 @@ async def _run_scan(subnet: str, ports: str, known_printers: list[dict]) -> None
         await scan_subnet(subnet, ports, known_printers)
     except Exception as e:
         logger.error("Scan failed: %s", e)
+
+
+def _candidate_confidence(is_high: bool, is_medium: bool) -> str:
+    if is_high:
+        return "high"
+    if is_medium:
+        return "medium"
+    return "low"
+
+
+def _match_hostname_token(hostname: str | None, token: str | None) -> bool:
+    if not token:
+        return True
+    return text_matches_query([hostname], token)
+
+
+def _classify_computer(device: dict, token: str | None) -> tuple[str, str] | None:
+    hostname = device.get("hostname")
+    ports = set(device.get("open_ports") or [])
+    has_mgr = _match_hostname_token(hostname, token)
+    has_rdp = 3389 in ports
+    has_smb = 445 in ports or 139 in ports
+    has_rpc = 135 in ports
+
+    is_high = bool(has_mgr and (has_rdp or has_smb))
+    is_medium = bool((has_rdp and has_smb) or (has_mgr and has_rpc))
+    if not (is_high or is_medium or has_mgr or has_rdp or has_smb):
+        return None
+
+    if is_high:
+        reason = "hostname+windows_ports"
+    elif is_medium:
+        reason = "windows_ports"
+    else:
+        reason = "hostname_pattern"
+    return _candidate_confidence(is_high, is_medium), reason
+
+
+def _classify_cash_register(device: dict, token: str | None) -> tuple[str, str] | None:
+    hostname = device.get("hostname")
+    ports = set(device.get("open_ports") or [])
+    has_kkm = _match_hostname_token(hostname, token)
+    has_netsupport = 5405 in ports
+    has_windows_ports = 3389 in ports or 445 in ports or 139 in ports
+
+    is_high = bool(has_kkm and (has_netsupport or has_windows_ports))
+    is_medium = bool(has_netsupport and has_windows_ports)
+    if not (is_high or is_medium or has_kkm):
+        return None
+
+    if is_high:
+        reason = "hostname+cash_ports"
+    elif is_medium:
+        reason = "cash_ports"
+    else:
+        reason = "hostname_pattern"
+    return _candidate_confidence(is_high, is_medium), reason
 
 
 @router.post(
@@ -159,13 +220,89 @@ def update_printer_ip(
 
 
 @router.get("/settings")
-async def get_scanner_settings(current_user: CurrentUser) -> dict:
+async def get_scanner_settings(session: SessionDep, current_user: CurrentUser) -> dict:
     """Get default scanner settings."""
+    general = get_general_settings(session)
     return {
-        "subnet": settings.SCAN_SUBNET,
-        "ports": settings.SCAN_PORTS,
+        "subnet": general["scan_subnet"],
+        "ports": general["scan_ports"],
+        "dns_search_suffixes": general["dns_search_suffixes"],
         "max_hosts": settings.SCAN_MAX_HOSTS,
         "tcp_timeout": settings.SCAN_TCP_TIMEOUT,
         "tcp_retries": settings.SCAN_TCP_RETRIES,
         "tcp_concurrency": settings.SCAN_TCP_CONCURRENCY,
     }
+
+
+@router.post("/smart-search/computers", response_model=SmartNetworkSearchPublic)
+async def smart_search_computers(body: SmartNetworkSearchRequest, session: SessionDep, current_user: CurrentUser) -> SmartNetworkSearchPublic:
+    del current_user
+    general = get_general_settings(session)
+    used_subnet = body.subnet or general["scan_subnet"]
+    used_ports = body.ports or "3389,445,139,135,22"
+    token = body.hostname_contains or "-MGR-"
+
+    probed = await smart_probe_network(used_subnet, used_ports)
+    candidates = []
+    for row in probed:
+        classified = _classify_computer(row, token)
+        if not classified:
+            continue
+        confidence, reason = classified
+        candidates.append(
+            {
+                "ip": row["ip"],
+                "hostname": row.get("hostname"),
+                "open_ports": row.get("open_ports", []),
+                "confidence": confidence,
+                "reason": reason,
+            }
+        )
+    rank = {"high": 0, "medium": 1, "low": 2}
+    candidates.sort(key=lambda item: (rank.get(item["confidence"], 3), item.get("hostname") or item["ip"]))
+    limited = candidates[: body.limit]
+    return SmartNetworkSearchPublic(
+        data=limited,
+        count=len(limited),
+        used_subnet=used_subnet,
+        used_ports=used_ports,
+    )
+
+
+@router.post("/smart-search/cash-registers", response_model=SmartNetworkSearchPublic)
+async def smart_search_cash_registers(
+    body: SmartNetworkSearchRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> SmartNetworkSearchPublic:
+    del current_user
+    general = get_general_settings(session)
+    used_subnet = body.subnet or general["scan_subnet"]
+    used_ports = body.ports or "5405,3389,445,139"
+    token = body.hostname_contains or "KKM"
+
+    probed = await smart_probe_network(used_subnet, used_ports)
+    candidates = []
+    for row in probed:
+        classified = _classify_cash_register(row, token)
+        if not classified:
+            continue
+        confidence, reason = classified
+        candidates.append(
+            {
+                "ip": row["ip"],
+                "hostname": row.get("hostname"),
+                "open_ports": row.get("open_ports", []),
+                "confidence": confidence,
+                "reason": reason,
+            }
+        )
+    rank = {"high": 0, "medium": 1, "low": 2}
+    candidates.sort(key=lambda item: (rank.get(item["confidence"], 3), item.get("hostname") or item["ip"]))
+    limited = candidates[: body.limit]
+    return SmartNetworkSearchPublic(
+        data=limited,
+        count=len(limited),
+        used_subnet=used_subnet,
+        used_ports=used_ports,
+    )

@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Plus, Search, Printer as PrinterIcon, Tag, Wifi } from "lucide-react";
+import { useMemo, useState } from "react";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw, Plus, Search, Printer as PrinterIcon, Tag } from "lucide-react";
 import {
   getPrinters,
   getOfflineRiskPredictions,
@@ -19,15 +19,14 @@ import { useAuth } from "../auth";
 import PrinterCard from "../components/PrinterCard";
 import ZebraCard from "../components/ZebraCard";
 import PrinterForm from "../components/PrinterForm";
-import NetworkScanner from "../components/NetworkScanner";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
-type TabKey = PrinterType | "scanner";
+type TabKey = PrinterType;
 type StatusFilter = "all" | "online" | "offline" | "low_toner";
 
 const TABS: { key: TabKey; label: string; icon: typeof PrinterIcon }[] = [
   { key: "laser", label: "Картриджные", icon: PrinterIcon },
   { key: "label", label: "Этикеточные", icon: Tag },
-  { key: "scanner", label: "Поиск в сети", icon: Wifi },
 ];
 
 export default function Dashboard() {
@@ -42,24 +41,23 @@ export default function Dashboard() {
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-
-  const printerTab = activeTab === "laser" || activeTab === "label" ? activeTab : "laser";
+  const printerTab = activeTab;
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["printers", printerTab, search],
-    queryFn: () => getPrinters(search || undefined, printerTab),
-    enabled: activeTab !== "scanner",
+    queryKey: ["printers", printerTab, debouncedSearch],
+    queryFn: () => getPrinters(debouncedSearch || undefined, printerTab),
+    placeholderData: keepPreviousData,
   });
   const { data: tonerPredictionsData } = useQuery({
     queryKey: ["ml-toner-predictions"],
     queryFn: () => getTonerPredictions(),
-    enabled: activeTab !== "scanner" && printerTab === "laser",
+    enabled: printerTab === "laser",
     refetchInterval: 60_000,
   });
   const { data: riskPredictionsData } = useQuery({
     queryKey: ["ml-offline-risk-printer"],
     queryFn: () => getOfflineRiskPredictions("printer"),
-    enabled: activeTab !== "scanner",
     refetchInterval: 60_000,
   });
 
@@ -120,26 +118,40 @@ export default function Dashboard() {
   };
 
   const printers = data?.data ?? [];
-  const tonerPredictions = (tonerPredictionsData?.data ?? []) as MLTonerPrediction[];
-  const riskPredictions = (riskPredictionsData?.data ?? []) as MLOfflineRiskPrediction[];
-  const tonerDaysByPrinter = tonerPredictions.reduce<Record<string, Partial<Record<"black" | "cyan" | "magenta" | "yellow", number>>>>(
-    (acc, item) => {
-      if (!item.printer_id || item.days_to_replacement == null) return acc;
-      const color = item.toner_color as "black" | "cyan" | "magenta" | "yellow";
-      if (!acc[item.printer_id]) acc[item.printer_id] = {};
-      if (color === "black" || color === "cyan" || color === "magenta" || color === "yellow") {
-        if (acc[item.printer_id][color] == null) {
-          acc[item.printer_id][color] = item.days_to_replacement;
-        }
-      }
-      return acc;
-    },
-    {},
+  const tonerPredictions = useMemo(
+    () => (tonerPredictionsData?.data ?? []) as MLTonerPrediction[],
+    [tonerPredictionsData],
   );
-  const riskByDeviceId = riskPredictions.reduce<Record<string, string>>((acc, item) => {
-    if (item.device_id && !acc[item.device_id]) acc[item.device_id] = item.risk_level;
-    return acc;
-  }, {});
+  const riskPredictions = useMemo(
+    () => (riskPredictionsData?.data ?? []) as MLOfflineRiskPrediction[],
+    [riskPredictionsData],
+  );
+  const tonerDaysByPrinter = useMemo(
+    () =>
+      tonerPredictions.reduce<Record<string, Partial<Record<"black" | "cyan" | "magenta" | "yellow", number>>>>(
+        (acc, item) => {
+          if (!item.printer_id || item.days_to_replacement == null) return acc;
+          const color = item.toner_color as "black" | "cyan" | "magenta" | "yellow";
+          if (!acc[item.printer_id]) acc[item.printer_id] = {};
+          if (color === "black" || color === "cyan" || color === "magenta" || color === "yellow") {
+            if (acc[item.printer_id][color] == null) {
+              acc[item.printer_id][color] = item.days_to_replacement;
+            }
+          }
+          return acc;
+        },
+        {},
+      ),
+    [tonerPredictions],
+  );
+  const riskByDeviceId = useMemo(
+    () =>
+      riskPredictions.reduce<Record<string, string>>((acc, item) => {
+        if (item.device_id && !acc[item.device_id]) acc[item.device_id] = item.risk_level;
+        return acc;
+      }, {}),
+    [riskPredictions],
+  );
   const sortedPrinters = [...printers].sort((a, b) => {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
     return rank(a.is_online) - rank(b.is_online);
@@ -169,66 +181,60 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="app-toolbar p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
+      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="app-toolbar-title">
           <h1 className="text-2xl font-bold text-slate-900">Мониторинг принтеров</h1>
           <p className="text-sm text-slate-500 mt-1">Состояние оборудования, доступность и расходники</p>
         </div>
-        {activeTab !== "scanner" && (
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="app-toolbar-actions">
+          <button
+            onClick={() => pollAllMut.mutate()}
+            disabled={pollAllMut.isPending}
+            className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
+          >
+            <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
+            {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
+          </button>
+          {isSuperuser && (
             <button
-              onClick={() => pollAllMut.mutate()}
-              disabled={pollAllMut.isPending}
-              className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
+              onClick={() => { setEditingPrinter(null); setFormError(null); setShowForm(true); }}
+              className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
             >
-              <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
-              {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
+              <Plus className="h-4 w-4" />
+              Добавить
             </button>
-            {isSuperuser && (
-              <button
-                onClick={() => { setEditingPrinter(null); setFormError(null); setShowForm(true); }}
-                className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
-              >
-                <Plus className="h-4 w-4" />
-                Добавить
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Stats (only for printer tabs) */}
-      {activeTab !== "scanner" && (
-        <div className={`grid gap-4 ${printerTab === "laser" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
-          <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
-          <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
-          <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
-          {printerTab === "laser" && (
-            <Stat
-              label="Мало тонера (<=15%)"
-              value={lowToner}
-              color="text-amber-700"
-              bg="bg-amber-50"
-              isActive={statusFilter === "low_toner"}
-              onClick={() => setStatusFilter("low_toner")}
-            />
-          )}
-        </div>
-      )}
+      <div className={`grid gap-4 ${printerTab === "laser" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+        <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
+        <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
+        <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
+        {printerTab === "laser" && (
+          <Stat
+            label="Мало тонера (<=15%)"
+            value={lowToner}
+            color="text-amber-700"
+            bg="bg-amber-50"
+            isActive={statusFilter === "low_toner"}
+            onClick={() => setStatusFilter("low_toner")}
+          />
+        )}
+      </div>
 
       {/* Search (only for printer tabs) */}
-      {activeTab !== "scanner" && (
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск по магазину..."
-            className="app-input w-full pl-10 pr-4 py-2 text-sm"
-          />
-        </div>
-      )}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Умный поиск: магазин, модель, IP, host (A/А)"
+          className="app-input w-full pl-10 pr-4 py-2 text-sm"
+        />
+      </div>
 
       {/* Sub-tabs */}
       <div className="app-tabbar flex gap-1 p-1.5 w-fit max-w-full overflow-x-auto app-compact-scroll">
@@ -253,56 +259,49 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Scanner view */}
-      {activeTab === "scanner" && <NetworkScanner />}
-
       {/* Printer grid */}
-      {activeTab !== "scanner" && (
-        <>
-          {isLoading ? (
-            <div className="flex justify-center py-20">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-            </div>
-          ) : visiblePrinters.length === 0 ? (
-            <div className="text-center py-20 text-gray-400">
-              <p className="text-lg">Нет {printerTab === "laser" ? "принтеров" : "этикеточных принтеров"}</p>
-              <p className="text-sm mt-1">Добавьте {printerTab === "laser" ? "первый принтер" : "принтер этикеток"} для мониторинга</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {visiblePrinters.map((printer) =>
-                printerTab === "laser" ? (
-                  <PrinterCard
-                    key={printer.id}
-                    printer={printer}
-                    onPoll={(id) => pollOneMut.mutate(id)}
-                    onEdit={(p) => { setEditingPrinter(p); setFormError(null); setShowForm(true); }}
-                    onDelete={handleDelete}
-                    isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
-                    isSuperuser={isSuperuser}
-                    showLowTonerDetails={statusFilter === "low_toner"}
-                    tonerPredictionDays={tonerDaysByPrinter[printer.id]}
-                    offlineRiskLevel={riskByDeviceId[printer.id]}
-                  />
-                ) : (
-                  <ZebraCard
-                    key={printer.id}
-                    printer={printer}
-                    onPoll={(id) => pollOneMut.mutate(id)}
-                    onEdit={(p) => { setEditingPrinter(p); setFormError(null); setShowForm(true); }}
-                    onDelete={handleDelete}
-                    isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
-                    isSuperuser={isSuperuser}
-                  />
-                )
-              )}
-            </div>
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+        </div>
+      ) : visiblePrinters.length === 0 ? (
+        <div className="text-center py-20 text-gray-400">
+          <p className="text-lg">Нет {printerTab === "laser" ? "принтеров" : "этикеточных принтеров"}</p>
+          <p className="text-sm mt-1">Добавьте {printerTab === "laser" ? "первый принтер" : "принтер этикеток"} для мониторинга</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visiblePrinters.map((printer) =>
+            printerTab === "laser" ? (
+              <PrinterCard
+                key={printer.id}
+                printer={printer}
+                onPoll={(id) => pollOneMut.mutate(id)}
+                onEdit={(p) => { setEditingPrinter(p); setFormError(null); setShowForm(true); }}
+                onDelete={handleDelete}
+                isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
+                isSuperuser={isSuperuser}
+                showLowTonerDetails={statusFilter === "low_toner"}
+                tonerPredictionDays={tonerDaysByPrinter[printer.id]}
+                offlineRiskLevel={riskByDeviceId[printer.id]}
+              />
+            ) : (
+              <ZebraCard
+                key={printer.id}
+                printer={printer}
+                onPoll={(id) => pollOneMut.mutate(id)}
+                onEdit={(p) => { setEditingPrinter(p); setFormError(null); setShowForm(true); }}
+                onDelete={handleDelete}
+                isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
+                isSuperuser={isSuperuser}
+              />
+            )
           )}
-        </>
+        </div>
       )}
 
       {/* Modal form */}
-      {showForm && activeTab !== "scanner" && (
+      {showForm && (
         <PrinterForm
           printer={editingPrinter}
           printerType={printerTab}

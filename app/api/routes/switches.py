@@ -43,6 +43,7 @@ from app.services.event_log import write_event_log
 from app.services.internal_services import _proxy_request
 from app.services.ml_snapshots import write_switch_snapshot
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
+from app.services.smart_search import build_ilike_filter, text_matches_query
 from app.services.switches import resolve_switch_provider
 
 logger = logging.getLogger(__name__)
@@ -83,8 +84,20 @@ def read_switches(
     statement = select(NetworkSwitch)
     count_stmt = select(func.count()).select_from(NetworkSwitch)
     if name:
-        statement = statement.where(NetworkSwitch.name.ilike(f"%{name}%"))
-        count_stmt = count_stmt.where(NetworkSwitch.name.ilike(f"%{name}%"))
+        flt = build_ilike_filter(
+            [
+                NetworkSwitch.name,
+                NetworkSwitch.hostname,
+                NetworkSwitch.ip_address,
+                NetworkSwitch.model_info,
+                NetworkSwitch.ios_version,
+                NetworkSwitch.vendor,
+            ],
+            name,
+        )
+        if flt is not None:
+            statement = statement.where(flt)
+            count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     switches = session.exec(statement.offset(skip).limit(limit).order_by(NetworkSwitch.name)).all()
     set_device_counts(
@@ -514,8 +527,20 @@ async def get_switch_ports(
             switch_port_ops_total.labels(vendor=vendor, operation=operation, result="error").inc()
             raise HTTPException(status_code=502, detail=f"Failed to fetch switch ports: {exc}") from exc
     if q:
-        q_l = q.lower()
-        ports = [p for p in ports if q_l in p.port.lower() or (p.description and q_l in p.description.lower())]
+        ports = [
+            p
+            for p in ports
+            if text_matches_query(
+                [
+                    p.port,
+                    p.description,
+                    p.status_text,
+                    p.vlan_text,
+                    p.media_type,
+                ],
+                q,
+            )
+        ]
     window = ports[skip : skip + limit]
     data = [
         SwitchPortInfo(

@@ -1,24 +1,28 @@
-FROM node:22-bookworm-slim AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
 ARG NPM_REGISTRY=https://registry.npmjs.org/
 ARG NPM_REGISTRY_FALLBACK=https://registry.npmmirror.com/
+ARG NPM_STRICT_SSL=false
 ENV npm_config_registry=${NPM_REGISTRY}
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.npm npm --version \
+    && npm config set strict-ssl "${NPM_STRICT_SSL}" \
     && npm config set fund false \
     && npm config set audit false \
+    && npm config set progress false \
     && npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000 \
     && npm config set fetch-timeout 300000 \
     && npm config set maxsockets 1 \
     && run_npm_ci() { \
-        node -e "const {spawn}=require('node:child_process');const c=spawn('npm',['ci','--no-audit','--no-fund','--prefer-offline'],{stdio:'inherit'});const t=setTimeout(()=>{console.error('npm ci timeout (10m)');c.kill('SIGKILL');process.exit(124);},600000);c.on('exit',code=>{clearTimeout(t);process.exit(code??1);});"; \
+        timeout 10m npm ci --no-audit --no-fund --prefer-offline \
+        && [ -x node_modules/.bin/vite ]; \
       } \
     && install_with_retries() { \
         reg="$1"; \

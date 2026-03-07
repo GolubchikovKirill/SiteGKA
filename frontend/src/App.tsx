@@ -1,17 +1,21 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./auth";
-import { pollAllCashRegisters, pollAllMediaPlayers, pollAllPrinters, pollAllSwitches } from "./client";
+import { pollAllCashRegisters, pollAllComputers, pollAllMediaPlayers, pollAllPrinters, pollAllSwitches } from "./client";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import MediaPlayersPage from "./pages/MediaPlayersPage";
-import SwitchesPage from "./pages/SwitchesPage";
-import LogsPage from "./pages/LogsPage";
-import CashRegistersPage from "./pages/CashRegistersPage";
-import ServiceFlowMapPage from "./pages/ServiceFlowMapPage";
-import UsersPage from "./pages/Users";
+
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const MediaPlayersPage = lazy(() => import("./pages/MediaPlayersPage"));
+const SwitchesPage = lazy(() => import("./pages/SwitchesPage"));
+const LogsPage = lazy(() => import("./pages/LogsPage"));
+const CashRegistersPage = lazy(() => import("./pages/CashRegistersPage"));
+const ComputersPage = lazy(() => import("./pages/ComputersPage"));
+const NetworkSearchPage = lazy(() => import("./pages/NetworkSearchPage"));
+const OneCPage = lazy(() => import("./pages/OneCPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const UsersPage = lazy(() => import("./pages/Users"));
 
 const GLOBAL_AUTO_REFRESH_MS = 15 * 60_000;
 
@@ -28,12 +32,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         pollAllMediaPlayers(),
         pollAllSwitches(),
         pollAllCashRegisters(),
+        pollAllComputers(),
       ]).finally(() => {
         queryClient.invalidateQueries({ queryKey: ["printers"] });
         queryClient.invalidateQueries({ queryKey: ["media-players"] });
         queryClient.invalidateQueries({ queryKey: ["switches"] });
         queryClient.invalidateQueries({ queryKey: ["cash-registers"] });
-        queryClient.invalidateQueries({ queryKey: ["service-flow-map"] });
+        queryClient.invalidateQueries({ queryKey: ["computers"] });
       });
     }, GLOBAL_AUTO_REFRESH_MS);
     return () => clearInterval(timer);
@@ -56,6 +61,14 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RouteLoader() {
+  return (
+    <div className="flex h-[45vh] items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <Routes>
@@ -65,24 +78,29 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Layout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/media-players" element={<MediaPlayersPage />} />
-                <Route path="/switches" element={<SwitchesPage />} />
-                <Route path="/cash-registers" element={<CashRegistersPage />} />
-                <Route path="/service-flow-map" element={<ServiceFlowMapPage />} />
-                <Route path="/settings" element={<LogsPage />} />
-                <Route path="/logs" element={<Navigate to="/settings" replace />} />
-                <Route
-                  path="/users"
-                  element={
-                    <AdminRoute>
-                      <UsersPage />
-                    </AdminRoute>
-                  }
-                />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+              <Suspense fallback={<RouteLoader />}>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/media-players" element={<MediaPlayersPage />} />
+                  <Route path="/switches" element={<SwitchesPage />} />
+                  <Route path="/cash-registers" element={<CashRegistersPage />} />
+                  <Route path="/computers" element={<ComputersPage />} />
+                  <Route path="/network-search" element={<NetworkSearchPage />} />
+                  <Route path="/onec" element={<OneCPage />} />
+                  <Route path="/qr-generator" element={<Navigate to="/onec" replace />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/logs" element={<LogsPage />} />
+                  <Route
+                    path="/users"
+                    element={
+                      <AdminRoute>
+                        <UsersPage />
+                      </AdminRoute>
+                    }
+                  />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
             </Layout>
           </ProtectedRoute>
         }

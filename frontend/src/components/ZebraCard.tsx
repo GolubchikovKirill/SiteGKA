@@ -163,10 +163,10 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
       {!isUsb && (printer.mac_address || printer.mac_status) && (
         <div className={`px-5 py-2 border-t rounded-b-xl ${
           printer.mac_status === "mismatch"
-            ? "bg-red-50 border-red-200"
+            ? "app-surface-danger border-red-200"
             : printer.mac_status === "verified"
-            ? "bg-emerald-50 border-emerald-200"
-            : "bg-gray-50 border-gray-200"
+            ? "app-surface-ok border-emerald-200"
+            : "app-soft-panel border-gray-200"
         }`}>
           <MacStatus printer={printer} />
         </div>

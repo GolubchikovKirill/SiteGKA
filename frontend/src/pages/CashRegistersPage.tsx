@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, Search, Trash2, Pencil, CircleCheck, CircleX, Download } from "lucide-react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, RefreshCw, Search, Trash2, Pencil, CircleCheck, CircleX, Download, Copy } from "lucide-react";
 import { useAuth } from "../auth";
 import {
   createCashRegister,
@@ -12,10 +12,12 @@ import {
   updateCashRegister,
   type CashRegister,
 } from "../client";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 type StatusFilter = "all" | "online" | "offline";
 type CashForm = {
   kkm_number: string;
+  store_number: string;
   store_code: string;
   serial_number: string;
   inventory_number: string;
@@ -30,6 +32,7 @@ type CashForm = {
 
 const emptyForm: CashForm = {
   kkm_number: "",
+  store_number: "",
   store_code: "",
   serial_number: "",
   inventory_number: "",
@@ -47,14 +50,16 @@ export default function CashRegistersPage() {
   const { user } = useAuth();
   const isSuperuser = Boolean(user?.is_superuser);
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<CashRegister | null>(null);
   const [form, setForm] = useState<CashForm>(emptyForm);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["cash-registers", q],
-    queryFn: () => getCashRegisters(q || undefined),
+    queryKey: ["cash-registers", debouncedQ],
+    queryFn: () => getCashRegisters(debouncedQ || undefined),
+    placeholderData: keepPreviousData,
   });
 
   const rows = data?.data ?? [];
@@ -103,7 +108,6 @@ export default function CashRegistersPage() {
     mutationFn: pollAllCashRegisters,
     onSuccess: refetchAll,
   });
-
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
@@ -114,6 +118,7 @@ export default function CashRegistersPage() {
     setEditing(item);
     setForm({
       kkm_number: item.kkm_number ?? "",
+      store_number: item.store_number ?? "",
       store_code: item.store_code ?? "",
       serial_number: item.serial_number ?? "",
       inventory_number: item.inventory_number ?? "",
@@ -137,16 +142,26 @@ export default function CashRegistersPage() {
     createMut.mutate(form);
   };
 
+  const copyHostname = async (item: Pick<CashRegister, "hostname">) => {
+    const target = (item.hostname || "").trim();
+    if (!target || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(target);
+    } catch {
+      // Ignore clipboard errors in unsupported environments.
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="app-toolbar p-4 sm:p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="app-toolbar-title">
           <h1 className="text-2xl font-bold text-slate-900">Кассы</h1>
           <p className="text-sm text-slate-500 mt-1">Учет касс и проверка online/offline по hostname</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="app-toolbar-actions">
           <a
-            href={getCashRegistersExportUrl(q || undefined)}
+            href={getCashRegistersExportUrl(debouncedQ || undefined)}
             className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
           >
             <Download className="h-4 w-4" />
@@ -191,7 +206,7 @@ export default function CashRegistersPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Поиск: № ККМ, hostname, код, серийный..."
+            placeholder="Умный поиск: ККМ, магазин, hostname, код, серийный (A/А)"
             className="app-input w-full pl-10 pr-4 py-2 text-sm"
           />
         </div>
@@ -211,16 +226,35 @@ export default function CashRegistersPage() {
                     <div className="text-base font-semibold text-slate-900">ККМ №{item.kkm_number}</div>
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        item.is_online ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                        item.is_online === true
+                          ? "bg-emerald-100 text-emerald-700"
+                          : item.is_online === false
+                            ? "bg-rose-100 text-rose-700"
+                            : "bg-slate-100 text-slate-600"
                       }`}
                     >
-                      {item.is_online ? <CircleCheck className="h-3.5 w-3.5" /> : <CircleX className="h-3.5 w-3.5" />}
-                      {item.is_online ? "online" : "offline"}
+                      {item.is_online === true ? (
+                        <CircleCheck className="h-3.5 w-3.5" />
+                      ) : item.is_online === false ? (
+                        <CircleX className="h-3.5 w-3.5" />
+                      ) : (
+                        <div className="h-3.5 w-3.5 rounded-full border border-slate-400" />
+                      )}
+                      {item.is_online === true ? "online" : item.is_online === false ? "offline" : "не опрошена"}
                     </span>
                   </div>
                   <div className="text-sm text-slate-600">
                     Hostname: <span className="font-medium">{item.hostname}</span> · Тип ККМ:{" "}
                     <span className="font-medium">{item.kkm_type === "retail" ? "РИТЕЙЛ" : "ШТРИХ"}</span>
+                    {item.hostname && (
+                      <button
+                        onClick={() => copyHostname(item)}
+                        className="ml-1 inline-flex items-center rounded p-0.5 text-gray-400 hover:text-rose-600 hover:bg-gray-100 transition"
+                        title="Скопировать hostname"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
                   {item.is_online === false && (
                     <div className="text-xs text-rose-600">
@@ -233,6 +267,7 @@ export default function CashRegistersPage() {
                     </div>
                   )}
                   <div className="grid gap-1 text-xs text-gray-500 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>Номер магазина: {item.store_number || "—"}</div>
                     <div>Код ТТ: {item.store_code || "—"}</div>
                     <div>Серийный: {item.serial_number || "—"}</div>
                     <div>Инв. №: {item.inventory_number || "—"}</div>
@@ -240,10 +275,20 @@ export default function CashRegistersPage() {
                     <div>ID Сбер: {item.terminal_id_sber || "—"}</div>
                     <div>Версия Windows: {item.windows_version || "—"}</div>
                     <div>Номер кассы: {item.cash_number || "—"}</div>
+                    <div>Hostname для NetSupport: {item.hostname || "—"}</div>
                   </div>
                   {item.comment && <div className="text-sm text-slate-600">Комментарий: {item.comment}</div>}
                 </div>
                 <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={() => copyHostname(item)}
+                    disabled={!item.hostname}
+                    className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-40"
+                    title={item.hostname ? "Скопировать hostname для ручного подключения" : "Hostname не заполнен"}
+                  >
+                    <Copy className="h-4 w-4" />
+                    Копировать hostname
+                  </button>
                   <button
                     onClick={() => pollMut.mutate(item.id)}
                     disabled={pollMut.isPending}
@@ -284,6 +329,11 @@ export default function CashRegistersPage() {
                 label="Hostname в сети*"
                 value={form.hostname}
                 onChange={(v) => setForm((s) => ({ ...s, hostname: v }))}
+              />
+              <Input
+                label="Номер магазина"
+                value={form.store_number}
+                onChange={(v) => setForm((s) => ({ ...s, store_number: v }))}
               />
               <Input
                 label="Код торговой точки"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,7 +17,8 @@ from app.core.security import get_password_hash
 from app.main import app
 from app.models import User
 
-TEST_DB_URL = "sqlite:///./test_infrascope.db"
+TEST_DB_PATH = Path(tempfile.gettempdir()) / "test_infrascope.db"
+TEST_DB_URL = f"sqlite:///{TEST_DB_PATH}"
 engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
 
 

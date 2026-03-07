@@ -1,11 +1,10 @@
 import { useState, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace, Radar } from "lucide-react";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace } from "lucide-react";
 import {
   getMediaPlayers,
   pollAllMediaPlayers,
   pollMediaPlayer,
-  rediscoverMediaPlayers,
   createMediaPlayer,
   updateMediaPlayer,
   deleteMediaPlayer,
@@ -19,7 +18,7 @@ import {
 import { useAuth } from "../auth";
 import MediaPlayerCard from "../components/MediaPlayerCard";
 import MediaPlayerForm from "../components/MediaPlayerForm";
-import NetworkDiscoveryModal from "../components/NetworkDiscoveryModal";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 type FilterKey = "all" | DeviceType;
 type StatusFilter = "all" | "online" | "offline";
@@ -38,8 +37,8 @@ export default function MediaPlayersPage() {
 
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [showForm, setShowForm] = useState(false);
-  const [showDiscovery, setShowDiscovery] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<MediaPlayer | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
@@ -52,17 +51,13 @@ export default function MediaPlayersPage() {
   const showIconbitBulk = activeFilter === "iconbit";
 
   const { data, isLoading } = useQuery({
-    queryKey: ["media-players", deviceTypeParam, search],
-    queryFn: () => getMediaPlayers(search || undefined, deviceTypeParam),
+    queryKey: ["media-players", deviceTypeParam, debouncedSearch],
+    queryFn: () => getMediaPlayers(debouncedSearch || undefined, deviceTypeParam),
+    placeholderData: keepPreviousData,
   });
 
   const pollAllMut = useMutation({
     mutationFn: () => pollAllMediaPlayers(deviceTypeParam),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media-players"] }),
-  });
-
-  const rediscoverMut = useMutation({
-    mutationFn: rediscoverMediaPlayers,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media-players"] }),
   });
 
@@ -181,12 +176,12 @@ export default function MediaPlayersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="app-toolbar p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
+      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="app-toolbar-title">
           <h1 className="text-2xl font-bold text-slate-900">Медиаплееры</h1>
           <p className="text-sm text-slate-500 mt-1">Неттопы, Iconbit и Twix устройства</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="app-toolbar-actions">
           <button
             onClick={() => pollAllMut.mutate()}
             disabled={pollAllMut.isPending}
@@ -194,22 +189,6 @@ export default function MediaPlayersPage() {
           >
             <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
             {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
-          </button>
-          <button
-            onClick={() => rediscoverMut.mutate()}
-            disabled={rediscoverMut.isPending}
-            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
-            title="Найти устройства с изменившимся IP по MAC-адресу"
-          >
-            <Radar className={`h-4 w-4 ${rediscoverMut.isPending ? "animate-ping" : ""}`} />
-            {rediscoverMut.isPending ? "Поиск..." : "Переоткрыть"}
-          </button>
-          <button
-            onClick={() => setShowDiscovery(true)}
-            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
-          >
-            <Search className="h-4 w-4" />
-            Поиск сети
           </button>
           {isSuperuser && (
             <button
@@ -237,7 +216,7 @@ export default function MediaPlayersPage() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Поиск по названию..."
+          placeholder="Умный поиск: имя, hostname, IP, модель (A/А)"
           className="app-input w-full pl-10 pr-4 py-2 text-sm"
         />
       </div>
@@ -345,7 +324,6 @@ export default function MediaPlayersPage() {
           }}
         />
       )}
-      {showDiscovery && <NetworkDiscoveryModal kind="iconbit" onClose={() => setShowDiscovery(false)} />}
     </div>
   );
 }

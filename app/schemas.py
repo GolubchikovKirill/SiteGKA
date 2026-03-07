@@ -1,6 +1,7 @@
 import re
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
@@ -159,6 +160,7 @@ class MLModelsStatusPublic(BaseModel):
 
 class CashRegisterCreate(BaseModel):
     kkm_number: str
+    store_number: str | None = None
     store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None
@@ -187,6 +189,7 @@ class CashRegisterCreate(BaseModel):
         return value
 
     @field_validator(
+        "store_number",
         "store_code",
         "serial_number",
         "inventory_number",
@@ -210,6 +213,7 @@ class CashRegisterCreate(BaseModel):
 
 class CashRegisterUpdate(BaseModel):
     kkm_number: str | None = None
+    store_number: str | None = None
     store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None
@@ -242,6 +246,7 @@ class CashRegisterUpdate(BaseModel):
         return value
 
     @field_validator(
+        "store_number",
         "store_code",
         "serial_number",
         "inventory_number",
@@ -268,6 +273,7 @@ class CashRegisterPublic(BaseModel):
 
     id: uuid.UUID
     kkm_number: str
+    store_number: str | None = None
     store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None
@@ -287,6 +293,177 @@ class CashRegisterPublic(BaseModel):
 class CashRegistersPublic(BaseModel):
     data: list[CashRegisterPublic]
     count: int
+
+
+class ComputerCreate(BaseModel):
+    hostname: str
+    location: str | None = None
+    comment: str | None = None
+
+    @field_validator("hostname")
+    @classmethod
+    def validate_hostname(cls, v: str) -> str:
+        value = v.strip()
+        if not value or len(value) > 255:
+            raise ValueError("hostname must be 1-255 characters")
+        return value
+
+    @field_validator("location", "comment")
+    @classmethod
+    def normalize_optional_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 1024:
+            raise ValueError("Field is too long")
+        return value
+
+
+class ComputerUpdate(BaseModel):
+    hostname: str | None = None
+    location: str | None = None
+    comment: str | None = None
+
+    @field_validator("hostname")
+    @classmethod
+    def validate_hostname(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value or len(value) > 255:
+            raise ValueError("hostname must be 1-255 characters")
+        return value
+
+    @field_validator("location", "comment")
+    @classmethod
+    def normalize_optional_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 1024:
+            raise ValueError("Field is too long")
+        return value
+
+
+class ComputerPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    hostname: str
+    location: str | None = None
+    comment: str | None = None
+    is_online: bool | None = None
+    reachability_reason: str | None = None
+    last_polled_at: datetime | None = None
+    created_at: datetime
+
+
+class ComputersPublic(BaseModel):
+    data: list[ComputerPublic]
+    count: int
+
+
+class GeneralSettingsPublic(BaseModel):
+    scan_subnet: str
+    scan_ports: str
+    dns_search_suffixes: str
+
+
+class GeneralSettingsUpdate(BaseModel):
+    scan_subnet: str | None = None
+    scan_ports: str | None = None
+    dns_search_suffixes: str | None = None
+
+    @field_validator("scan_subnet", "scan_ports", "dns_search_suffixes")
+    @classmethod
+    def normalize_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            raise ValueError("Value cannot be empty")
+        if len(value) > 2000:
+            raise ValueError("Value is too long")
+        return value
+
+
+class QRGeneratorRequest(BaseModel):
+    db_mode: Literal["duty_free", "duty_paid", "both"] = "duty_free"
+    airport_code: str = "4007"
+    surnames: str | None = None
+    add_login: bool = False
+
+    @field_validator("airport_code")
+    @classmethod
+    def validate_required_text(cls, v: str) -> str:
+        value = v.strip()
+        if not value:
+            raise ValueError("Field is required")
+        if len(value) > 255:
+            raise ValueError("Field is too long")
+        return value
+
+    @field_validator("surnames")
+    @classmethod
+    def normalize_surnames(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 1000:
+            raise ValueError("surnames is too long")
+        return value
+
+
+class OneCExchangeByBarcodeRequest(BaseModel):
+    target: Literal["duty_free", "duty_paid"] = "duty_free"
+    barcode: str
+    cash_register_hostnames: list[str] = []
+    source: str = "infrascope"
+
+    @field_validator("barcode")
+    @classmethod
+    def validate_barcode(cls, v: str) -> str:
+        value = v.strip()
+        if not value:
+            raise ValueError("barcode is required")
+        if len(value) > 64:
+            raise ValueError("barcode is too long")
+        return value
+
+    @field_validator("cash_register_hostnames")
+    @classmethod
+    def normalize_hosts(cls, v: list[str]) -> list[str]:
+        result: list[str] = []
+        for item in v:
+            host = item.strip()
+            if host:
+                result.append(host)
+        return result
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        value = v.strip()
+        if not value:
+            return "infrascope"
+        if len(value) > 64:
+            raise ValueError("source is too long")
+        return value
+
+
+class OneCExchangeByBarcodeResponse(BaseModel):
+    target: Literal["duty_free", "duty_paid"] | None = None
+    ok: bool
+    message: str
+    status_code: int | None = None
+    request_id: str | None = None
+    payload: dict | None = None
 
 
 # ── Printer schemas ──────────────────────────────────────────────
@@ -561,6 +738,61 @@ class ScanProgress(BaseModel):
 class ScanResults(BaseModel):
     progress: ScanProgress
     devices: list[DiscoveredDevice] = []
+
+
+class SmartNetworkSearchRequest(BaseModel):
+    subnet: str | None = None
+    ports: str | None = None
+    hostname_contains: str | None = None
+    limit: int = 200
+
+    @field_validator("subnet")
+    @classmethod
+    def validate_optional_subnet(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return ScanRequest.validate_subnet(v)
+
+    @field_validator("ports")
+    @classmethod
+    def validate_optional_ports(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return ScanRequest.validate_ports(v)
+
+    @field_validator("hostname_contains")
+    @classmethod
+    def normalize_hostname_contains(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 128:
+            raise ValueError("hostname_contains must be <= 128 characters")
+        return value
+
+    @field_validator("limit")
+    @classmethod
+    def validate_limit(cls, v: int) -> int:
+        if v < 1 or v > 2000:
+            raise ValueError("limit must be between 1 and 2000")
+        return v
+
+
+class SmartNetworkCandidatePublic(BaseModel):
+    ip: str
+    hostname: str | None = None
+    open_ports: list[int]
+    confidence: str
+    reason: str
+
+
+class SmartNetworkSearchPublic(BaseModel):
+    data: list[SmartNetworkCandidatePublic]
+    count: int
+    used_subnet: str
+    used_ports: str
 
 
 # ── Generic network discovery schemas ────────────────────────────

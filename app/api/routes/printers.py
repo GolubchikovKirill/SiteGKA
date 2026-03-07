@@ -6,8 +6,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func as sa_func
-from sqlalchemy import or_
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -27,6 +25,7 @@ from app.services.internal_services import _proxy_request
 from app.services.ml_snapshots import write_printer_snapshots
 from app.services.ping import check_port
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
+from app.services.smart_search import build_ilike_filter
 from app.services.snmp import get_snmp_mac, poll_printer
 
 logger = logging.getLogger(__name__)
@@ -35,9 +34,6 @@ router = APIRouter(tags=["printers"])
 
 MAX_POLL_WORKERS = 20
 CACHE_TTL = 30
-
-_CYR_TO_LAT = str.maketrans("АВЕКМНОРСТХавекмнорстх", "ABEKMHOPCTXabekmhopctx")
-
 
 def _record_status_change(session: SessionDep, printer: Printer, was_online: bool | None) -> None:
     if was_online is None or was_online == printer.is_online:
@@ -51,18 +47,6 @@ def _record_status_change(session: SessionDep, printer: Printer, was_online: boo
         device_name=printer.store_name,
         ip_address=printer.ip_address,
         message=f"Printer '{printer.store_name}' is now {'online' if printer.is_online else 'offline'}",
-    )
-
-
-def _normalize(text: str) -> str:
-    return text.translate(_CYR_TO_LAT)
-
-
-def _search_filter(column, query: str):
-    normalized = _normalize(query)
-    return or_(
-        sa_func.translate(column, "АВЕКМНОРСТХаверкмнорстх", "ABEKMHOPCTXabekmhopctx").ilike(f"%{normalized}%"),
-        column.ilike(f"%{query}%"),
     )
 
 
@@ -99,9 +83,19 @@ async def read_printers(
     statement = select(Printer).where(Printer.printer_type == printer_type)
     count_stmt = select(func.count()).select_from(Printer).where(Printer.printer_type == printer_type)
     if store_name:
-        flt = _search_filter(Printer.store_name, store_name)
-        statement = statement.where(flt)
-        count_stmt = count_stmt.where(flt)
+        flt = build_ilike_filter(
+            [
+                Printer.store_name,
+                Printer.model,
+                Printer.host_pc,
+                Printer.ip_address,
+                Printer.mac_address,
+            ],
+            store_name,
+        )
+        if flt is not None:
+            statement = statement.where(flt)
+            count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     printers = session.exec(statement.offset(skip).limit(limit).order_by(Printer.store_name)).all()
     result = PrintersPublic(data=printers, count=count)

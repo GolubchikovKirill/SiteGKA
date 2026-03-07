@@ -10,7 +10,6 @@ vi.mock("./components/Layout", () => ({
 vi.mock("./pages/Dashboard", () => ({ default: () => <div>DashboardPage</div> }));
 vi.mock("./pages/MediaPlayersPage", () => ({ default: () => <div>MediaPlayersPage</div> }));
 vi.mock("./pages/SwitchesPage", () => ({ default: () => <div>SwitchesPage</div> }));
-vi.mock("./pages/ServiceFlowMapPage", () => ({ default: () => <div>ServiceFlowMapPage</div> }));
 vi.mock("./pages/Users", () => ({ default: () => <div>UsersPage</div> }));
 vi.mock("./pages/Login", () => ({ default: () => <div>LoginPage</div> }));
 
@@ -52,10 +51,10 @@ describe("App routes", () => {
     expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
   });
 
-  it("shows service flow page for authenticated user", async () => {
+  it("redirects unknown route to dashboard for authenticated user", async () => {
     authState.user = { is_superuser: true };
-    renderWithProviders("/service-flow-map");
-    expect(await screen.findByText("ServiceFlowMapPage")).toBeInTheDocument();
+    renderWithProviders("/unknown-page");
+    expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
   });
 });
 

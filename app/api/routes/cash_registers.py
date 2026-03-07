@@ -22,18 +22,33 @@ from app.schemas import (
 from app.services.event_log import write_event_log
 from app.services.internal_services import _proxy_request
 from app.services.ping import check_port
+from app.services.smart_search import build_ilike_filter
 
 router = APIRouter(tags=["cash-registers"])
 
 
 def _probe_register(hostname: str) -> tuple[bool, str | None]:
     # Resolve first so obvious DNS issues are treated as offline fast.
-    try:
-        socket.gethostbyname(hostname)
-    except OSError:
+    host = hostname.strip()
+    resolved_target: str | None = None
+    candidates = [host]
+    if "." not in host and settings.DNS_SEARCH_SUFFIXES:
+        for suffix in settings.DNS_SEARCH_SUFFIXES.split(","):
+            normalized = suffix.strip().strip(".")
+            if normalized:
+                candidates.append(f"{host}.{normalized}")
+
+    for candidate in candidates:
+        try:
+            resolved_target = socket.gethostbyname(candidate)
+            break
+        except OSError:
+            continue
+
+    if not resolved_target:
         return False, "dns_unresolved"
     # Try common Windows service ports.
-    if check_port(hostname, port=3389, timeout=1.5) or check_port(hostname, port=445, timeout=1.5):
+    if check_port(resolved_target, port=3389, timeout=1.5) or check_port(resolved_target, port=445, timeout=1.5):
         return True, None
     return False, "port_closed"
 
@@ -86,16 +101,20 @@ def read_cash_registers(
     statement = select(CashRegister)
     count_stmt = select(func.count()).select_from(CashRegister)
     if q:
-        pattern = f"%{q}%"
-        flt = (
-            CashRegister.kkm_number.ilike(pattern)
-            | CashRegister.hostname.ilike(pattern)
-            | CashRegister.store_code.ilike(pattern)
-            | CashRegister.serial_number.ilike(pattern)
-            | CashRegister.inventory_number.ilike(pattern)
+        flt = build_ilike_filter(
+            [
+                CashRegister.kkm_number,
+                CashRegister.store_number,
+                CashRegister.hostname,
+                CashRegister.store_code,
+                CashRegister.serial_number,
+                CashRegister.inventory_number,
+            ],
+            q,
         )
-        statement = statement.where(flt)
-        count_stmt = count_stmt.where(flt)
+        if flt is not None:
+            statement = statement.where(flt)
+            count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     rows = session.exec(statement.order_by(CashRegister.kkm_number).offset(skip).limit(limit)).all()
     return CashRegistersPublic(data=rows, count=count)
@@ -195,14 +214,19 @@ def export_cash_registers_csv(
     del current_user
     statement = select(CashRegister).order_by(CashRegister.kkm_number)
     if q:
-        pattern = f"%{q}%"
-        statement = statement.where(
-            CashRegister.kkm_number.ilike(pattern)
-            | CashRegister.hostname.ilike(pattern)
-            | CashRegister.store_code.ilike(pattern)
-            | CashRegister.serial_number.ilike(pattern)
-            | CashRegister.inventory_number.ilike(pattern)
+        flt = build_ilike_filter(
+            [
+                CashRegister.kkm_number,
+                CashRegister.store_number,
+                CashRegister.hostname,
+                CashRegister.store_code,
+                CashRegister.serial_number,
+                CashRegister.inventory_number,
+            ],
+            q,
         )
+        if flt is not None:
+            statement = statement.where(flt)
     rows = session.exec(statement).all()
 
     output = StringIO()
@@ -210,6 +234,7 @@ def export_cash_registers_csv(
     writer.writerow(
         [
             "№ ККМ",
+            "Номер магазина",
             "Код ТТ",
             "Серийный номер",
             "Инвентаризационный №",
@@ -229,6 +254,7 @@ def export_cash_registers_csv(
         writer.writerow(
             [
                 row.kkm_number,
+                row.store_number or "",
                 row.store_code or "",
                 row.serial_number or "",
                 row.inventory_number or "",

@@ -1,0 +1,19 @@
+from fastapi import APIRouter, Depends
+
+from app.api.deps import SessionDep
+from app.api.deps import get_current_active_superuser
+from app.schemas import GeneralSettingsPublic, GeneralSettingsUpdate
+from app.services.app_settings import get_general_settings, update_general_settings
+
+router = APIRouter(tags=["app-settings"])
+
+
+@router.get("/general", response_model=GeneralSettingsPublic)
+def read_general_settings(session: SessionDep) -> GeneralSettingsPublic:
+    return GeneralSettingsPublic(**get_general_settings(session))
+
+
+@router.patch("/general", response_model=GeneralSettingsPublic, dependencies=[Depends(get_current_active_superuser)])
+def patch_general_settings(session: SessionDep, payload: GeneralSettingsUpdate) -> GeneralSettingsPublic:
+    values = payload.model_dump(exclude_unset=True)
+    return GeneralSettingsPublic(**update_general_settings(session, values))

@@ -74,25 +74,23 @@ export default function UsersPage() {
     if (!lastSeenAt) return false;
     return Date.now() - new Date(lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
   };
-  const formatLastSeen = (lastSeenAt: string | null): string => {
-    if (!lastSeenAt) return "Никогда";
-    return new Date(lastSeenAt).toLocaleString("ru-RU");
-  };
 
   return (
     <div className="space-y-6">
-      <div className="app-toolbar p-4 sm:p-5 flex items-center justify-between">
-        <div>
+      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="app-toolbar-title">
           <h1 className="text-2xl font-bold text-slate-900">Управление пользователями</h1>
           <p className="text-sm text-slate-500 mt-1">Создание аккаунтов и назначение ролей</p>
         </div>
-        <button
-          onClick={() => { setEditingUser(null); setFormError(null); setShowForm(true); }}
-          className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
-        >
-          <Plus className="h-4 w-4" />
-          Создать
-        </button>
+        <div className="app-toolbar-actions">
+          <button
+            onClick={() => { setEditingUser(null); setFormError(null); setShowForm(true); }}
+            className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
+          >
+            <Plus className="h-4 w-4" />
+            Создать
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3">
@@ -124,10 +122,7 @@ export default function UsersPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Пользователь</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Роль</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">В сети</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Создан</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Онлайн</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Действия</th>
               </tr>
             </thead>
@@ -144,44 +139,28 @@ export default function UsersPage() {
                         )}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{u.full_name || "—"}</div>
+                        <div className="text-sm font-medium text-gray-900 inline-flex items-center gap-1.5">
+                          <span>{u.full_name || "—"}</span>
+                          {u.is_superuser ? (
+                            <Shield className="h-3.5 w-3.5 text-rose-600" title="Администратор" />
+                          ) : (
+                            <UserIcon className="h-3.5 w-3.5 text-slate-500" title="Пользователь" />
+                          )}
+                        </div>
                         <div className="text-xs text-gray-500">{u.email}</div>
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        u.is_superuser
-                          ? "bg-rose-100 text-rose-700"
-                          : "bg-gray-100 text-gray-700"
-                      }`}
-                    >
-                      {u.is_superuser ? "Админ" : "Пользователь"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        u.is_active
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {u.is_active ? "Активен" : "Заблокирован"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {isRecentlyOnline(u.last_seen_at) ? (
+                    {u.is_active && isRecentlyOnline(u.last_seen_at) ? (
                       <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
                         Онлайн
                       </span>
                     ) : (
-                      <span className="text-sm text-gray-500">{formatLastSeen(u.last_seen_at)}</span>
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-700">
+                        Оффлайн
+                      </span>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {new Date(u.created_at).toLocaleDateString("ru-RU")}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">

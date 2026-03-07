@@ -219,6 +219,8 @@ services:
       - sh
       - -c
       - uvicorn app.polling_service.main:app --host 0.0.0.0 --port 8011
+    dns:
+      - ${DNS_SERVER:-8.8.8.8}
     depends_on:
       db:
         condition: service_healthy

@@ -14,6 +14,7 @@ import json
 import logging
 import platform
 import re
+import socket
 import subprocess
 from dataclasses import asdict, dataclass, field
 from time import perf_counter
@@ -396,3 +397,43 @@ async def get_scan_results() -> list[dict]:
     if data:
         return json.loads(data)
     return []
+
+
+def _reverse_dns_sync(ip: str) -> str | None:
+    try:
+        host, _, _ = socket.gethostbyaddr(ip)
+        return host
+    except OSError:
+        return None
+
+
+async def smart_probe_network(subnet: str, ports_str: str) -> list[dict]:
+    """
+    Lightweight generic scanner for smart network discovery.
+    It does not write scan progress/results to Redis keys used by printer scanner.
+    """
+    all_ips = _parse_subnets(subnet)
+    if not all_ips:
+        return []
+    ports = _parse_ports(ports_str)
+    if not ports:
+        return []
+
+    devices: list[DiscoveredDevice] = []
+    batch_size = 64
+    for i in range(0, len(all_ips), batch_size):
+        batch = all_ips[i : i + batch_size]
+        results = await asyncio.gather(*[_check_ports(ip, ports) for ip in batch])
+        for ip, open_ports in zip(batch, results):
+            if open_ports:
+                devices.append(DiscoveredDevice(ip=ip, open_ports=open_ports))
+
+    if not devices:
+        return []
+
+    # Resolve hostnames best-effort in parallel.
+    hostnames = await asyncio.gather(*[asyncio.to_thread(_reverse_dns_sync, d.ip) for d in devices])
+    for device, hostname in zip(devices, hostnames):
+        device.hostname = hostname
+
+    return [asdict(item) for item in devices]

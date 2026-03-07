@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
+from sqlalchemy import text
 from slowapi.errors import RateLimitExceeded
 from sqlmodel import Session
 
@@ -12,7 +13,7 @@ from app.api.main import api_router
 from app.core.config import settings
 from app.core.db import engine, init_db
 from app.core.limiter import limiter
-from app.core.redis import close_redis
+from app.core.redis import close_redis, get_redis
 from app.observability.tracing import setup_tracing
 from app.services.event_log import write_event_log
 
@@ -60,15 +61,19 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    with Session(engine) as session:
-        write_event_log(
-            session,
-            severity="critical",
-            category="system",
-            event_type="unhandled_exception",
-            message=f"{request.method} {request.url.path}: {exc}",
-        )
-        session.commit()
+    try:
+        with Session(engine) as session:
+            write_event_log(
+                session,
+                severity="critical",
+                category="system",
+                event_type="unhandled_exception",
+                message=f"{request.method} {request.url.path}: {exc}",
+            )
+            session.commit()
+    except Exception:
+        # Never fail the exception handler itself.
+        logging.getLogger("app").exception("Failed to persist unhandled exception")
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
@@ -86,3 +91,30 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def readiness_check():
+    """Readiness probe for orchestrators and load balancers."""
+    checks: dict[str, bool] = {"database": False, "redis": False}
+
+    try:
+        with Session(engine) as session:
+            session.exec(text("SELECT 1")).one()
+        checks["database"] = True
+    except Exception:
+        checks["database"] = False
+
+    try:
+        redis = await get_redis()
+        await redis.ping()
+        checks["redis"] = True
+    except Exception:
+        checks["redis"] = False
+
+    if all(checks.values()):
+        return {"status": "ready", "checks": checks}
+    return JSONResponse(
+        status_code=503,
+        content={"status": "degraded", "checks": checks},
+    )

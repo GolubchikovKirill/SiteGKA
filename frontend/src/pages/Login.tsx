@@ -29,7 +29,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 p-2 shadow-lg">
+          <div className="rounded-xl bg-gradient-to-br from-red-700 to-rose-600 p-2 shadow-lg app-logo-live">
             <Server className="h-6 w-6 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">InfraScope</h1>

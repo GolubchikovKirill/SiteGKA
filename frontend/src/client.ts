@@ -135,95 +135,111 @@ export async function getEventLogs(params?: {
   return data;
 }
 
-export function getNetSupportHelperDownloadUrl(
-  filename: "Install-InfraScopeNetSupportHelper.ps1" | "NetSupportUriHandler.ps1" | "Uninstall-InfraScopeNetSupportHelper.ps1",
-) {
-  return `/api/v1/support-tools/netsupport-helper/${encodeURIComponent(filename)}`;
+// ── App settings ──
+
+export interface GeneralSettings {
+  scan_subnet: string;
+  scan_ports: string;
+  dns_search_suffixes: string;
 }
 
-// ── Observability / Service Flow ──
-
-export interface ServiceFlowLink {
-  label: string;
-  url: string;
-}
-
-export interface ServiceFlowNode {
-  id: string;
-  label: string;
-  kind: string;
-  status: "healthy" | "degraded" | "down" | "unknown" | string;
-  req_rate: number | null;
-  error_rate: number | null;
-  p95_latency_ms: number | null;
-  last_seen: string | null;
-  links: ServiceFlowLink[];
-}
-
-export interface ServiceFlowEdge {
-  source: string;
-  target: string;
-  transport: "http" | "kafka" | string;
-  operation: string;
-  status: "healthy" | "degraded" | "down" | "unknown" | string;
-  req_rate: number | null;
-  error_rate: number | null;
-  p95_latency_ms: number | null;
-}
-
-export interface ServiceFlowRecentEvent {
-  id: string;
-  created_at: string;
-  severity: EventSeverity | string;
-  category: string;
-  event_type: string;
-  message: string;
-  device_kind: EventDeviceKind | string;
-  device_name: string | null;
-  ip_address: string | null;
-  trace_id: string | null;
-}
-
-export interface ServiceFlowMapResponse {
-  generated_at: string;
-  nodes: ServiceFlowNode[];
-  edges: ServiceFlowEdge[];
-  recent_events: ServiceFlowRecentEvent[];
-}
-
-export interface ServiceFlowTimeseriesPoint {
-  timestamp: string;
-  req_rate: number | null;
-  error_rate: number | null;
-  p95_latency_ms: number | null;
-}
-
-export interface ServiceFlowTimeseriesResponse {
-  entity: string;
-  points: ServiceFlowTimeseriesPoint[];
-}
-
-export async function getServiceFlowMap() {
-  const { data } = await api.get<ServiceFlowMapResponse>("/observability/service-map");
+export async function getGeneralSettings() {
+  const { data } = await api.get<GeneralSettings>("/app-settings/general");
   return data;
 }
 
-export async function getServiceFlowTimeseries(params?: {
-  service?: string;
+export async function updateGeneralSettings(payload: Partial<GeneralSettings>) {
+  const { data } = await api.patch<GeneralSettings>("/app-settings/general", payload);
+  return data;
+}
+
+// ── 1C Exchange ──
+
+export interface OneCExchangeByBarcodePayload {
+  target?: "duty_free" | "duty_paid";
+  barcode: string;
+  cash_register_hostnames?: string[];
   source?: string;
-  target?: string;
-  minutes?: number;
-  step_seconds?: number;
+}
+
+export interface OneCExchangeByBarcodeResponse {
+  target: "duty_free" | "duty_paid" | null;
+  ok: boolean;
+  message: string;
+  status_code: number | null;
+  request_id: string | null;
+  payload: Record<string, unknown> | null;
+}
+
+export async function runOneCExchangeByBarcode(payload: OneCExchangeByBarcodePayload) {
+  const { data } = await api.post<OneCExchangeByBarcodeResponse>("/1c-exchange/by-barcode", payload);
+  return data;
+}
+
+// ── QR Generator ──
+
+export interface QRGeneratorPayload {
+  db_mode: "duty_free" | "duty_paid" | "both";
+  airport_code?: string;
+  surnames?: string;
+  add_login?: boolean;
+}
+
+export async function exportQrGenerator(payload: QRGeneratorPayload): Promise<Blob> {
+  const { data } = await api.post("/qr-generator/export", payload, { responseType: "blob" });
+  return data as Blob;
+}
+
+// ── Computers ──
+
+export interface Computer {
+  id: string;
+  hostname: string;
+  location: string | null;
+  comment: string | null;
+  is_online: boolean | null;
+  reachability_reason: "dns_unresolved" | "port_closed" | null;
+  last_polled_at: string | null;
+  created_at: string;
+}
+
+export interface ComputersResponse {
+  data: Computer[];
+  count: number;
+}
+
+export async function getComputers(q?: string) {
+  const params: Record<string, string> = {};
+  if (q) params.q = q;
+  const { data } = await api.get<ComputersResponse>("/computers/", { params });
+  return data;
+}
+
+export async function createComputer(payload: {
+  hostname: string;
+  location?: string;
+  comment?: string;
 }) {
-  const { data } = await api.get<ServiceFlowTimeseriesResponse>("/observability/service-map/timeseries", {
-    params: {
-      service: params?.service,
-      source: params?.source,
-      target: params?.target,
-      minutes: params?.minutes ?? 60,
-      step_seconds: params?.step_seconds ?? 30,
-    },
-  });
+  const { data } = await api.post<Computer>("/computers/", payload);
+  return data;
+}
+
+export async function updateComputer(id: string, payload: Partial<Computer>) {
+  const { data } = await api.patch<Computer>(`/computers/${id}`, payload);
+  return data;
+}
+
+export async function deleteComputer(id: string) {
+  await api.delete(`/computers/${id}`);
+}
+
+export async function pollComputer(id: string) {
+  const { data } = await api.post<Computer>(`/computers/${id}/poll`);
+  return data;
+}
+
+export async function pollAllComputers() {
+  const { data } = await api.post<ComputersResponse>("/computers/poll-all");
   return data;
 }
 
@@ -298,6 +314,7 @@ export async function runMLCycle() {
 export interface CashRegister {
   id: string;
   kkm_number: string;
+  store_number: string | null;
   store_code: string | null;
   serial_number: string | null;
   inventory_number: string | null;
@@ -328,6 +345,7 @@ export async function getCashRegisters(q?: string) {
 
 export async function createCashRegister(payload: {
   kkm_number: string;
+  store_number?: string;
   store_code?: string;
   serial_number?: string;
   inventory_number?: string;
@@ -472,6 +490,21 @@ export interface ScanResultsResponse {
   devices: DiscoveredDevice[];
 }
 
+export interface SmartNetworkCandidate {
+  ip: string;
+  hostname: string | null;
+  open_ports: number[];
+  confidence: "high" | "medium" | "low" | string;
+  reason: string;
+}
+
+export interface SmartNetworkSearchResponse {
+  data: SmartNetworkCandidate[];
+  count: number;
+  used_subnet: string;
+  used_ports: string;
+}
+
 export interface DiscoveredNetworkDevice {
   ip: string;
   mac: string | null;
@@ -507,7 +540,35 @@ export async function getScanResults() {
 }
 
 export async function getScannerSettings() {
-  const { data } = await api.get<{ subnet: string; ports: string }>("/scanner/settings");
+  const { data } = await api.get<{
+    subnet: string;
+    ports: string;
+    dns_search_suffixes?: string;
+    max_hosts: number;
+    tcp_timeout: number;
+    tcp_retries: number;
+    tcp_concurrency: number;
+  }>("/scanner/settings");
+  return data;
+}
+
+export async function smartSearchComputersInNetwork(payload?: {
+  subnet?: string;
+  ports?: string;
+  hostname_contains?: string;
+  limit?: number;
+}) {
+  const { data } = await api.post<SmartNetworkSearchResponse>("/scanner/smart-search/computers", payload ?? {});
+  return data;
+}
+
+export async function smartSearchCashRegistersInNetwork(payload?: {
+  subnet?: string;
+  ports?: string;
+  hostname_contains?: string;
+  limit?: number;
+}) {
+  const { data } = await api.post<SmartNetworkSearchResponse>("/scanner/smart-search/cash-registers", payload ?? {});
   return data;
 }
 

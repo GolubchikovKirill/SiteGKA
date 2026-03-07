@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     NETWORK_CONTROL_SERVICE_ENABLED: bool = False
     NETWORK_CONTROL_SERVICE_URL: str = "http://network-control-service:8013"
     INTERNAL_SERVICE_TOKEN: str = ""
+    INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0
+    INTERNAL_HTTP_RETRIES: int = 1
+    INTERNAL_HTTP_RETRY_BACKOFF_SECONDS: float = 0.5
     KAFKA_ENABLED: bool = False
     KAFKA_BOOTSTRAP_SERVERS: str = "kafka:9092"
     KAFKA_EVENT_TOPIC: str = "infrascope.events"
@@ -73,6 +76,17 @@ class Settings(BaseSettings):
     POLL_RESILIENCE_STATE_TTL_SECONDS: int = 7200
 
     DOMAIN: str = "infrascope.local"
+    DNS_SEARCH_SUFFIXES: str = ""
+    QR_SQL_LOGIN: str = "sa"
+    QR_SQL_PASSWORD: str = "Wincor2012"
+    QR_SQL_DATABASE: str = "CashDB51"
+    ONEC_DUTY_FREE_API_URL: str = ""
+    ONEC_DUTY_FREE_API_TOKEN: str = ""
+    ONEC_DUTY_PAID_API_URL: str = ""
+    ONEC_DUTY_PAID_API_TOKEN: str = ""
+    ONEC_EXCHANGE_API_URL: str = ""
+    ONEC_EXCHANGE_API_TOKEN: str = ""
+    ONEC_EXCHANGE_TIMEOUT_SECONDS: float = 20.0
 
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
