@@ -1,4 +1,4 @@
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -6,6 +6,9 @@ COPY package.json package-lock.json* ./
 ARG NPM_REGISTRY=https://registry.npmjs.org/
 ARG NPM_REGISTRY_FALLBACK=https://registry.npmmirror.com/
 ENV npm_config_registry=${NPM_REGISTRY}
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.npm npm --version \
     && npm config set fund false \
     && npm config set audit false \
