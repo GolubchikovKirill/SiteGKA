@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Monitor, Music, ExternalLink, Clock, Cpu,
-  Network, Wifi, Play, Square, Volume2, Upload, X, FileAudio, Copy,
+  Network, Wifi, Play, Square, Volume2, Upload, X, FileAudio, Copy, MoreHorizontal,
 } from "lucide-react";
 import type { MediaPlayer } from "../client";
 import {
@@ -215,6 +215,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
 }
 
 export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
   const style = DEVICE_STYLES[player.device_type] ?? DEVICE_STYLES.nettop;
   const Icon = style.icon;
   const deviceLabel = DEVICE_LABELS[player.device_type] ?? player.device_type;
@@ -324,7 +325,7 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
-          <div className="flex items-center gap-1">
+          <div className="relative flex items-center gap-1">
             <button
               onClick={() => onPoll(player.id)}
               disabled={isPolling}
@@ -356,19 +357,30 @@ export default function MediaPlayerCard({ player, onPoll, onEdit, onDelete, isPo
             {isSuperuser && (
               <>
                 <button
-                  onClick={() => onEdit(player)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-amber-600 transition"
-                  title="Редактировать"
+                  onClick={() => setIsActionsOpen((prev) => !prev)}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-slate-700 transition"
+                  title="Дополнительные действия"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
-                <button
-                  onClick={() => onDelete(player.id)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-red-600 transition"
-                  title="Удалить"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {isActionsOpen && (
+                  <div className="absolute right-0 top-8 z-20 app-panel min-w-[140px] p-1.5">
+                    <button
+                      onClick={() => { setIsActionsOpen(false); onEdit(player); }}
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-100 transition"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Редактировать
+                    </button>
+                    <button
+                      onClick={() => { setIsActionsOpen(false); onDelete(player.id); }}
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Удалить
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>

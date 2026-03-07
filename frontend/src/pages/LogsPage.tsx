@@ -52,21 +52,6 @@ export default function LogsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="app-toolbar-title">
-          <h1 className="text-2xl font-bold text-slate-900">Логи</h1>
-          <p className="text-sm text-slate-500 mt-1">Журнал событий по всем типам устройств</p>
-        </div>
-        <button
-          onClick={() => refetch()}
-          className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
-          disabled={isFetching}
-        >
-          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-          Обновить
-        </button>
-      </div>
-
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         <div className="app-stat bg-gray-100 px-4 py-3"><div className="text-2xl font-bold text-gray-900">{total}</div><div className="text-xs text-gray-500 mt-0.5">Всего</div></div>
         <div className="app-stat bg-red-50 px-4 py-3"><div className="text-2xl font-bold text-red-700">{counts.critical}</div><div className="text-xs text-gray-500 mt-0.5">Critical</div></div>
@@ -74,15 +59,25 @@ export default function LogsPage() {
         <div className="app-stat bg-amber-50 px-4 py-3"><div className="text-2xl font-bold text-amber-700">{counts.warnings}</div><div className="text-xs text-gray-500 mt-0.5">Warning</div></div>
       </div>
 
-      <div className="app-panel p-4 flex flex-col gap-3">
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="app-input w-full pl-10 pr-4 py-2 text-sm"
-            placeholder="Умный поиск: событие, устройство, IP, категория (A/А)"
-          />
+      <div className="app-panel p-3 flex flex-col gap-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="relative w-full md:max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="app-input w-full pl-10 pr-4 py-2 text-sm"
+              placeholder="Умный поиск: событие, устройство, IP, категория (A/А)"
+            />
+          </div>
+          <button
+            onClick={() => refetch()}
+            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+            disabled={isFetching}
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            Обновить
+          </button>
         </div>
         <div className="app-toolbar-actions">
           {SEVERITIES.map((item) => (

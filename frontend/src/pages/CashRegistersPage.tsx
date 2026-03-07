@@ -154,33 +154,40 @@ export default function CashRegistersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="app-toolbar-title">
-          <h1 className="text-2xl font-bold text-slate-900">Кассы</h1>
-          <p className="text-sm text-slate-500 mt-1">Учет касс и проверка online/offline по hostname</p>
-        </div>
-        <div className="app-toolbar-actions">
-          <a
-            href={getCashRegistersExportUrl(debouncedQ || undefined)}
-            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
-          >
-            <Download className="h-4 w-4" />
-            Экспорт CSV
-          </a>
-          <button
-            onClick={() => pollAllMut.mutate()}
-            disabled={pollAllMut.isPending}
-            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
-          >
-            <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
-            Опросить все
-          </button>
-          {isSuperuser && (
-            <button onClick={openCreate} className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
-              <Plus className="h-4 w-4" />
-              Добавить кассу
+      <div className="app-panel p-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="relative w-full md:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Умный поиск: ККМ, магазин, hostname, код, серийный (A/А)"
+              className="app-input w-full pl-10 pr-4 py-2 text-sm"
+            />
+          </div>
+          <div className="app-toolbar-actions">
+            <a
+              href={getCashRegistersExportUrl(debouncedQ || undefined)}
+              className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+            >
+              <Download className="h-4 w-4" />
+              Экспорт CSV
+            </a>
+            <button
+              onClick={() => pollAllMut.mutate()}
+              disabled={pollAllMut.isPending}
+              className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
+            >
+              <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
+              Опросить все
             </button>
-          )}
+            {isSuperuser && (
+              <button onClick={openCreate} className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm">
+                <Plus className="h-4 w-4" />
+                Добавить кассу
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -198,18 +205,6 @@ export default function CashRegistersPage() {
           active={statusFilter === "offline"}
           onClick={() => setStatusFilter("offline")}
         />
-      </div>
-
-      <div className="app-panel p-4">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Умный поиск: ККМ, магазин, hostname, код, серийный (A/А)"
-            className="app-input w-full pl-10 pr-4 py-2 text-sm"
-          />
-        </div>
       </div>
 
       <div className="space-y-3">

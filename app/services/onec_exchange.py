@@ -12,6 +12,7 @@ async def exchange_product_docs_by_barcode(
     target: str = "duty_free",
     barcode: str,
     cash_register_hostnames: list[str] | None = None,
+    cash_register_targets: list[dict[str, str | None]] | None = None,
     source: str = "infrascope",
 ) -> dict[str, Any]:
     target_to_url = {
@@ -27,10 +28,32 @@ async def exchange_product_docs_by_barcode(
 
     if not api_url:
         target_human = "Duty Free" if target == "duty_free" else "Duty Paid"
+        ib_connection = (
+            settings.ONEC_DUTY_FREE_IB_CONNECTION
+            if target == "duty_free"
+            else settings.ONEC_DUTY_PAID_IB_CONNECTION
+        )
+        ib_domain = (
+            settings.ONEC_DUTY_FREE_DOMAIN
+            if target == "duty_free"
+            else settings.ONEC_DUTY_PAID_DOMAIN
+        )
+        terminal_server = (
+            settings.ONEC_DUTY_FREE_TERMINAL_SERVER
+            if target == "duty_free"
+            else settings.ONEC_DUTY_PAID_TERMINAL_SERVER
+        )
+        ib_hint = f" Текущая база 1С: {ib_connection}." if ib_connection else ""
+        domain_hint = f" Домен подключения: {ib_domain}." if ib_domain else ""
+        terminal_hint = f" Терминальный сервер: {terminal_server}." if terminal_server else ""
         return {
             "target": target,
             "ok": False,
-            "message": f"Не настроен URL API 1С для {target_human}. Укажите ONEC_DUTY_*_API_URL в .env.",
+            "message": (
+                f"Не настроен URL API 1С для {target_human}. "
+                "Укажите ONEC_DUTY_*_API_URL в .env (HTTP endpoint сервиса обмена в 1С)."
+                f"{ib_hint}{domain_hint}{terminal_hint}"
+            ),
             "status_code": None,
             "request_id": None,
             "payload": None,
@@ -40,15 +63,78 @@ async def exchange_product_docs_by_barcode(
     if api_token:
         headers["Authorization"] = f"Bearer {api_token}"
 
-    body = {
+    base_body = {
         "barcode": barcode,
-        "cash_register_hostnames": cash_register_hostnames or [],
         "source": source,
         "target": target,
     }
 
     try:
         async with httpx.AsyncClient(timeout=settings.ONEC_EXCHANGE_TIMEOUT_SECONDS) as client:
+            if cash_register_targets:
+                total = len(cash_register_targets)
+                success = 0
+                failed = 0
+                errors: list[dict[str, Any]] = []
+                request_ids: list[str] = []
+                last_status_code: int | None = None
+                last_payload: dict[str, Any] | None = None
+
+                # Sequential dispatch: one cash register at a time.
+                for entry in cash_register_targets:
+                    body = dict(base_body)
+                    body["cash_register"] = entry
+                    hostname = entry.get("hostname")
+                    body["cash_register_hostnames"] = [hostname] if hostname else []
+
+                    response = await client.post(api_url, json=body, headers=headers)
+                    request_id = response.headers.get("X-Request-ID") or response.headers.get("x-request-id")
+                    if request_id:
+                        request_ids.append(request_id)
+
+                    content_type = response.headers.get("content-type", "")
+                    payload: dict[str, Any] | None = None
+                    if "application/json" in content_type.lower():
+                        parsed = response.json()
+                        payload = parsed if isinstance(parsed, dict) else {"value": parsed}
+
+                    last_status_code = response.status_code
+                    last_payload = payload
+
+                    if response.is_success:
+                        success += 1
+                    else:
+                        failed += 1
+                        errors.append(
+                            {
+                                "cash_register": entry,
+                                "status_code": response.status_code,
+                                "detail": payload.get("detail") if isinstance(payload, dict) else None,
+                            }
+                        )
+
+                return {
+                    "target": target,
+                    "ok": failed == 0,
+                    "message": (
+                        f"Очередь выгрузки завершена: успешно {success} из {total}."
+                        if failed == 0
+                        else f"Очередь выгрузки завершена с ошибками: успешно {success}, ошибок {failed}, всего {total}."
+                    ),
+                    "status_code": last_status_code,
+                    "request_id": request_ids[-1] if request_ids else None,
+                    "payload": {
+                        "total": total,
+                        "success": success,
+                        "failed": failed,
+                        "request_ids": request_ids,
+                        "errors": errors,
+                        "last_response": last_payload,
+                    },
+                }
+
+            body = dict(base_body)
+            body["cash_register_hostnames"] = cash_register_hostnames or []
             response = await client.post(api_url, json=body, headers=headers)
             request_id = response.headers.get("X-Request-ID") or response.headers.get("x-request-id")
             content_type = response.headers.get("content-type", "")

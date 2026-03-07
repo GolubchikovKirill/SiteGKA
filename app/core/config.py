@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     ONEC_DUTY_FREE_API_TOKEN: str = ""
     ONEC_DUTY_PAID_API_URL: str = ""
     ONEC_DUTY_PAID_API_TOKEN: str = ""
+    ONEC_DUTY_FREE_IB_CONNECTION: str = ""
+    ONEC_DUTY_FREE_DOMAIN: str = "regstaer-m"
+    ONEC_DUTY_FREE_TERMINAL_SERVER: str = ""
+    ONEC_DUTY_PAID_IB_CONNECTION: str = ""
+    ONEC_DUTY_PAID_DOMAIN: str = "regstaer"
+    ONEC_DUTY_PAID_TERMINAL_SERVER: str = ""
     ONEC_EXCHANGE_API_URL: str = ""
     ONEC_EXCHANGE_API_TOKEN: str = ""
     ONEC_EXCHANGE_TIMEOUT_SECONDS: float = 20.0

@@ -1,4 +1,4 @@
-import { RefreshCw, Pencil, Trash2, Tag, ExternalLink, Usb, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
+import { RefreshCw, Pencil, Trash2, Tag, ExternalLink, Usb } from "lucide-react";
 import type { Printer } from "../client";
 
 interface Props {
@@ -28,43 +28,21 @@ function statusBadge(printer: Printer) {
   return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
 }
 
-function MacStatus({ printer }: { printer: Printer }) {
-  if (!printer.mac_status || printer.mac_status === "unavailable") {
-    if (!printer.mac_address) return null;
-    return (
-      <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-        <ShieldQuestion className="h-3 w-3" />
-        <span className="font-mono">{printer.mac_address}</span>
-        <span>— не проверен</span>
-      </div>
-    );
-  }
-
+function macCornerMeta(printer: Printer): { tone: "ok" | "warn" | "danger"; title: string } | null {
+  if (!printer.mac_address && !printer.mac_status) return null;
+  const macText = printer.mac_address ? ` (${printer.mac_address})` : "";
   if (printer.mac_status === "verified") {
-    return (
-      <div className="flex items-center gap-1.5 text-[11px] text-emerald-600">
-        <ShieldCheck className="h-3 w-3" />
-        <span className="font-mono">{printer.mac_address}</span>
-        <span>— подтверждён</span>
-      </div>
-    );
+    return { tone: "ok", title: `MAC подтвержден${macText}` };
   }
-
   if (printer.mac_status === "mismatch") {
-    return (
-      <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium">
-        <ShieldAlert className="h-3 w-3" />
-        <span className="font-mono">{printer.mac_address}</span>
-        <span>— MAC не совпадает! Возможна смена устройства</span>
-      </div>
-    );
+    return { tone: "danger", title: `MAC не совпадает${macText}` };
   }
-
-  return null;
+  return { tone: "warn", title: `MAC не подтвержден${macText}` };
 }
 
 export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
   const isUsb = printer.connection_type === "usb";
+  const macCorner = !isUsb ? macCornerMeta(printer) : null;
 
   const polledAt = printer.last_polled_at
     ? new Date(printer.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
@@ -72,6 +50,13 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
+      {macCorner && (
+        <div
+          className={`app-card-corner app-card-corner-${macCorner.tone}`}
+          title={macCorner.title}
+          aria-label={macCorner.title}
+        />
+      )}
       <div className="p-5 flex flex-col gap-3">
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -159,18 +144,6 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
         </div>
       </div>
 
-      {/* MAC verification status — below the card */}
-      {!isUsb && (printer.mac_address || printer.mac_status) && (
-        <div className={`px-5 py-2 border-t rounded-b-xl ${
-          printer.mac_status === "mismatch"
-            ? "app-surface-danger border-red-200"
-            : printer.mac_status === "verified"
-            ? "app-surface-ok border-emerald-200"
-            : "app-soft-panel border-gray-200"
-        }`}>
-          <MacStatus printer={printer} />
-        </div>
-      )}
     </div>
   );
 }

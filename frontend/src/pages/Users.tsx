@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Shield, UserIcon, Pencil, Trash2 } from "lucide-react";
+import { Plus, Shield, UserIcon, Pencil, Trash2, Search } from "lucide-react";
 import {
   getUsers,
   createUser,
@@ -18,6 +18,7 @@ export default function UsersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["users"],
@@ -70,19 +71,36 @@ export default function UsersPage() {
 
   const users = data?.data ?? [];
   const ONLINE_WINDOW_MS = 5 * 60_000;
+  const parseServerDate = (value: string): Date => {
+    // Backend may send naive ISO datetime (without timezone). Treat it as UTC.
+    const hasTz = /(?:Z|[+\-]\d{2}:\d{2})$/.test(value);
+    return new Date(hasTz ? value : `${value}Z`);
+  };
   const isRecentlyOnline = (lastSeenAt: string | null): boolean => {
     if (!lastSeenAt) return false;
-    return Date.now() - new Date(lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
+    const parsed = parseServerDate(lastSeenAt);
+    const ts = parsed.getTime();
+    if (Number.isNaN(ts)) return false;
+    return Date.now() - ts <= ONLINE_WINDOW_MS;
   };
+  const visibleUsers = users.filter((u) => {
+    const haystack = `${u.full_name ?? ""} ${u.email}`.toLowerCase();
+    return haystack.includes(search.trim().toLowerCase());
+  });
 
   return (
     <div className="space-y-6">
-      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="app-toolbar-title">
-          <h1 className="text-2xl font-bold text-slate-900">Управление пользователями</h1>
-          <p className="text-sm text-slate-500 mt-1">Создание аккаунтов и назначение ролей</p>
-        </div>
-        <div className="app-toolbar-actions">
+      <div className="app-panel p-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="relative w-full md:max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="app-input w-full pl-10 pr-4 py-2 text-sm"
+              placeholder="Поиск: пользователь, email"
+            />
+          </div>
           <button
             onClick={() => { setEditingUser(null); setFormError(null); setShowForm(true); }}
             className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
@@ -112,7 +130,7 @@ export default function UsersPage() {
         <div className="flex justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
         </div>
-      ) : users.length === 0 ? (
+      ) : visibleUsers.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <p className="text-lg">Нет пользователей</p>
         </div>
@@ -127,7 +145,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {users.map((u) => (
+              {visibleUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50 transition">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">

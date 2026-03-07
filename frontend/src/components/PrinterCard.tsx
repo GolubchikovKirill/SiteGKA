@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RefreshCw, Pencil, Trash2, ExternalLink, Printer as PrinterIcon, ShieldCheck, ShieldAlert, ShieldQuestion, ChevronDown } from "lucide-react";
+import { RefreshCw, Pencil, Trash2, ExternalLink, Printer as PrinterIcon, ChevronDown, BrainCircuit, MoreHorizontal } from "lucide-react";
 import type { Printer } from "../client";
 import TonerBar from "./TonerBar";
 
@@ -25,39 +25,16 @@ function statusBadge(printer: Printer) {
   return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
 }
 
-function MacStatus({ printer }: { printer: Printer }) {
-  if (!printer.mac_status || printer.mac_status === "unavailable") {
-    if (!printer.mac_address) return null;
-    return (
-      <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-        <ShieldQuestion className="h-3 w-3" />
-        <span className="font-mono">{printer.mac_address}</span>
-        <span>— не проверен</span>
-      </div>
-    );
-  }
-
+function macCornerMeta(printer: Printer): { tone: "ok" | "warn" | "danger"; title: string } | null {
+  if (!printer.mac_address && !printer.mac_status) return null;
+  const macText = printer.mac_address ? ` (${printer.mac_address})` : "";
   if (printer.mac_status === "verified") {
-    return (
-      <div className="flex items-center gap-1.5 text-[11px] text-emerald-600">
-        <ShieldCheck className="h-3 w-3" />
-        <span className="font-mono">{printer.mac_address}</span>
-        <span>— подтверждён</span>
-      </div>
-    );
+    return { tone: "ok", title: `MAC подтвержден${macText}` };
   }
-
   if (printer.mac_status === "mismatch") {
-    return (
-      <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium">
-        <ShieldAlert className="h-3 w-3" />
-        <span className="font-mono">{printer.mac_address}</span>
-        <span>— MAC не совпадает! Возможна смена устройства</span>
-      </div>
-    );
+    return { tone: "danger", title: `MAC не совпадает${macText}` };
   }
-
-  return null;
+  return { tone: "warn", title: `MAC не подтвержден${macText}` };
 }
 
 export default function PrinterCard({
@@ -72,6 +49,8 @@ export default function PrinterCard({
   offlineRiskLevel,
 }: Props) {
   const [isTonerModelsOpen, setIsTonerModelsOpen] = useState(false);
+  const [isMlOpen, setIsMlOpen] = useState(false);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
   const polledAt = printer.last_polled_at
     ? new Date(printer.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
@@ -102,9 +81,18 @@ export default function PrinterCard({
       return { key, shortLabel, value, toneClass };
     })
     .filter(Boolean) as Array<{ key: "black" | "cyan" | "magenta" | "yellow"; shortLabel: string; value: number; toneClass: string }>;
+  const macCorner = macCornerMeta(printer);
+  const hasMlData = mlPredictionEntries.length > 0 || Boolean(offlineRiskLevel);
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
+      {macCorner && (
+        <div
+          className={`app-card-corner app-card-corner-${macCorner.tone}`}
+          title={macCorner.title}
+          aria-label={macCorner.title}
+        />
+      )}
       <div className="p-5 flex flex-col gap-4">
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -119,19 +107,6 @@ export default function PrinterCard({
           </div>
           <div className="flex flex-col items-end gap-1">
             {statusBadge(printer)}
-            {offlineRiskLevel && (
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                  offlineRiskLevel === "high"
-                    ? "bg-red-100 text-red-700"
-                    : offlineRiskLevel === "medium"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-emerald-100 text-emerald-700"
-                }`}
-              >
-                Риск: {offlineRiskLevel}
-              </span>
-            )}
           </div>
         </div>
 
@@ -173,21 +148,49 @@ export default function PrinterCard({
             )}
           </div>
         )}
-        {mlPredictionEntries.length > 0 && (
-          <div className="app-soft-panel rounded-lg px-3 py-2">
-            <div className="mb-1.5 text-[11px] font-medium text-slate-600">ML прогноз до замены</div>
-            <div className="flex flex-wrap gap-1.5">
-              {mlPredictionEntries.map((entry) => (
-                <span
-                  key={entry.key}
-                  className={`ml-chip inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${entry.toneClass}`}
-                  title={`${entry.value} дн. до замены (${entry.key})`}
-                >
-                  {entry.shortLabel}
-                  <span>{entry.value} дн.</span>
-                </span>
-              ))}
-            </div>
+        {hasMlData && (
+          <div className="app-soft-panel rounded-lg px-2.5 py-1.5">
+            <button
+              type="button"
+              onClick={() => setIsMlOpen((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100/70 transition"
+              title="Показать/скрыть ML прогноз"
+            >
+              <BrainCircuit className="h-3.5 w-3.5" />
+              ML
+              <ChevronDown className={`h-3 w-3 transition-transform ${isMlOpen ? "rotate-180" : ""}`} />
+            </button>
+            {isMlOpen && (
+              <div className="mt-1.5 space-y-1.5">
+                {offlineRiskLevel && (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      offlineRiskLevel === "high"
+                        ? "bg-red-100 text-red-700"
+                        : offlineRiskLevel === "medium"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-emerald-100 text-emerald-700"
+                    }`}
+                  >
+                    Риск: {offlineRiskLevel}
+                  </span>
+                )}
+                {mlPredictionEntries.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {mlPredictionEntries.map((entry) => (
+                      <span
+                        key={entry.key}
+                        className={`ml-chip inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${entry.toneClass}`}
+                        title={`${entry.value} дн. до замены (${entry.key})`}
+                      >
+                        {entry.shortLabel}
+                        <span>{entry.value} дн.</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {showLowTonerDetails && lowTonerItems.length > 0 && (
@@ -213,7 +216,7 @@ export default function PrinterCard({
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
-          <div className="flex items-center gap-1">
+          <div className="relative flex items-center gap-1">
             <button
               onClick={() => onPoll(printer.id)}
               disabled={isPolling}
@@ -236,37 +239,36 @@ export default function PrinterCard({
             {isSuperuser && (
               <>
                 <button
-                  onClick={() => onEdit(printer)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-amber-600 transition"
-                  title="Редактировать"
+                  onClick={() => setIsActionsOpen((prev) => !prev)}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-slate-700 transition"
+                  title="Дополнительные действия"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
-                <button
-                  onClick={() => onDelete(printer.id)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-red-600 transition"
-                  title="Удалить"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {isActionsOpen && (
+                  <div className="absolute right-0 top-8 z-20 app-panel min-w-[140px] p-1.5">
+                    <button
+                      onClick={() => { setIsActionsOpen(false); onEdit(printer); }}
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-100 transition"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Редактировать
+                    </button>
+                    <button
+                      onClick={() => { setIsActionsOpen(false); onDelete(printer.id); }}
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Удалить
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
         </div>
       </div>
 
-      {/* MAC verification status — below the card */}
-      {(printer.mac_address || printer.mac_status) && (
-        <div className={`px-5 py-2 border-t rounded-b-xl ${
-          printer.mac_status === "mismatch"
-            ? "app-surface-danger border-red-200"
-            : printer.mac_status === "verified"
-            ? "app-surface-ok border-emerald-200"
-            : "app-soft-panel border-gray-200"
-        }`}>
-          <MacStatus printer={printer} />
-        </div>
-      )}
     </div>
   );
 }

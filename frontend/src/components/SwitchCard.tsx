@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Network, Wifi, Clock, Cpu,
-  ExternalLink, RotateCcw, ChevronDown, ChevronUp, Zap, Radio,
+  ExternalLink, RotateCcw, ChevronDown, ChevronUp, Zap, Radio, MoreHorizontal,
 } from "lucide-react";
 import type { NetworkSwitch, AccessPoint } from "../client";
 import { getSwitchAPs, rebootAP } from "../client";
@@ -85,6 +85,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
 
 export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, isPolling, isSuperuser }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
 
   const { data: aps, isLoading: loadingAPs } = useQuery({
     queryKey: ["switch-aps", sw.id],
@@ -193,7 +194,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
-          <div className="flex items-center gap-1">
+          <div className="relative flex items-center gap-1">
             <button
               onClick={() => onPoll(sw.id)}
               disabled={isPolling}
@@ -205,19 +206,30 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             {isSuperuser && (
               <>
                 <button
-                  onClick={() => onEdit(sw)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-amber-600 transition"
-                  title="Редактировать"
+                  onClick={() => setIsActionsOpen((prev) => !prev)}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-slate-700 transition"
+                  title="Дополнительные действия"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
-                <button
-                  onClick={() => onDelete(sw.id)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-red-600 transition"
-                  title="Удалить"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {isActionsOpen && (
+                  <div className="absolute right-0 top-8 z-20 app-panel min-w-[140px] p-1.5">
+                    <button
+                      onClick={() => { setIsActionsOpen(false); onEdit(sw); }}
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-100 transition"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Редактировать
+                    </button>
+                    <button
+                      onClick={() => { setIsActionsOpen(false); onDelete(sw.id); }}
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Удалить
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>

@@ -188,11 +188,10 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <button
               onClick={handleToggleTheme}
-              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs transition app-btn-secondary"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs transition app-btn-secondary"
               title={themeMode === "light" ? "Включить тёмную тему" : "Включить светлую тему"}
             >
               {themeMode === "light" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
-              {themeMode === "light" ? "Тёмная" : "Светлая"}
             </button>
             <button
               onClick={logout}
@@ -300,7 +299,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="w-full mx-auto px-3 sm:px-5 lg:px-8 py-5 sm:py-7 app-compact-scroll">
+        <main className="w-full mx-auto px-1 sm:px-3 lg:px-4 xl:px-5 py-5 sm:py-7 app-compact-scroll">
           {children}
         </main>
       </div>

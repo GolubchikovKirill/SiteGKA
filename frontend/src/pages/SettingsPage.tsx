@@ -46,13 +46,6 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="app-toolbar app-page-toolbar p-4 sm:p-5">
-        <div className="app-toolbar-title">
-          <h1 className="text-2xl font-bold text-slate-900">Настройки</h1>
-          <p className="text-sm text-slate-500 mt-1">Общие параметры приложения в одном месте</p>
-        </div>
-      </div>
-
       <div className="app-panel p-5 space-y-4">
         <div className="flex items-center gap-2 text-slate-900">
           <Settings2 className="h-4 w-4" />

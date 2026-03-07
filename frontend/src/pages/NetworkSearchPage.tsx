@@ -266,35 +266,6 @@ export default function NetworkSearchPage() {
 
   return (
     <div className="space-y-6">
-      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="app-toolbar-title">
-          <h1 className="text-2xl font-bold text-slate-900">Поиск в сети</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Единый центр сканирования: выберите тип устройства и добавляйте найденное сразу в нужный раздел
-          </p>
-        </div>
-        <div className="app-toolbar-actions">
-          <button
-            onClick={runSearch}
-            disabled={isScanning}
-            className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
-          >
-            <Radar className={`h-4 w-4 ${isScanning ? "animate-spin" : ""}`} />
-            {isScanning ? "Сканирование..." : "Запустить поиск"}
-          </button>
-          <button
-            onClick={() => {
-              setResults([]);
-              setError(null);
-            }}
-            className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
-          >
-            <X className="h-4 w-4" />
-            Очистить
-          </button>
-        </div>
-      </div>
-
       <div className="app-panel p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           <label className="text-sm">
@@ -334,8 +305,30 @@ export default function NetworkSearchPage() {
             className="app-input w-full pl-10 pr-4 py-2 text-sm"
           />
         </div>
-        <div className="text-xs text-slate-500">
-          Текущий режим: <span className="font-medium">{TARGET_LABELS[target]}</span>. Кнопка добавления отправляет устройство именно в этот раздел.
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="text-xs text-slate-500">
+            Текущий режим: <span className="font-medium">{TARGET_LABELS[target]}</span>. Кнопка добавления отправляет устройство именно в этот раздел.
+          </div>
+          <div className="app-toolbar-actions">
+            <button
+              onClick={runSearch}
+              disabled={isScanning}
+              className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
+            >
+              <Radar className={`h-4 w-4 ${isScanning ? "animate-spin" : ""}`} />
+              {isScanning ? "Сканирование..." : "Запустить поиск"}
+            </button>
+            <button
+              onClick={() => {
+                setResults([]);
+                setError(null);
+              }}
+              className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+            >
+              <X className="h-4 w-4" />
+              Очистить
+            </button>
+          </div>
         </div>
       </div>
 

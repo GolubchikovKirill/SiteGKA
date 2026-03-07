@@ -16,6 +16,7 @@ const NetworkSearchPage = lazy(() => import("./pages/NetworkSearchPage"));
 const OneCPage = lazy(() => import("./pages/OneCPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const UsersPage = lazy(() => import("./pages/Users"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 const GLOBAL_AUTO_REFRESH_MS = 15 * 60_000;
 
@@ -98,7 +99,7 @@ export default function App() {
                       </AdminRoute>
                     }
                   />
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </Suspense>
             </Layout>

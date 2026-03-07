@@ -4,10 +4,11 @@ import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./auth";
 import App from "./App";
-import { initThemeMode } from "./theme";
+import { initDensityMode, initThemeMode } from "./theme";
 import "./index.css";
 
 initThemeMode();
+initDensityMode();
 
 const queryClient = new QueryClient({
   defaultOptions: {

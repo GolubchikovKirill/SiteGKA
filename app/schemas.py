@@ -423,6 +423,14 @@ class QRGeneratorRequest(BaseModel):
 class OneCExchangeByBarcodeRequest(BaseModel):
     target: Literal["duty_free", "duty_paid"] = "duty_free"
     barcode: str
+    cash_register_identifier_kind: Literal[
+        "hostname",
+        "kkm_number",
+        "serial_number",
+        "inventory_number",
+        "cash_number",
+    ] = "kkm_number"
+    cash_register_identifiers: list[str] = []
     cash_register_hostnames: list[str] = []
     source: str = "infrascope"
 
@@ -455,6 +463,23 @@ class OneCExchangeByBarcodeRequest(BaseModel):
         if len(value) > 64:
             raise ValueError("source is too long")
         return value
+
+    @field_validator("cash_register_identifiers")
+    @classmethod
+    def normalize_identifiers(cls, v: list[str]) -> list[str]:
+        result: list[str] = []
+        for item in v:
+            identifier = item.strip()
+            if identifier:
+                result.append(identifier)
+        return result
+
+    @model_validator(mode="after")
+    def migrate_legacy_hosts(self) -> "OneCExchangeByBarcodeRequest":
+        if not self.cash_register_identifiers and self.cash_register_hostnames:
+            self.cash_register_identifiers = list(self.cash_register_hostnames)
+            self.cash_register_identifier_kind = "hostname"
+        return self
 
 
 class OneCExchangeByBarcodeResponse(BaseModel):

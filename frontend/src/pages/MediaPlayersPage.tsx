@@ -175,30 +175,37 @@ export default function MediaPlayersPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="app-toolbar app-page-toolbar p-4 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="app-toolbar-title">
-          <h1 className="text-2xl font-bold text-slate-900">Медиаплееры</h1>
-          <p className="text-sm text-slate-500 mt-1">Неттопы, Iconbit и Twix устройства</p>
-        </div>
-        <div className="app-toolbar-actions">
-          <button
-            onClick={() => pollAllMut.mutate()}
-            disabled={pollAllMut.isPending}
-            className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
-          >
-            <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
-            {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
-          </button>
-          {isSuperuser && (
+      <div className="app-panel p-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="relative w-full md:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Умный поиск: имя, hostname, IP, модель (A/А)"
+              className="app-input w-full pl-10 pr-4 py-2 text-sm"
+            />
+          </div>
+          <div className="app-toolbar-actions">
             <button
-              onClick={() => { setEditingPlayer(null); setFormError(null); setShowForm(true); }}
-              className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
+              onClick={() => pollAllMut.mutate()}
+              disabled={pollAllMut.isPending}
+              className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 transition"
             >
-              <Plus className="h-4 w-4" />
-              Добавить
+              <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} />
+              {pollAllMut.isPending ? "Опрос..." : "Опросить все"}
             </button>
-          )}
+            {isSuperuser && (
+              <button
+                onClick={() => { setEditingPlayer(null); setFormError(null); setShowForm(true); }}
+                className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm transition"
+              >
+                <Plus className="h-4 w-4" />
+                Добавить
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -207,18 +214,6 @@ export default function MediaPlayersPage() {
         <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
         <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
         <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Умный поиск: имя, hostname, IP, модель (A/А)"
-          className="app-input w-full pl-10 pr-4 py-2 text-sm"
-        />
       </div>
 
       {/* Filter tabs */}

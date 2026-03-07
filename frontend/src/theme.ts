@@ -1,4 +1,5 @@
 export type ThemeMode = "light" | "dark";
+export type DensityMode = "compact";
 
 const THEME_KEY = "infrascope:theme-mode";
 
@@ -29,5 +30,24 @@ export function setThemeMode(mode: ThemeMode): void {
 export function initThemeMode(): ThemeMode {
   const mode = readThemeMode();
   applyThemeMode(mode);
+  return mode;
+}
+
+export function readDensityMode(): DensityMode {
+  return "compact";
+}
+
+export function applyDensityMode(mode: DensityMode): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-density", mode);
+}
+
+export function setDensityMode(mode: DensityMode): void {
+  applyDensityMode(mode);
+}
+
+export function initDensityMode(): DensityMode {
+  const mode = readDensityMode();
+  applyDensityMode(mode);
   return mode;
 }

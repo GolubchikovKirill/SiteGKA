@@ -158,6 +158,8 @@ export async function updateGeneralSettings(payload: Partial<GeneralSettings>) {
 export interface OneCExchangeByBarcodePayload {
   target?: "duty_free" | "duty_paid";
   barcode: string;
+  cash_register_identifier_kind?: "hostname" | "kkm_number" | "serial_number" | "inventory_number" | "cash_number";
+  cash_register_identifiers?: string[];
   cash_register_hostnames?: string[];
   source?: string;
 }

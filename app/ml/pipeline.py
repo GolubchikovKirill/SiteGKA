@@ -5,7 +5,7 @@ import statistics
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from sqlmodel import Session, select
+from sqlmodel import Session, delete, select
 
 from app.models import (
     MLFeatureSnapshot,
@@ -232,6 +232,8 @@ def score_toner_predictions(session: Session) -> int:
         global_rate: float = float(payload.get("global_daily_rate", 1.0))
         now = datetime.now(UTC)
 
+        # Keep a fresh prediction snapshot to avoid unbounded table growth.
+        session.exec(delete(MLTonerPrediction))
         printers = session.exec(select(Printer)).all()
         created = 0
         for printer in printers:
@@ -290,6 +292,8 @@ def score_offline_risk(session: Session) -> int:
         w_offline = float(payload.get("w_offline", 0.7))
         w_flap = float(payload.get("w_flap", 0.3))
         since = datetime.now(UTC) - timedelta(days=7)
+        # Keep a fresh prediction snapshot to avoid unbounded table growth.
+        session.exec(delete(MLOfflineRiskPrediction))
         rows = session.exec(
             select(MLFeatureSnapshot)
             .where(
@@ -305,6 +309,7 @@ def score_offline_risk(session: Session) -> int:
             grouped[(row.device_kind, str(row.device_id))].append(row)
 
         created = 0
+        risk_counts: dict[str, int] = {"low": 0, "medium": 0, "high": 0}
         for (_kind, _id), items in grouped.items():
             if len(items) < 2:
                 continue
@@ -327,8 +332,11 @@ def score_offline_risk(session: Session) -> int:
                     model_version=model.version,
                 )
             )
-            ml_predictions_total.labels(prediction_kind="offline_risk", risk_level=level).inc()
+            risk_counts[level] = risk_counts.get(level, 0) + 1
             created += 1
+        for level, count in risk_counts.items():
+            if count > 0:
+                ml_predictions_total.labels(prediction_kind="offline_risk", risk_level=level).inc(count)
         return created
 
 
