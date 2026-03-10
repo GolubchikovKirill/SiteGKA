@@ -1,8 +1,6 @@
-import { Suspense, lazy, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
-import { pollAllCashRegisters, pollAllComputers, pollAllMediaPlayers, pollAllPrinters, pollAllSwitches } from "./client";
 import { useRealtime } from "./hooks/useRealtime";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
@@ -20,34 +18,10 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const UsersPage = lazy(() => import("./pages/Users"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
-const GLOBAL_AUTO_REFRESH_MS = 15 * 60_000;
-
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-  const queryClient = useQueryClient();
 
   useRealtime();
-
-  useEffect(() => {
-    if (!user) return;
-    const timer = setInterval(() => {
-      Promise.allSettled([
-        pollAllPrinters("laser"),
-        pollAllPrinters("label"),
-        pollAllMediaPlayers(),
-        pollAllSwitches(),
-        pollAllCashRegisters(),
-        pollAllComputers(),
-      ]).finally(() => {
-        queryClient.invalidateQueries({ queryKey: ["printers"] });
-        queryClient.invalidateQueries({ queryKey: ["media-players"] });
-        queryClient.invalidateQueries({ queryKey: ["switches"] });
-        queryClient.invalidateQueries({ queryKey: ["cash-registers"] });
-        queryClient.invalidateQueries({ queryKey: ["computers"] });
-      });
-    }, GLOBAL_AUTO_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [queryClient, user]);
 
   if (isLoading) {
     return (

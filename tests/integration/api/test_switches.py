@@ -62,6 +62,8 @@ def test_create_and_poll_switch(client: TestClient, admin_token: str, monkeypatc
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert created.status_code == 200
+    assert "snmp_community_ro" not in created.json()
+    assert "snmp_community_rw" not in created.json()
     switch_id = created.json()["id"]
 
     polled = client.post(
@@ -70,6 +72,8 @@ def test_create_and_poll_switch(client: TestClient, admin_token: str, monkeypatc
     )
     assert polled.status_code == 200
     assert polled.json()["is_online"] is True
+    assert "snmp_community_ro" not in polled.json()
+    assert "snmp_community_rw" not in polled.json()
 
 
 def test_switch_ports_read_and_write(

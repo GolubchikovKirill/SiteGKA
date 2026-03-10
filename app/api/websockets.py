@@ -31,7 +31,7 @@ class ConnectionManager:
             try:
                 await connection.send_text(text_data)
             except Exception as e:
-                logger.error(f"WebSocket send error: {e}")
+                logger.debug("WebSocket send error: %s", e)
                 await self.disconnect(connection)
 
 
@@ -49,7 +49,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.debug("WebSocket error: %s", e)
         await manager.disconnect(websocket)
 
 

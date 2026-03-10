@@ -32,6 +32,7 @@ async def test_proxy_request_retries_safe_method_on_503(monkeypatch):
         return httpx.Response(200, request=request, json={"ok": True})
 
     monkeypatch.setattr(internal_services, "_REQUEST_HANDLER", _handler, raising=False)
+    monkeypatch.setattr(internal_services, "_http_client", None, raising=False)
     monkeypatch.setattr(internal_services.httpx, "AsyncClient", _DummyAsyncClient)
     monkeypatch.setattr(internal_services.settings, "INTERNAL_HTTP_RETRIES", 2, raising=False)
     monkeypatch.setattr(internal_services.settings, "INTERNAL_HTTP_RETRY_BACKOFF_SECONDS", 0.0, raising=False)
@@ -56,6 +57,7 @@ async def test_proxy_request_does_not_retry_post_by_default(monkeypatch):
         raise httpx.ConnectTimeout("timeout", request=request)
 
     monkeypatch.setattr(internal_services, "_REQUEST_HANDLER", _handler, raising=False)
+    monkeypatch.setattr(internal_services, "_http_client", None, raising=False)
     monkeypatch.setattr(internal_services.httpx, "AsyncClient", _DummyAsyncClient)
     monkeypatch.setattr(internal_services.settings, "INTERNAL_HTTP_RETRIES", 5, raising=False)
     monkeypatch.setattr(internal_services.settings, "INTERNAL_HTTP_RETRY_BACKOFF_SECONDS", 0.0, raising=False)

@@ -11,6 +11,9 @@ def init_db(session: Session) -> None:
     from app.core.security import get_password_hash
     from app.models import User
 
+    if settings.ENVIRONMENT == "production" and settings._is_weak_bootstrap_password(settings.FIRST_SUPERUSER_PASSWORD):
+        raise RuntimeError("Refusing to bootstrap admin user with a weak production password")
+
     user = session.exec(select(User).where(User.email == settings.FIRST_SUPERUSER_EMAIL)).first()
 
     if not user:

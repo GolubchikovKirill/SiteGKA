@@ -11,6 +11,7 @@ import {
   updateComputer,
   type Computer,
 } from "../client";
+import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 type ComputerForm = {
@@ -74,6 +75,12 @@ export default function ComputersPage() {
   const pollAllMut = useMutation({
     mutationFn: pollAllComputers,
     onSuccess: refetchAll,
+  });
+
+  useEntityAutoPoll({
+    enabled: !isModalOpen,
+    queryKeyRoot: "computers",
+    poll: pollAllComputers,
   });
   const openCreate = () => {
     setEditing(null);

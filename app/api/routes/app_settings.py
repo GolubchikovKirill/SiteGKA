@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.deps import SessionDep, get_current_active_superuser
+from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.schemas import GeneralSettingsPublic, GeneralSettingsUpdate
 from app.services.app_settings import get_general_settings, update_general_settings
 
@@ -8,7 +8,8 @@ router = APIRouter(tags=["app-settings"])
 
 
 @router.get("/general", response_model=GeneralSettingsPublic)
-def read_general_settings(session: SessionDep) -> GeneralSettingsPublic:
+def read_general_settings(session: SessionDep, current_user: CurrentUser) -> GeneralSettingsPublic:
+    del current_user
     return GeneralSettingsPublic(**get_general_settings(session))
 
 

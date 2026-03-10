@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -10,12 +11,36 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep, TokenDep
 from app.core.config import settings
 from app.core.limiter import limiter
-from app.core.security import ALGORITHM, blacklist_token, create_access_token, create_refresh_token
+from app.core.security import (
+    ALGORITHM,
+    blacklist_token,
+    create_access_token,
+    create_refresh_token,
+    is_token_blacklisted,
+)
 from app.models import User
 from app.observability.metrics import auth_events_total
 from app.schemas import Token, TokenPayload, UserPublic
 
 router = APIRouter(tags=["auth"])
+
+
+def _decode_token_payload(raw_token: str, expected_type: str) -> tuple[dict, TokenPayload]:
+    payload = jwt.decode(raw_token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    token_data = TokenPayload(**payload)
+    if token_data.type != expected_type:
+        raise HTTPException(status_code=401, detail=f"Invalid {expected_type} token")
+    return payload, token_data
+
+
+async def _blacklist_payload(payload: dict) -> None:
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if not jti or not exp:
+        return
+    ttl = int(exp - datetime.now(UTC).timestamp())
+    if ttl > 0:
+        await blacklist_token(jti, ttl)
 
 
 @router.post("/login")
@@ -44,6 +69,7 @@ def login_access_token(
         httponly=True,
         secure=settings.ENVIRONMENT == "production",
         samesite="lax",
+        path="/",
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
     )
 
@@ -51,8 +77,9 @@ def login_access_token(
 
 
 @router.post("/refresh")
-def refresh_access_token(
+async def refresh_access_token(
     request: Request,
+    response: Response,
     session: SessionDep,
 ) -> Token:
     """Refresh access token using the refresh_token cookie."""
@@ -60,36 +87,54 @@ def refresh_access_token(
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
     try:
-        payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "refresh":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-        token_data = TokenPayload(**payload)
+        payload, token_data = _decode_token_payload(refresh_token, "refresh")
     except (jwt.InvalidTokenError, ValidationError):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+    jti = payload.get("jti")
+    if jti and await is_token_blacklisted(str(jti)):
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked")
+    try:
+        user_id = uuid.UUID(token_data.sub) if token_data.sub else None
+    except ValueError:
+        user_id = None
 
-    user = session.get(User, token_data.sub)
+    user = session.get(User, user_id) if user_id else None
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
 
+    await _blacklist_payload(payload)
+    new_refresh_token = create_refresh_token(user.id)
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        path="/",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+    )
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
 
 
 @router.post("/logout")
-async def logout(response: Response, token: TokenDep) -> dict:
+async def logout(request: Request, response: Response, token: TokenDep) -> dict:
     """Invalidate the current access token."""
-    response.delete_cookie("refresh_token")
+    response.delete_cookie("refresh_token", path="/")
+    refresh_token = request.cookies.get("refresh_token")
+    if refresh_token:
+        try:
+            refresh_payload, _ = _decode_token_payload(refresh_token, "refresh")
+        except (HTTPException, jwt.InvalidTokenError, ValidationError):
+            auth_events_total.labels(result="success", reason="logout_invalid_refresh").inc()
+        else:
+            await _blacklist_payload(refresh_payload)
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-    except jwt.InvalidTokenError:
+        payload, _ = _decode_token_payload(token, "access")
+    except (HTTPException, jwt.InvalidTokenError, ValidationError):
         auth_events_total.labels(result="success", reason="logout_invalid_token").inc()
         return {"message": "ok"}
-    jti = payload.get("jti")
-    exp = payload.get("exp")
-    if jti and exp:
-        ttl = int(exp - datetime.now(UTC).timestamp())
-        if ttl > 0:
-            await blacklist_token(jti, ttl)
+    await _blacklist_payload(payload)
     auth_events_total.labels(result="success", reason="logout").inc()
     return {"message": "ok"}
 

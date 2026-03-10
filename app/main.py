@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from time import monotonic
 
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
@@ -20,6 +21,9 @@ from app.services.event_log import write_event_log
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("app").setLevel(logging.INFO)
+logger = logging.getLogger("app")
+_UNHANDLED_EXCEPTION_TTL_SECONDS = 60.0
+_recent_unhandled_exceptions: dict[str, float] = {}
 
 
 @asynccontextmanager
@@ -66,11 +70,17 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     def _log_unhandled_exception():
+        exception_key = f"{request.method}:{request.url.path}:{exc.__class__.__name__}:{exc}"
+        now = monotonic()
+        previous = _recent_unhandled_exceptions.get(exception_key)
+        if previous is not None and (now - previous) < _UNHANDLED_EXCEPTION_TTL_SECONDS:
+            return
+        _recent_unhandled_exceptions[exception_key] = now
         try:
             with Session(engine) as session:
                 write_event_log(
                     session,
-                    severity="critical",
+                    severity="error",
                     category="system",
                     event_type="unhandled_exception",
                     message=f"{request.method} {request.url.path}: {exc}",
@@ -78,7 +88,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
                 session.commit()
         except Exception:
             # Never fail the exception handler itself.
-            logging.getLogger("app").exception("Failed to persist unhandled exception")
+            logger.exception("Failed to persist unhandled exception")
 
     await run_in_threadpool(_log_unhandled_exception)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})

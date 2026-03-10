@@ -39,6 +39,7 @@ async def _invalidate_cache() -> None:
 
 
 _COMPUTER_PROBE_PORTS = (445, 3389, 135)
+_COMPUTER_POLL_CONCURRENCY = 32
 
 
 def _resolve_hostname(hostname: str) -> str | None:
@@ -73,13 +74,26 @@ def _probe_computer(hostname: str) -> tuple[bool, str | None]:
     return False, "port_closed"
 
 
+async def _probe_computers_bulk(rows: list[Computer]) -> dict[uuid.UUID, tuple[bool, str | None]]:
+    semaphore = asyncio.Semaphore(_COMPUTER_POLL_CONCURRENCY)
+
+    async def _run(row: Computer) -> tuple[uuid.UUID, tuple[bool, str | None]]:
+        async with semaphore:
+            return row.id, await asyncio.to_thread(_probe_computer, row.hostname)
+
+    pairs = await asyncio.gather(*[_run(row) for row in rows]) if rows else []
+    return dict(pairs)
+
+
 @router.get("/", response_model=ComputersPublic)
 async def read_computers(
     session: SessionDep,
+    current_user: CurrentUser,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=500),
     q: str | None = Query(default=None),
 ) -> ComputersPublic:
+    del current_user
     cache_key = f"computers:{q or ''}:{skip}:{limit}"
     try:
         r = await get_redis()
@@ -171,6 +185,7 @@ async def poll_computer(computer_id: uuid.UUID, session: SessionDep, current_use
     session.add(row)
     session.commit()
     session.refresh(row)
+    await _invalidate_cache()
     return row
 
 
@@ -178,11 +193,14 @@ async def poll_computer(computer_id: uuid.UUID, session: SessionDep, current_use
 async def poll_all_computers(session: SessionDep, current_user: CurrentUser) -> ComputersPublic:
     del current_user
     rows = session.exec(select(Computer)).all()
+    probe_results = await _probe_computers_bulk(rows)
+    now = datetime.now(UTC)
     for row in rows:
-        is_online, reason = await asyncio.to_thread(_probe_computer, row.hostname)
+        is_online, reason = probe_results.get(row.id, (False, "probe_failed"))
         row.is_online = is_online
         row.reachability_reason = reason
-        row.last_polled_at = datetime.now(UTC)
+        row.last_polled_at = now
         session.add(row)
     session.commit()
+    await _invalidate_cache()
     return ComputersPublic(data=rows, count=len(rows))

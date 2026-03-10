@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Radar, RefreshCw, Search, X } from "lucide-react";
 import {
   addDiscoveredIconbit,
@@ -85,14 +85,17 @@ function smartIncludes(haystack: string, needle: string): boolean {
 
 async function pollDiscoveryResults(
   reader: () => Promise<{ progress: { status: string }; devices: Array<DiscoveredDevice | DiscoveredNetworkDevice> }>,
+  shouldContinue: () => boolean,
   attempts = 40,
 ): Promise<Array<DiscoveredDevice | DiscoveredNetworkDevice>> {
   for (let i = 0; i < attempts; i += 1) {
+    if (!shouldContinue()) return [];
     const payload = await reader();
     if (payload.progress.status === "done") return payload.devices;
     if (payload.progress.status === "error") return payload.devices;
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
+  if (!shouldContinue()) return [];
   const payload = await reader();
   return payload.devices;
 }
@@ -135,6 +138,15 @@ export default function NetworkSearchPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingKey, setAddingKey] = useState<string | null>(null);
+  const scanRunRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      scanRunRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     getScannerSettings()
@@ -161,6 +173,9 @@ export default function NetworkSearchPage() {
   }, [results, hostnameFilter]);
 
   const runSearch = async () => {
+    const runId = scanRunRef.current + 1;
+    scanRunRef.current = runId;
+    const isCurrentRun = () => mountedRef.current && scanRunRef.current === runId;
     setIsScanning(true);
     setError(null);
     setResults([]);
@@ -172,6 +187,7 @@ export default function NetworkSearchPage() {
           hostname_contains: hostnameFilter || undefined,
           limit,
         });
+        if (!isCurrentRun()) return;
         setResults(toRowsFromSmart(payload.data));
         return;
       }
@@ -182,29 +198,36 @@ export default function NetworkSearchPage() {
           hostname_contains: hostnameFilter || undefined,
           limit,
         });
+        if (!isCurrentRun()) return;
         setResults(toRowsFromSmart(payload.data));
         return;
       }
       if (target === "media-players") {
         await startIconbitDiscoveryScan(subnet, ports);
-        const devices = await pollDiscoveryResults(getIconbitDiscoveryResults);
+        const devices = await pollDiscoveryResults(getIconbitDiscoveryResults, isCurrentRun);
+        if (!isCurrentRun()) return;
         setResults(toRowsFromDiscovery(devices));
         return;
       }
       if (target === "switches") {
         await startSwitchDiscoveryScan(subnet, ports);
-        const devices = await pollDiscoveryResults(getSwitchDiscoveryResults);
+        const devices = await pollDiscoveryResults(getSwitchDiscoveryResults, isCurrentRun);
+        if (!isCurrentRun()) return;
         setResults(toRowsFromDiscovery(devices));
         return;
       }
       await startScan(subnet, ports);
-      const devices = await pollDiscoveryResults(getScanResults);
+      const devices = await pollDiscoveryResults(getScanResults, isCurrentRun);
+      if (!isCurrentRun()) return;
       setResults(toRowsFromDiscovery(devices));
     } catch (e) {
+      if (!isCurrentRun()) return;
       const msg = e instanceof Error ? e.message : "Не удалось выполнить поиск";
       setError(msg);
     } finally {
-      setIsScanning(false);
+      if (isCurrentRun()) {
+        setIsScanning(false);
+      }
     }
   };
 

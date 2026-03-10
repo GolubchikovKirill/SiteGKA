@@ -4,6 +4,14 @@ import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import type { ReactNode } from "react";
 
+const api = vi.hoisted(() => ({
+  pollAllPrinters: vi.fn(),
+  pollAllMediaPlayers: vi.fn(),
+  pollAllSwitches: vi.fn(),
+  pollAllCashRegisters: vi.fn(),
+  pollAllComputers: vi.fn(),
+}));
+
 vi.mock("./components/Layout", () => ({
   default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -19,6 +27,10 @@ const authState = {
 };
 vi.mock("./auth", () => ({
   useAuth: () => authState,
+}));
+vi.mock("./client", () => api);
+vi.mock("./hooks/useRealtime", () => ({
+  useRealtime: () => undefined,
 }));
 
 import App from "./App";
@@ -55,6 +67,18 @@ describe("App routes", () => {
     authState.user = { is_superuser: true };
     renderWithProviders("/unknown-page");
     expect(await screen.findByText("Страница не найдена")).toBeInTheDocument();
+  });
+
+  it("does not run legacy global background poller", async () => {
+    authState.user = { is_superuser: true };
+    renderWithProviders("/");
+    expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
+
+    expect(api.pollAllPrinters).not.toHaveBeenCalled();
+    expect(api.pollAllMediaPlayers).not.toHaveBeenCalled();
+    expect(api.pollAllSwitches).not.toHaveBeenCalled();
+    expect(api.pollAllCashRegisters).not.toHaveBeenCalled();
+    expect(api.pollAllComputers).not.toHaveBeenCalled();
   });
 });
 

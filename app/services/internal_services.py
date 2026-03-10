@@ -13,6 +13,14 @@ from app.observability.metrics import observe_service_edge
 
 _SAFE_RETRY_METHODS = {"GET", "HEAD", "OPTIONS"}
 _RETRYABLE_STATUS_CODES = {502, 503, 504}
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client(timeout: float) -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=timeout)
+    return _http_client
 
 
 def _headers() -> dict[str, str]:
@@ -48,16 +56,17 @@ async def _proxy_request(
                 transport="http",
                 operation=f"{normalized_method} {path}",
             ):
-                async with httpx.AsyncClient(timeout=request_timeout) as client:
-                    response = await client.request(
-                        method=normalized_method,
-                        url=url,
-                        params=params,
-                        json=json_body,
-                        data=data,
-                        files=files,
-                        headers=_headers(),
-                    )
+                client = _get_http_client(request_timeout)
+                response = await client.request(
+                    method=normalized_method,
+                    url=url,
+                    params=params,
+                    json=json_body,
+                    data=data,
+                    files=files,
+                    headers=_headers(),
+                    timeout=request_timeout,
+                )
             response.raise_for_status()
             data = response.json()
             if isinstance(data, dict):

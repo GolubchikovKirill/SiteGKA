@@ -17,12 +17,38 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str = _PLACEHOLDER
 
+    @staticmethod
+    def _is_weak_bootstrap_password(value: str) -> bool:
+        normalized = (value or "").strip()
+        if not normalized or normalized == _PLACEHOLDER:
+            return True
+        if len(normalized) < 12:
+            return True
+        if normalized.isdigit() or normalized.isalpha():
+            return True
+        return False
+
     @model_validator(mode="after")
     def validate_secret_key(self) -> "Settings":
         if self.ENVIRONMENT == "production" and self.SECRET_KEY == _PLACEHOLDER:
             raise ValueError(
                 "SECRET_KEY must be set to a secure value in production. "
                 'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
+        if self.ENVIRONMENT == "production" and self._is_weak_bootstrap_password(self.FIRST_SUPERUSER_PASSWORD):
+            raise ValueError(
+                "FIRST_SUPERUSER_PASSWORD must be explicitly set to a strong value in production."
+            )
+        internal_services_enabled = any(
+            (
+                self.POLLING_SERVICE_ENABLED,
+                self.DISCOVERY_SERVICE_ENABLED,
+                self.NETWORK_CONTROL_SERVICE_ENABLED,
+            )
+        )
+        if self.ENVIRONMENT == "production" and internal_services_enabled and not self.INTERNAL_SERVICE_TOKEN.strip():
+            raise ValueError(
+                "INTERNAL_SERVICE_TOKEN must be set in production when internal services are enabled."
             )
         return self
 

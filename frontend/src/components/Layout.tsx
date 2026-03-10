@@ -178,7 +178,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             </div>
             <div className="mt-2 flex items-center justify-between">
               <span className="app-badge-neutral inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium">
-                Пользователь
+                {isSuperuser ? "Администратор" : "Пользователь"}
               </span>
               <span className={`inline-flex items-center gap-1 text-[11px] ${isOnline ? "text-emerald-600" : "text-slate-500"}`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-slate-400"}`} />

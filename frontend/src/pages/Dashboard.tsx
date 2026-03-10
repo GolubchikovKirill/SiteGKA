@@ -18,6 +18,7 @@ import {
 import { useAuth } from "../auth";
 import PrinterCard from "../components/PrinterCard";
 import ZebraCard from "../components/ZebraCard";
+import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import PrinterForm from "../components/PrinterForm";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
@@ -64,6 +65,12 @@ export default function Dashboard() {
   const pollAllMut = useMutation({
     mutationFn: () => pollAllPrinters(printerTab),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["printers"] }),
+  });
+
+  useEntityAutoPoll({
+    enabled: !showForm,
+    queryKeyRoot: "printers",
+    poll: () => pollAllPrinters(printerTab),
   });
 
   const pollOneMut = useMutation({

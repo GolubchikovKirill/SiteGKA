@@ -12,6 +12,7 @@ import {
   updateCashRegister,
   type CashRegister,
 } from "../client";
+import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 type StatusFilter = "all" | "online" | "offline";
@@ -107,6 +108,12 @@ export default function CashRegistersPage() {
   const pollAllMut = useMutation({
     mutationFn: pollAllCashRegisters,
     onSuccess: refetchAll,
+  });
+
+  useEntityAutoPoll({
+    enabled: !isModalOpen,
+    queryKeyRoot: "cash-registers",
+    poll: pollAllCashRegisters,
   });
   const openCreate = () => {
     setEditing(null);

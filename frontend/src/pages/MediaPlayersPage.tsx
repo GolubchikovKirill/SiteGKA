@@ -18,6 +18,7 @@ import {
 import { useAuth } from "../auth";
 import MediaPlayerCard from "../components/MediaPlayerCard";
 import MediaPlayerForm from "../components/MediaPlayerForm";
+import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 type FilterKey = "all" | DeviceType;
@@ -59,6 +60,12 @@ export default function MediaPlayersPage() {
   const pollAllMut = useMutation({
     mutationFn: () => pollAllMediaPlayers(deviceTypeParam),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media-players"] }),
+  });
+
+  useEntityAutoPoll({
+    enabled: !showForm,
+    queryKeyRoot: "media-players",
+    poll: () => pollAllMediaPlayers(deviceTypeParam),
   });
 
   const pollOneMut = useMutation({

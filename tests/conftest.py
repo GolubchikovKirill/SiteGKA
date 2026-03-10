@@ -32,10 +32,10 @@ app.router.lifespan_context = _noop_lifespan
 
 @pytest.fixture(autouse=True)
 def _clean_db():
-    SQLModel.metadata.drop_all(engine)
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.drop_all(engine, checkfirst=True)
+    SQLModel.metadata.create_all(engine, checkfirst=True)
     yield
-    SQLModel.metadata.drop_all(engine)
+    SQLModel.metadata.drop_all(engine, checkfirst=True)
 
 
 @pytest.fixture
@@ -46,16 +46,19 @@ def db_session():
 
 @pytest.fixture
 def client(db_session, monkeypatch: pytest.MonkeyPatch):
-    async def _not_blacklisted(_jti: str) -> bool:
-        return False
+    blacklisted_jtis: set[str] = set()
 
-    async def _blacklist_token(_jti: str, _ttl: int) -> None:
-        return None
+    async def _is_blacklisted(jti: str) -> bool:
+        return jti in blacklisted_jtis
 
-    monkeypatch.setattr(deps, "is_token_blacklisted", _not_blacklisted)
+    async def _blacklist_token(jti: str, _ttl: int) -> None:
+        blacklisted_jtis.add(jti)
+
+    monkeypatch.setattr(deps, "is_token_blacklisted", _is_blacklisted)
     from app.api.routes import auth as auth_routes
 
     monkeypatch.setattr(auth_routes, "blacklist_token", _blacklist_token)
+    monkeypatch.setattr(auth_routes, "is_token_blacklisted", _is_blacklisted)
     def _fake_check_request_limit(request, _endpoint, _in_middleware=True):
         request.state.view_rate_limit = None
         return None

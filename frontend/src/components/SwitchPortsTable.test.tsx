@@ -61,8 +61,6 @@ describe("SwitchPortsTable", () => {
             vendor: "cisco",
             management_protocol: "snmp+ssh",
             snmp_version: "2c",
-            snmp_community_ro: "public",
-            snmp_community_rw: "private",
             model_info: null,
             ios_version: null,
             hostname: null,

@@ -7,6 +7,7 @@ import { getSwitches, createSwitch, updateSwitch, deleteSwitch, pollSwitch, poll
 import SwitchForm from "../components/SwitchForm";
 import SwitchCard from "../components/SwitchCard";
 import SwitchPortsTable from "../components/SwitchPortsTable";
+import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 type StatusFilter = "all" | "online" | "offline";
@@ -55,6 +56,12 @@ export default function SwitchesPage() {
   const pollAllMut = useMutation({
     mutationFn: pollAllSwitches,
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["switches"] }),
+  });
+
+  useEntityAutoPoll({
+    enabled: !showForm && !portsTarget,
+    queryKeyRoot: "switches",
+    poll: pollAllSwitches,
   });
 
   const deleteMut = useMutation({

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 import httpx
@@ -22,8 +24,12 @@ from app.schemas import (
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SERVICE_CATALOG_PATH = _REPO_ROOT / "services" / "catalog.yaml"
+_PROMETHEUS_QUERY_TTL_SECONDS = 10.0
+_prometheus_client = httpx.Client(timeout=3.0)
+_query_cache: dict[tuple[str, str], tuple[float, Any]] = {}
 
 
+@lru_cache(maxsize=1)
 def _load_service_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if not _SERVICE_CATALOG_PATH.exists():
         return [], []
@@ -35,43 +41,72 @@ def _load_service_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
     return nodes, edges
 
 
+def _cached_query(cache_key: tuple[str, str], loader):
+    now = monotonic()
+    cached = _query_cache.get(cache_key)
+    if cached is not None:
+        cached_at, value = cached
+        if now - cached_at < _PROMETHEUS_QUERY_TTL_SECONDS:
+            return value
+    value = loader()
+    _query_cache[cache_key] = (now, value)
+    return value
+
+
 def _query_scalar(query: str) -> float | None:
-    try:
-        with httpx.Client(timeout=2.0) as client:
-            res = client.get(f"{settings.PROMETHEUS_API_URL.rstrip('/')}/api/v1/query", params={"query": query})
-        res.raise_for_status()
-        payload = res.json()
-        result = payload.get("data", {}).get("result") or []
-        if not result:
+    def _load() -> float | None:
+        try:
+            res = _prometheus_client.get(
+                f"{settings.PROMETHEUS_API_URL.rstrip('/')}/api/v1/query",
+                params={"query": query},
+                timeout=2.0,
+            )
+            res.raise_for_status()
+            payload = res.json()
+            result = payload.get("data", {}).get("result") or []
+            if not result:
+                return None
+            return float(result[0]["value"][1])
+        except Exception:
             return None
-        return float(result[0]["value"][1])
-    except Exception:
-        return None
+
+    return _cached_query(("scalar", query), _load)
 
 
 def _query_vector(query: str) -> list[dict[str, Any]]:
-    try:
-        with httpx.Client(timeout=2.0) as client:
-            res = client.get(f"{settings.PROMETHEUS_API_URL.rstrip('/')}/api/v1/query", params={"query": query})
-        res.raise_for_status()
-        payload = res.json()
-        return list(payload.get("data", {}).get("result") or [])
-    except Exception:
-        return []
+    def _load() -> list[dict[str, Any]]:
+        try:
+            res = _prometheus_client.get(
+                f"{settings.PROMETHEUS_API_URL.rstrip('/')}/api/v1/query",
+                params={"query": query},
+                timeout=2.0,
+            )
+            res.raise_for_status()
+            payload = res.json()
+            return list(payload.get("data", {}).get("result") or [])
+        except Exception:
+            return []
+
+    return _cached_query(("vector", query), _load)
 
 
 def _query_range(query: str, *, start_ts: int, end_ts: int, step_seconds: int) -> list[dict[str, Any]]:
-    try:
-        with httpx.Client(timeout=3.0) as client:
-            res = client.get(
+    cache_key = ("range", f"{query}|{start_ts}|{end_ts}|{step_seconds}")
+
+    def _load() -> list[dict[str, Any]]:
+        try:
+            res = _prometheus_client.get(
                 f"{settings.PROMETHEUS_API_URL.rstrip('/')}/api/v1/query_range",
                 params={"query": query, "start": start_ts, "end": end_ts, "step": step_seconds},
+                timeout=3.0,
             )
-        res.raise_for_status()
-        payload = res.json()
-        return list(payload.get("data", {}).get("result") or [])
-    except Exception:
-        return []
+            res.raise_for_status()
+            payload = res.json()
+            return list(payload.get("data", {}).get("result") or [])
+        except Exception:
+            return []
+
+    return _cached_query(cache_key, _load)
 
 
 def _node_status(up: float | None, req: float | None, err: float | None) -> str:

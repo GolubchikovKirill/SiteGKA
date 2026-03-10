@@ -865,8 +865,6 @@ export interface NetworkSwitch {
   vendor: "cisco" | "dlink" | "generic";
   management_protocol: "snmp" | "ssh" | "snmp+ssh";
   snmp_version: "2c";
-  snmp_community_ro: string;
-  snmp_community_rw: string | null;
   model_info: string | null;
   ios_version: string | null;
   hostname: string | null;

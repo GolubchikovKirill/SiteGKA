@@ -1018,8 +1018,6 @@ class NetworkSwitchPublic(BaseModel):
     vendor: str = "cisco"
     management_protocol: str = "snmp+ssh"
     snmp_version: str = "2c"
-    snmp_community_ro: str = "public"
-    snmp_community_rw: str | None = None
     model_info: str | None = None
     ios_version: str | None = None
     hostname: str | None = None
