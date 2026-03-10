@@ -1,3 +1,5 @@
+import axios from "axios";
+import { vi } from "vitest";
 import api from "./client";
 
 describe("client interceptors", () => {
@@ -23,7 +25,10 @@ describe("client interceptors", () => {
     const handlers = (api.interceptors.response as any).handlers;
     const rejected = handlers[0].rejected as (error: any) => Promise<never>;
 
-    await expect(rejected({ response: { status: 401 } })).rejects.toBeTruthy();
+    // mock axios.post to simulate a failed /auth/refresh
+    vi.spyOn(axios, 'post').mockRejectedValue(new Error("Refresh failed"));
+
+    await expect(rejected({ response: { status: 401 }, config: { url: "/test" } })).rejects.toBeTruthy();
     expect(localStorage.getItem("access_token")).toBeNull();
   });
 });

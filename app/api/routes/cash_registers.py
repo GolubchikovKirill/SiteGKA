@@ -34,6 +34,9 @@ CACHE_TTL = 30
 
 async def _invalidate_cache() -> None:
     try:
+        from app.api.websockets import broadcast_event
+
+        await broadcast_event("invalidate", "cash_registers")
         r = await get_redis()
         keys = []
         async for key in r.scan_iter("cash_registers:*"):

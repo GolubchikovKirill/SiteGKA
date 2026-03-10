@@ -19,7 +19,7 @@ class _DummyAsyncClient:
         return await internal_services._REQUEST_HANDLER(method, url, **kwargs)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_proxy_request_retries_safe_method_on_503(monkeypatch):
     calls = {"count": 0}
 
@@ -46,7 +46,7 @@ async def test_proxy_request_retries_safe_method_on_503(monkeypatch):
     assert calls["count"] == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_proxy_request_does_not_retry_post_by_default(monkeypatch):
     calls = {"count": 0}
 

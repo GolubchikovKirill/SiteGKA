@@ -26,7 +26,8 @@ class Settings(BaseSettings):
             )
         return self
 
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15 minutes
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
     FIRST_SUPERUSER_EMAIL: str = "admin@infrascope.dev"
     FIRST_SUPERUSER_PASSWORD: str = "changethis"

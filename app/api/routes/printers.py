@@ -35,6 +35,7 @@ router = APIRouter(tags=["printers"])
 MAX_POLL_WORKERS = 20
 CACHE_TTL = 30
 
+
 def _record_status_change(session: SessionDep, printer: Printer, was_online: bool | None) -> None:
     if was_online is None or was_online == printer.is_online:
         return
@@ -52,6 +53,9 @@ def _record_status_change(session: SessionDep, printer: Printer, was_online: boo
 
 async def _invalidate_printer_cache() -> None:
     try:
+        from app.api.websockets import broadcast_event
+
+        await broadcast_event("invalidate", "printers")
         r = await get_redis()
         keys = []
         async for key in r.scan_iter("printers:*"):
@@ -234,6 +238,7 @@ async def _find_by_mac_in_scan_cache(mac: str) -> str | None:
         if not data:
             return None
         import json as _json
+
         devices = _json.loads(data)
         mac_lower = mac.lower()
         for dev in devices:
@@ -295,7 +300,10 @@ async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, curren
                     old_ip = printer.ip_address
                     logger.info(
                         "Printer %s (%s) found at new IP %s (was %s)",
-                        printer.store_name, printer.mac_address, new_ip, printer.ip_address,
+                        printer.store_name,
+                        printer.mac_address,
+                        new_ip,
+                        printer.ip_address,
                     )
                     conflict = session.exec(
                         select(Printer).where(
@@ -413,7 +421,13 @@ async def poll_all_printers(
         for ip, (result, current_mac) in poll_results.items():
             p = printer_map[ip]
             previous_online = p.is_online
-            raw_online = bool(result and ((isinstance(result, dict) and result.get("is_online")) or (hasattr(result, "is_online") and result.is_online)))
+            raw_online = bool(
+                result
+                and (
+                    (isinstance(result, dict) and result.get("is_online"))
+                    or (hasattr(result, "is_online") and result.is_online)
+                )
+            )
             effective_online = await apply_poll_outcome(
                 kind="printer",
                 entity_id=str(p.id),
@@ -485,7 +499,12 @@ async def poll_all_printers(
                         p.ip_address = new_ip
                         # Re-poll at new IP
                         _, new_result, new_mac = await asyncio.to_thread(_poll_one, p)
-                        if new_result and (isinstance(new_result, dict) and new_result.get("is_online") or hasattr(new_result, 'is_online') and new_result.is_online):
+                        if new_result and (
+                            isinstance(new_result, dict)
+                            and new_result.get("is_online")
+                            or hasattr(new_result, "is_online")
+                            and new_result.is_online
+                        ):
                             if not isinstance(new_result, dict):
                                 p.is_online = True
                                 p.status = new_result.status
@@ -499,7 +518,10 @@ async def poll_all_printers(
                             p.mac_status = _verify_mac(p, new_mac)
                             logger.info(
                                 "Auto-relocated %s: %s -> %s (MAC %s)",
-                                p.store_name, old_ip, new_ip, p.mac_address,
+                                p.store_name,
+                                old_ip,
+                                new_ip,
+                                p.mac_address,
                             )
                             write_event_log(
                                 session,

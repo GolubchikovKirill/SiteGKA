@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import { pollAllCashRegisters, pollAllComputers, pollAllMediaPlayers, pollAllPrinters, pollAllSwitches } from "./client";
+import { useRealtime } from "./hooks/useRealtime";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import { AnimatePresence, motion } from "framer-motion";
@@ -24,6 +25,8 @@ const GLOBAL_AUTO_REFRESH_MS = 15 * 60_000;
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const queryClient = useQueryClient();
+
+  useRealtime();
 
   useEffect(() => {
     if (!user) return;

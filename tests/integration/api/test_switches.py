@@ -109,6 +109,7 @@ def test_switch_ports_read_and_write(
             return None
 
     monkeypatch.setattr(switch_routes, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
+    monkeypatch.setattr(switch_routes.settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
 
     created = client.post(
         "/api/v1/switches/",

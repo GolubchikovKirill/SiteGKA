@@ -26,6 +26,18 @@ def create_access_token(subject: str | int, expires_delta: timedelta | None = No
         "exp": expire,
         "sub": str(subject),
         "jti": str(_uuid.uuid4()),
+        "type": "access",
+    }
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_refresh_token(subject: str | int) -> str:
+    expire = datetime.now(UTC) + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+    to_encode = {
+        "exp": expire,
+        "sub": str(subject),
+        "jti": str(_uuid.uuid4()),
+        "type": "refresh",
     }
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
@@ -48,6 +60,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     # Support legacy bcrypt hashes during migration
     if hashed_password.startswith("$2b$") or hashed_password.startswith("$2a$"):
         import bcrypt
+
         if bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8")):
             return True
         return False

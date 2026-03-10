@@ -2,16 +2,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import ValidationError
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, TokenDep
 from app.core.config import settings
 from app.core.limiter import limiter
-from app.core.security import ALGORITHM, blacklist_token, create_access_token
+from app.core.security import ALGORITHM, blacklist_token, create_access_token, create_refresh_token
+from app.models import User
 from app.observability.metrics import auth_events_total
-from app.schemas import Token, UserPublic
+from app.schemas import Token, TokenPayload, UserPublic
 
 router = APIRouter(tags=["auth"])
 
@@ -20,6 +22,7 @@ router = APIRouter(tags=["auth"])
 @limiter.limit("5/minute")
 def login_access_token(
     request: Request,
+    response: Response,
     session: SessionDep,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
@@ -33,12 +36,49 @@ def login_access_token(
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     auth_events_total.labels(result="success", reason="login").inc()
+
+    refresh_token = create_refresh_token(user.id)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+    return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
+
+
+@router.post("/refresh")
+def refresh_access_token(
+    request: Request,
+    session: SessionDep,
+) -> Token:
+    """Refresh access token using the refresh_token cookie."""
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token missing")
+    try:
+        payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        token_data = TokenPayload(**payload)
+    except (jwt.InvalidTokenError, ValidationError):
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user = session.get(User, token_data.sub)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
 
 
 @router.post("/logout")
-async def logout(token: TokenDep) -> dict:
+async def logout(response: Response, token: TokenDep) -> dict:
     """Invalidate the current access token."""
+    response.delete_cookie("refresh_token")
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.InvalidTokenError:

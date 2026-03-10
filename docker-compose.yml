@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-infrascope}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-infrascope}"]
       interval: 10s

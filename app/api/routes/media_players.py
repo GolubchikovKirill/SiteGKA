@@ -103,6 +103,9 @@ async def _run_iconbit_discovery(subnet: str, ports: str, known_players: list[di
 
 async def _invalidate_cache() -> None:
     try:
+        from app.api.websockets import broadcast_event
+
+        await broadcast_event("invalidate", "media_players")
         r = await get_redis()
         keys = []
         async for key in r.scan_iter("media_players:*"):
@@ -271,7 +274,9 @@ async def discover_update_iconbit_ip(
         raise HTTPException(status_code=404, detail="Media player not found")
     old_ip = player.ip_address
     if new_ip:
-        conflict = session.exec(select(MediaPlayer).where(MediaPlayer.ip_address == new_ip, MediaPlayer.id != player.id)).first()
+        conflict = session.exec(
+            select(MediaPlayer).where(MediaPlayer.ip_address == new_ip, MediaPlayer.id != player.id)
+        ).first()
         if conflict:
             raise HTTPException(status_code=409, detail="Another device already has this IP")
         player.ip_address = new_ip
@@ -391,7 +396,9 @@ async def poll_single_player(player_id: uuid.UUID, session: SessionDep, current_
     if not player.is_online and player.mac_address:
         new_ip = await find_device_by_mac(player.mac_address)
         if new_ip and new_ip != player.ip_address:
-            logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+            logger.info(
+                "Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address
+            )
             old_ip = player.ip_address
             player.ip_address = new_ip
             write_event_log(
@@ -521,7 +528,9 @@ async def poll_all_players(
             for player in offline_with_mac:
                 new_ip = mac_to_ip.get((player.mac_address or "").lower())
                 if new_ip and new_ip != player.ip_address:
-                    logger.info("Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+                    logger.info(
+                        "Device %s moved: %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address
+                    )
                     old_ip = player.ip_address
                     player.ip_address = new_ip
                     write_event_log(
@@ -548,8 +557,12 @@ async def poll_all_players(
         session.commit()
         success_count = sum(1 for p in players if p.is_online)
         network_bulk_processed_total.labels(operation="media_poll_all", result="success").inc(success_count)
-        network_bulk_processed_total.labels(operation="media_poll_all", result="offline").inc(max(len(players) - success_count, 0))
-        network_bulk_operation_duration_seconds.labels(operation="media_poll_all").observe(max(perf_counter() - started, 0))
+        network_bulk_processed_total.labels(operation="media_poll_all", result="offline").inc(
+            max(len(players) - success_count, 0)
+        )
+        network_bulk_operation_duration_seconds.labels(operation="media_poll_all").observe(
+            max(perf_counter() - started, 0)
+        )
 
         result_statement = select(MediaPlayer)
         if device_type:
@@ -591,7 +604,9 @@ async def rediscover_devices(
     for player in players:
         new_ip = mac_to_ip.get((player.mac_address or "").lower())
         if new_ip and new_ip != player.ip_address:
-            logger.info("Rediscovery: %s moved %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address)
+            logger.info(
+                "Rediscovery: %s moved %s -> %s (MAC %s)", player.name, player.ip_address, new_ip, player.mac_address
+            )
             old_ip = player.ip_address
             player.ip_address = new_ip
             updated += 1
@@ -618,8 +633,12 @@ async def rediscover_devices(
     logger.info("Rediscovery complete: %d/%d devices updated", updated, len(players))
     media_player_ops_total.labels(operation="rediscover", result="success").inc()
     network_bulk_processed_total.labels(operation="media_rediscover", result="success").inc(updated)
-    network_bulk_processed_total.labels(operation="media_rediscover", result="unchanged").inc(max(len(players) - updated, 0))
-    network_bulk_operation_duration_seconds.labels(operation="media_rediscover").observe(max(perf_counter() - started, 0))
+    network_bulk_processed_total.labels(operation="media_rediscover", result="unchanged").inc(
+        max(len(players) - updated, 0)
+    )
+    network_bulk_operation_duration_seconds.labels(operation="media_rediscover").observe(
+        max(perf_counter() - started, 0)
+    )
     all_players = session.exec(select(MediaPlayer)).all()
     return MediaPlayersPublic(data=all_players, count=len(all_players))
 

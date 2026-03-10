@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api import websockets
 from app.api.routes import (
     app_settings,
     auth,
@@ -19,6 +20,7 @@ from app.api.routes import (
 )
 
 api_router = APIRouter()
+api_router.include_router(websockets.router, prefix="/realtime")
 api_router.include_router(auth.router, prefix="/auth")
 api_router.include_router(users.router, prefix="/users")
 api_router.include_router(printers.router, prefix="/printers")
