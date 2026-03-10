@@ -220,6 +220,31 @@ body {
   -webkit-backdrop-filter: blur(12px);
 }
 
+.app-user-card {
+  background: color-mix(in srgb, var(--app-panel-bg) 88%, white 12%);
+  border: 1px solid var(--app-panel-border);
+}
+
+.app-user-name {
+  color: #111827;
+}
+
+.app-user-email {
+  color: #6b7280;
+}
+
+:root[data-theme="dark"] .app-user-card {
+  background: color-mix(in srgb, var(--app-panel-bg) 92%, transparent 8%);
+}
+
+:root[data-theme="dark"] .app-user-name {
+  color: #f3f4f6;
+}
+
+:root[data-theme="dark"] .app-user-email {
+  color: #9ca3af;
+}
+
 .app-card {
   position: relative;
   transition:
