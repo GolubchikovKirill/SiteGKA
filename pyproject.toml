@@ -3,7 +3,7 @@ name = "infrascope"
 version = "0.1.0"
 description = "IT infrastructure monitoring and administration platform"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.14",
     "argon2-cffi>=25.1.0",
@@ -46,7 +46,7 @@ dev = [
 ]
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py313"
 line-length = 120
 
 [tool.ruff.lint]
@@ -57,4 +57,7 @@ ignore = ["E501"]
 known-first-party = ["app"]
 
 [tool.pyright]
-pythonVersion = "3.13"
+include = ["app", "tests"]
+venvPath = "."
+venv = ".venv"
+extraPaths = ["."]

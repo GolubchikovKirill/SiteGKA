@@ -1,10 +1,11 @@
 import { Suspense, lazy, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import { pollAllCashRegisters, pollAllComputers, pollAllMediaPlayers, pollAllPrinters, pollAllSwitches } from "./client";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
+import { AnimatePresence, motion } from "framer-motion";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const MediaPlayersPage = lazy(() => import("./pages/MediaPlayersPage"));
@@ -70,6 +71,46 @@ function RouteLoader() {
   );
 }
 
+function AnimatedRoutes() {
+  const location = useLocation();
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.2 }}
+        className="h-full"
+      >
+        <Suspense fallback={<RouteLoader />}>
+          <Routes location={location}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/media-players" element={<MediaPlayersPage />} />
+            <Route path="/switches" element={<SwitchesPage />} />
+            <Route path="/cash-registers" element={<CashRegistersPage />} />
+            <Route path="/computers" element={<ComputersPage />} />
+            <Route path="/network-search" element={<NetworkSearchPage />} />
+            <Route path="/onec" element={<OneCPage />} />
+            <Route path="/qr-generator" element={<Navigate to="/onec" replace />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/logs" element={<LogsPage />} />
+            <Route
+              path="/users"
+              element={
+                <AdminRoute>
+                  <UsersPage />
+                </AdminRoute>
+              }
+            />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export default function App() {
   return (
     <Routes>
@@ -79,29 +120,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Layout>
-              <Suspense fallback={<RouteLoader />}>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/media-players" element={<MediaPlayersPage />} />
-                  <Route path="/switches" element={<SwitchesPage />} />
-                  <Route path="/cash-registers" element={<CashRegistersPage />} />
-                  <Route path="/computers" element={<ComputersPage />} />
-                  <Route path="/network-search" element={<NetworkSearchPage />} />
-                  <Route path="/onec" element={<OneCPage />} />
-                  <Route path="/qr-generator" element={<Navigate to="/onec" replace />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/logs" element={<LogsPage />} />
-                  <Route
-                    path="/users"
-                    element={
-                      <AdminRoute>
-                        <UsersPage />
-                      </AdminRoute>
-                    }
-                  />
-                  <Route path="*" element={<NotFoundPage />} />
-                </Routes>
-              </Suspense>
+              <AnimatedRoutes />
             </Layout>
           </ProtectedRoute>
         }

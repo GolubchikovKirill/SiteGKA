@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
@@ -23,8 +24,11 @@ logging.getLogger("app").setLevel(logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    with Session(engine) as session:
-        init_db(session)
+    def _init_db_sync():
+        with Session(engine) as session:
+            init_db(session)
+
+    await run_in_threadpool(_init_db_sync)
     yield
     await close_redis()
 
@@ -61,19 +65,22 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    try:
-        with Session(engine) as session:
-            write_event_log(
-                session,
-                severity="critical",
-                category="system",
-                event_type="unhandled_exception",
-                message=f"{request.method} {request.url.path}: {exc}",
-            )
-            session.commit()
-    except Exception:
-        # Never fail the exception handler itself.
-        logging.getLogger("app").exception("Failed to persist unhandled exception")
+    def _log_unhandled_exception():
+        try:
+            with Session(engine) as session:
+                write_event_log(
+                    session,
+                    severity="critical",
+                    category="system",
+                    event_type="unhandled_exception",
+                    message=f"{request.method} {request.url.path}: {exc}",
+                )
+                session.commit()
+        except Exception:
+            # Never fail the exception handler itself.
+            logging.getLogger("app").exception("Failed to persist unhandled exception")
+
+    await run_in_threadpool(_log_unhandled_exception)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 

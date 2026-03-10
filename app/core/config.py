@@ -18,13 +18,14 @@ class Settings(BaseSettings):
     SECRET_KEY: str = _PLACEHOLDER
 
     @model_validator(mode="after")
-    def validate_secret_key(self) -> Settings:
+    def validate_secret_key(self) -> "Settings":
         if self.ENVIRONMENT == "production" and self.SECRET_KEY == _PLACEHOLDER:
             raise ValueError(
                 "SECRET_KEY must be set to a secure value in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
         return self
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
     FIRST_SUPERUSER_EMAIL: str = "admin@infrascope.dev"

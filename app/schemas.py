@@ -587,7 +587,7 @@ class PrinterCreate(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def check_ip_required_for_ip_type(self) -> PrinterCreate:
+    def check_ip_required_for_ip_type(self) -> "PrinterCreate":
         if self.connection_type == "ip" and not self.ip_address:
             raise ValueError("ip_address is required when connection_type is 'ip'")
         return self
@@ -705,6 +705,7 @@ class ScanRequest(BaseModel):
     @classmethod
     def validate_subnet(cls, v: str) -> str:
         import ipaddress
+
         parts = [p.strip() for p in v.split(",") if p.strip()]
         if not parts:
             raise ValueError("At least one subnet is required")
@@ -1227,7 +1228,7 @@ class MediaPlayerCreate(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def set_default_model(self) -> MediaPlayerCreate:
+    def set_default_model(self) -> "MediaPlayerCreate":
         if not self.model:
             defaults = {"nettop": "Неттоп", "iconbit": "Iconbit", "twix": "Twix"}
             self.model = defaults.get(self.device_type, self.device_type)

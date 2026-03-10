@@ -5,11 +5,11 @@ Revises: f6a7b8c9d0e1
 Create Date: 2026-02-23
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "b7c8d9e0f1a2"
 down_revision: str | Sequence[str] | None = "f6a7b8c9d0e1"

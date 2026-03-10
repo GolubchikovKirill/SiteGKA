@@ -22,6 +22,7 @@ import {
   Cable,
 } from "lucide-react";
 import { readThemeMode, setThemeMode, type ThemeMode } from "../theme";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -85,19 +86,19 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen app-shell md:flex">
       <aside className={`${isSidebarVisible ? "hidden md:flex" : "hidden"} app-sidebar md:w-72 md:flex-col md:sticky md:top-0 md:h-screen md:border-r`}>
-        <div className="px-5 py-5 border-b border-inherit">
+        <div className="px-5 py-5 border-b border-[var(--app-panel-border)]">
           <div className="flex items-center gap-3 justify-between">
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={handleToggleSidebar}
-                className="app-logo-btn app-logo-live rounded-xl bg-gradient-to-br from-red-700 to-rose-600 p-2 shadow-md"
+                className="app-logo-btn app-logo-live rounded-xl bg-linear-to-br from-red-700 to-rose-600 p-2 shadow-md"
                 title="Свернуть/развернуть меню"
               >
                 <Server className="h-5 w-5 text-white" />
               </button>
               <div>
-                <div className="text-lg font-semibold text-slate-900">InfraScope</div>
+                <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">InfraScope</div>
                 <div className="text-xs text-slate-500">Control Center</div>
               </div>
             </div>
@@ -147,7 +148,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
                     isActive
                       ? "app-nav-active"
-                      : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-700"
+                      : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/60 hover:text-slate-700 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
                   }`
                 }
               >
@@ -157,14 +158,14 @@ export default function Layout({ children }: { children: ReactNode }) {
             ))}
         </nav>
 
-        <div className="p-4 border-t border-inherit space-y-2.5">
+        <div className="p-4 border-t border-[var(--app-panel-border)] space-y-2.5">
           <div className="app-user-card rounded-xl px-3 py-2.5">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-rose-600 to-red-700 text-xs font-semibold text-white shadow-sm">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-rose-600 to-red-700 text-xs font-semibold text-white shadow-sm">
                 {initials}
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-slate-900 inline-flex items-center gap-1.5">
+                <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-1.5">
                   <span>{displayName}</span>
                   {isSuperuser ? (
                     <Shield className="h-3.5 w-3.5 text-rose-600" title="Администратор" />
@@ -205,28 +206,36 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0">
-        {!isSidebarVisible && (
-          <div className="hidden md:flex px-3 sm:px-5 lg:px-8 pt-3">
-            <button
-              type="button"
-              onClick={handleToggleSidebar}
-              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs app-btn-secondary app-logo-live"
-              title="Развернуть меню"
+      <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden relative">
+        <AnimatePresence>
+          {!isSidebarVisible && (
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="hidden md:flex px-3 sm:px-5 lg:px-8 pt-3 absolute z-10"
             >
-              <Server className="h-4 w-4" />
-              InfraScope
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                onClick={handleToggleSidebar}
+                className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs app-btn-secondary app-logo-live backdrop-blur-md bg-white/70 dark:bg-slate-900/70"
+                title="Развернуть меню"
+              >
+                <Server className="h-4 w-4" />
+                InfraScope
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <header className="app-header md:hidden sticky top-0 z-30 border-b backdrop-blur-xl">
           <div className="px-3 py-3 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-gradient-to-br from-red-700 to-rose-600 p-1.5 shadow-sm">
+                <div className="rounded-lg bg-linear-to-br from-red-700 to-rose-600 p-1.5 shadow-sm">
                   <Server className="h-4 w-4 text-white" />
                 </div>
-                <span className="font-semibold text-slate-900">InfraScope</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">InfraScope</span>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -266,7 +275,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                       `inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium whitespace-nowrap ${
                         isActive
                           ? "app-nav-active"
-                          : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200"
+                          : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/70 dark:hover:bg-slate-800/70"
                       }`
                     }
                   >
@@ -299,7 +308,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="w-full mx-auto px-1 sm:px-3 lg:px-4 xl:px-5 py-5 sm:py-7 app-compact-scroll">
+        <main className="flex-1 mx-auto w-full px-1 sm:px-3 lg:px-4 xl:px-5 py-5 sm:py-7 app-compact-scroll overflow-y-auto">
           {children}
         </main>
       </div>
