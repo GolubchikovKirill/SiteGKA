@@ -79,7 +79,7 @@ export default function LogsPage() {
             Обновить
           </button>
         </div>
-        <div className="app-toolbar-actions">
+        <div className="app-toolbar-actions flex flex-wrap gap-2">
           {SEVERITIES.map((item) => (
             <button
               key={item.key}
@@ -90,7 +90,7 @@ export default function LogsPage() {
             </button>
           ))}
         </div>
-        <div className="app-toolbar-actions">
+        <div className="app-toolbar-actions flex flex-wrap gap-2">
           {DEVICE_KINDS.map((item) => (
             <button
               key={item.key}

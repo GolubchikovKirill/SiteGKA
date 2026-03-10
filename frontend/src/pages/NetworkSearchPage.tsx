@@ -309,7 +309,7 @@ export default function NetworkSearchPage() {
           <div className="text-xs text-slate-500">
             Текущий режим: <span className="font-medium">{TARGET_LABELS[target]}</span>. Кнопка добавления отправляет устройство именно в этот раздел.
           </div>
-          <div className="app-toolbar-actions">
+          <div className="app-toolbar-actions flex flex-wrap gap-2">
             <button
               onClick={runSearch}
               disabled={isScanning}

@@ -165,12 +165,12 @@ export default function Layout({ children }: { children: ReactNode }) {
                 {initials}
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-1.5">
+                <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100 inline-flex items-center gap-1.5">
                   <span>{displayName}</span>
                   {isSuperuser ? (
-                    <Shield className="h-3.5 w-3.5 text-rose-600" title="Администратор" />
+                    <span title="Администратор"><Shield className="h-3.5 w-3.5 text-rose-600" /></span>
                   ) : (
-                    <UserIcon className="h-3.5 w-3.5 text-slate-500" title="Пользователь" />
+                    <span title="Пользователь"><UserIcon className="h-3.5 w-3.5 text-slate-500" /></span>
                   )}
                 </div>
                 <div className="truncate text-xs text-slate-500">{user?.email || "—"}</div>

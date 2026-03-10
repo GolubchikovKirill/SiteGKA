@@ -160,9 +160,9 @@ export default function UsersPage() {
                         <div className="text-sm font-medium text-gray-900 inline-flex items-center gap-1.5">
                           <span>{u.full_name || "—"}</span>
                           {u.is_superuser ? (
-                            <Shield className="h-3.5 w-3.5 text-rose-600" title="Администратор" />
+                            <span title="Администратор"><Shield className="h-3.5 w-3.5 text-rose-600" /></span>
                           ) : (
-                            <UserIcon className="h-3.5 w-3.5 text-slate-500" title="Пользователь" />
+                            <span title="Пользователь"><UserIcon className="h-3.5 w-3.5 text-slate-500" /></span>
                           )}
                         </div>
                         <div className="text-xs text-gray-500">{u.email}</div>

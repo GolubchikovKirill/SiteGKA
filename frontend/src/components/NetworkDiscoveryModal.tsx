@@ -55,8 +55,10 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
   }, [progress.status, polling]);
 
   const startMut = useMutation({
-    mutationFn: () =>
-      isIconbit ? startIconbitDiscoveryScan(subnet, ports) : startSwitchDiscoveryScan(subnet, ports),
+    mutationFn: async () => {
+      const res = isIconbit ? await startIconbitDiscoveryScan(subnet, ports) : await startSwitchDiscoveryScan(subnet, ports);
+      return res;
+    },
     onSuccess: () => {
       setPolling(true);
       refetch();
@@ -64,21 +66,23 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
   });
 
   const addMut = useMutation({
-    mutationFn: (d: DiscoveredNetworkDevice) => {
+    mutationFn: async (d: DiscoveredNetworkDevice) => {
       if (isIconbit) {
-        return addDiscoveredIconbit({
+        const res = await addDiscoveredIconbit({
           ip_address: d.ip,
           name: d.hostname || `Iconbit ${d.ip}`,
           model: d.model_info || "Iconbit",
           mac_address: d.mac ?? undefined,
         });
+        return res;
       }
-      return addDiscoveredSwitch({
+      const res = await addDiscoveredSwitch({
         ip_address: d.ip,
         name: d.hostname || `Switch ${d.ip}`,
         hostname: d.hostname ?? undefined,
         vendor: d.vendor ?? "generic",
       });
+      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: isIconbit ? ["media-players"] : ["switches"] });
@@ -87,10 +91,14 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
   });
 
   const updateIpMut = useMutation({
-    mutationFn: (d: DiscoveredNetworkDevice) => {
+    mutationFn: async (d: DiscoveredNetworkDevice) => {
       if (!d.known_device_id) throw new Error("known_device_id is required");
-      if (isIconbit) return updateDiscoveredIconbitIp(d.known_device_id, d.ip, d.mac ?? undefined);
-      return updateDiscoveredSwitchIp(d.known_device_id, d.ip);
+      if (isIconbit) {
+        const res = await updateDiscoveredIconbitIp(d.known_device_id, d.ip, d.mac ?? undefined);
+        return res;
+      }
+      const res = await updateDiscoveredSwitchIp(d.known_device_id, d.ip);
+      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: isIconbit ? ["media-players"] : ["switches"] });

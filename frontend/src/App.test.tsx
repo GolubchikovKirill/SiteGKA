@@ -51,10 +51,10 @@ describe("App routes", () => {
     expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
   });
 
-  it("redirects unknown route to dashboard for authenticated user", async () => {
+  it("shows 404 page for unknown route", async () => {
     authState.user = { is_superuser: true };
     renderWithProviders("/unknown-page");
-    expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
+    expect(await screen.findByText("Страница не найдена")).toBeInTheDocument();
   });
 });
 

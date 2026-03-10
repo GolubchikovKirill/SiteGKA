@@ -192,7 +192,7 @@ export default function Dashboard() {
               className="app-input w-full pl-10 pr-4 py-2 text-sm"
             />
           </div>
-          <div className="app-toolbar-actions">
+          <div className="app-toolbar-actions flex flex-wrap gap-2">
             <button
               onClick={() => pollAllMut.mutate()}
               disabled={pollAllMut.isPending}

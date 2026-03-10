@@ -15,9 +15,15 @@ export default function SwitchForm({ initial, onSave, onCancel }: Props) {
   const [enablePwd, setEnablePwd] = useState("");
   const [port, setPort] = useState(initial?.ssh_port ?? 22);
   const [vlan, setVlan] = useState(initial?.ap_vlan ?? 20);
-  const [vendor, setVendor] = useState(initial?.vendor ?? "cisco");
-  const [protocol, setProtocol] = useState(initial?.management_protocol ?? "snmp+ssh");
-  const [snmpVersion, setSnmpVersion] = useState(initial?.snmp_version ?? "2c");
+  const [vendor, setVendor] = useState<"cisco" | "dlink" | "generic">(
+    (initial?.vendor as "cisco" | "dlink" | "generic") ?? "cisco",
+  );
+  const [protocol, setProtocol] = useState<"snmp" | "ssh" | "snmp+ssh">(
+    (initial?.management_protocol as "snmp" | "ssh" | "snmp+ssh") ?? "snmp+ssh",
+  );
+  const [snmpVersion, setSnmpVersion] = useState<"2c">(
+    (initial?.snmp_version as "2c") ?? "2c",
+  );
   const [snmpRo, setSnmpRo] = useState(initial?.snmp_community_ro ?? "public");
   const [snmpRw, setSnmpRw] = useState(initial?.snmp_community_rw ?? "");
 
@@ -91,7 +97,7 @@ export default function SwitchForm({ initial, onSave, onCancel }: Props) {
             <label className="block text-sm font-medium text-gray-700 mb-1">Вендор</label>
             <select
               value={vendor}
-              onChange={(e) => setVendor(e.target.value)}
+              onChange={(e) => setVendor(e.target.value as "cisco" | "dlink" | "generic")}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             >
               <option value="cisco">Cisco</option>
@@ -103,7 +109,7 @@ export default function SwitchForm({ initial, onSave, onCancel }: Props) {
             <label className="block text-sm font-medium text-gray-700 mb-1">Протокол</label>
             <select
               value={protocol}
-              onChange={(e) => setProtocol(e.target.value)}
+              onChange={(e) => setProtocol(e.target.value as "snmp" | "ssh" | "snmp+ssh")}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             >
               <option value="snmp+ssh">SNMP + SSH</option>
@@ -141,7 +147,7 @@ export default function SwitchForm({ initial, onSave, onCancel }: Props) {
             <label className="block text-sm font-medium text-gray-700 mb-1">SNMP ver</label>
             <select
               value={snmpVersion}
-              onChange={(e) => setSnmpVersion(e.target.value)}
+              onChange={(e) => setSnmpVersion(e.target.value as "2c")}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             >
               <option value="2c">2c</option>
