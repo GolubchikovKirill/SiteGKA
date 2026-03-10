@@ -1,5 +1,7 @@
 import asyncio
 import csv
+import json
+import logging
 import socket
 import uuid
 from datetime import UTC, datetime
@@ -11,6 +13,7 @@ from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
+from app.core.redis import get_redis
 from app.models import CashRegister
 from app.schemas import (
     CashRegisterCreate,
@@ -23,6 +26,23 @@ from app.services.event_log import write_event_log
 from app.services.internal_services import _proxy_request
 from app.services.ping import check_port
 from app.services.smart_search import build_ilike_filter
+
+logger = logging.getLogger(__name__)
+
+CACHE_TTL = 30
+
+
+async def _invalidate_cache() -> None:
+    try:
+        r = await get_redis()
+        keys = []
+        async for key in r.scan_iter("cash_registers:*"):
+            keys.append(key)
+        if keys:
+            await r.delete(*keys)
+    except Exception as e:
+        logger.warning("Cash registers cache invalidation failed: %s", e)
+
 
 router = APIRouter(tags=["cash-registers"])
 
@@ -90,13 +110,22 @@ def _record_status_change(session, reg: CashRegister, prev_online: bool | None) 
 
 
 @router.get("/", response_model=CashRegistersPublic)
-def read_cash_registers(
+async def read_cash_registers(
     session: SessionDep,
     current_user: CurrentUser,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=500),
     q: str | None = Query(default=None),
 ) -> CashRegistersPublic:
+    cache_key = f"cash_registers:{q or ''}:{skip}:{limit}"
+    try:
+        r = await get_redis()
+        cached = await r.get(cache_key)
+        if cached:
+            return CashRegistersPublic(**json.loads(cached))
+    except Exception:
+        pass
+
     del current_user
     statement = select(CashRegister)
     count_stmt = select(func.count()).select_from(CashRegister)
@@ -117,20 +146,29 @@ def read_cash_registers(
             count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     rows = session.exec(statement.order_by(CashRegister.kkm_number).offset(skip).limit(limit)).all()
-    return CashRegistersPublic(data=rows, count=count)
+    result = CashRegistersPublic(data=rows, count=count)
+
+    try:
+        r = await get_redis()
+        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
+    except Exception:
+        pass
+
+    return result
 
 
 @router.post("/", response_model=CashRegisterPublic, dependencies=[Depends(get_current_active_superuser)])
-def create_cash_register(session: SessionDep, payload: CashRegisterCreate) -> CashRegister:
+async def create_cash_register(session: SessionDep, payload: CashRegisterCreate) -> CashRegister:
     cash = CashRegister(**payload.model_dump())
     session.add(cash)
     session.commit()
     session.refresh(cash)
+    await _invalidate_cache()
     return cash
 
 
 @router.patch("/{cash_id}", response_model=CashRegisterPublic, dependencies=[Depends(get_current_active_superuser)])
-def update_cash_register(session: SessionDep, cash_id: uuid.UUID, payload: CashRegisterUpdate) -> CashRegister:
+async def update_cash_register(session: SessionDep, cash_id: uuid.UUID, payload: CashRegisterUpdate) -> CashRegister:
     cash = session.get(CashRegister, cash_id)
     if not cash:
         raise HTTPException(status_code=404, detail="Cash register not found")
@@ -139,16 +177,18 @@ def update_cash_register(session: SessionDep, cash_id: uuid.UUID, payload: CashR
     session.add(cash)
     session.commit()
     session.refresh(cash)
+    await _invalidate_cache()
     return cash
 
 
 @router.delete("/{cash_id}", dependencies=[Depends(get_current_active_superuser)])
-def delete_cash_register(session: SessionDep, cash_id: uuid.UUID) -> Message:
+async def delete_cash_register(session: SessionDep, cash_id: uuid.UUID) -> Message:
     cash = session.get(CashRegister, cash_id)
     if not cash:
         raise HTTPException(status_code=404, detail="Cash register not found")
     session.delete(cash)
     session.commit()
+    await _invalidate_cache()
     return Message(message="Cash register deleted")
 
 

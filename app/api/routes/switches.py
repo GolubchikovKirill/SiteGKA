@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -73,14 +74,38 @@ async def _run_switch_discovery(subnet: str, ports: str, known_switches: list[di
         logger.error("Switch discovery failed: %s", exc)
 
 
+CACHE_TTL = 30
+
+
+async def _invalidate_cache() -> None:
+    try:
+        r = await get_redis()
+        keys = []
+        async for key in r.scan_iter("switches:*"):
+            keys.append(key)
+        if keys:
+            await r.delete(*keys)
+    except Exception as e:
+        logger.warning("Switch cache invalidation failed: %s", e)
+
+
 @router.get("/", response_model=NetworkSwitchesPublic)
-def read_switches(
+async def read_switches(
     session: SessionDep,
     current_user: CurrentUser,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, le=200),
     name: str | None = None,
 ) -> NetworkSwitchesPublic:
+    cache_key = f"switches:{name or ''}:{skip}:{limit}"
+    try:
+        r = await get_redis()
+        cached = await r.get(cache_key)
+        if cached:
+            return NetworkSwitchesPublic(**json.loads(cached))
+    except Exception:
+        pass
+
     statement = select(NetworkSwitch)
     count_stmt = select(func.count()).select_from(NetworkSwitch)
     if name:
@@ -105,11 +130,19 @@ def read_switches(
         total=len(switches),
         online=sum(1 for s in switches if s.is_online),
     )
-    return NetworkSwitchesPublic(data=switches, count=count)
+    result = NetworkSwitchesPublic(data=switches, count=count)
+
+    try:
+        r = await get_redis()
+        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
+    except Exception:
+        pass
+
+    return result
 
 
 @router.post("/", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])
-def create_switch(session: SessionDep, switch_in: NetworkSwitchCreate) -> NetworkSwitch:
+async def create_switch(session: SessionDep, switch_in: NetworkSwitchCreate) -> NetworkSwitch:
     existing = session.exec(select(NetworkSwitch).where(NetworkSwitch.ip_address == switch_in.ip_address)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Switch with this IP already exists")
@@ -117,6 +150,7 @@ def create_switch(session: SessionDep, switch_in: NetworkSwitchCreate) -> Networ
     session.add(switch)
     session.commit()
     session.refresh(switch)
+    await _invalidate_cache()
     return switch
 
 
@@ -167,7 +201,7 @@ async def discover_switch_results(current_user: CurrentUser) -> dict:
 
 
 @router.post("/discover/add", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])
-def discover_add_switch(session: SessionDep, payload: dict) -> NetworkSwitch:
+async def discover_add_switch(session: SessionDep, payload: dict) -> NetworkSwitch:
     ip = str(payload.get("ip_address", "")).strip()
     if not ip:
         raise HTTPException(status_code=422, detail="ip_address is required")
@@ -189,6 +223,7 @@ def discover_add_switch(session: SessionDep, payload: dict) -> NetworkSwitch:
     session.add(switch)
     session.commit()
     session.refresh(switch)
+    await _invalidate_cache()
     return switch
 
 
@@ -197,7 +232,7 @@ def discover_add_switch(session: SessionDep, payload: dict) -> NetworkSwitch:
     response_model=NetworkSwitchPublic,
     dependencies=[Depends(get_current_active_superuser)],
 )
-def discover_update_switch_ip(
+async def discover_update_switch_ip(
     switch_id: uuid.UUID,
     session: SessionDep,
     new_ip: str = "",
@@ -228,6 +263,7 @@ def discover_update_switch_ip(
     session.add(switch)
     session.commit()
     session.refresh(switch)
+    await _invalidate_cache()
     return switch
 
 
@@ -240,7 +276,7 @@ def read_switch(switch_id: uuid.UUID, session: SessionDep, current_user: Current
 
 
 @router.patch("/{switch_id}", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])
-def update_switch(session: SessionDep, switch_id: uuid.UUID, switch_in: NetworkSwitchUpdate) -> NetworkSwitch:
+async def update_switch(session: SessionDep, switch_id: uuid.UUID, switch_in: NetworkSwitchUpdate) -> NetworkSwitch:
     switch = session.get(NetworkSwitch, switch_id)
     if not switch:
         raise HTTPException(status_code=404, detail="Switch not found")
@@ -259,16 +295,18 @@ def update_switch(session: SessionDep, switch_id: uuid.UUID, switch_in: NetworkS
     session.add(switch)
     session.commit()
     session.refresh(switch)
+    await _invalidate_cache()
     return switch
 
 
 @router.delete("/{switch_id}", dependencies=[Depends(get_current_active_superuser)])
-def delete_switch(session: SessionDep, switch_id: uuid.UUID) -> Message:
+async def delete_switch(session: SessionDep, switch_id: uuid.UUID) -> Message:
     switch = session.get(NetworkSwitch, switch_id)
     if not switch:
         raise HTTPException(status_code=404, detail="Switch not found")
     session.delete(switch)
     session.commit()
+    await _invalidate_cache()
     return Message(message="Switch deleted")
 
 
@@ -405,10 +443,14 @@ async def poll_all_switches(
                 switch_ops_total.labels(operation="poll_all", result="error").inc()
                 error_count += 1
         session.commit()
-        network_bulk_processed_total.labels(operation="switch_poll_all", result="success").inc(max(len(switches) - error_count, 0))
+        network_bulk_processed_total.labels(operation="switch_poll_all", result="success").inc(
+            max(len(switches) - error_count, 0)
+        )
         if error_count:
             network_bulk_processed_total.labels(operation="switch_poll_all", result="error").inc(error_count)
-        network_bulk_operation_duration_seconds.labels(operation="switch_poll_all").observe(max(perf_counter() - started, 0))
+        network_bulk_operation_duration_seconds.labels(operation="switch_poll_all").observe(
+            max(perf_counter() - started, 0)
+        )
         return Message(message="Switches polled")
     finally:
         if lock_acquired:
@@ -487,14 +529,22 @@ async def reboot_access_point(
     if method == "poe":
         ok = await asyncio.to_thread(
             poe_cycle_ap,
-            switch.ip_address, switch.ssh_username, switch.ssh_password,
-            switch.enable_password, switch.ssh_port, interface,
+            switch.ip_address,
+            switch.ssh_username,
+            switch.ssh_password,
+            switch.enable_password,
+            switch.ssh_port,
+            interface,
         )
     else:
         ok = await asyncio.to_thread(
             reboot_ap,
-            switch.ip_address, switch.ssh_username, switch.ssh_password,
-            switch.enable_password, switch.ssh_port, interface,
+            switch.ip_address,
+            switch.ssh_username,
+            switch.ssh_password,
+            switch.enable_password,
+            switch.ssh_port,
+            interface,
         )
 
     if not ok:

@@ -1,4 +1,6 @@
 import asyncio
+import json
+import logging
 import socket
 import uuid
 from datetime import UTC, datetime
@@ -9,11 +11,29 @@ from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
+from app.core.redis import get_redis
 from app.models import Computer
 from app.schemas import ComputerCreate, ComputerPublic, ComputersPublic, ComputerUpdate, Message
 from app.services.smart_search import build_ilike_filter
 
 router = APIRouter(tags=["computers"])
+
+logger = logging.getLogger(__name__)
+
+CACHE_TTL = 30
+
+
+async def _invalidate_cache() -> None:
+    try:
+        r = await get_redis()
+        keys = []
+        async for key in r.scan_iter("computers:*"):
+            keys.append(key)
+        if keys:
+            await r.delete(*keys)
+    except Exception as e:
+        logger.warning("Computers cache invalidation failed: %s", e)
+
 
 _COMPUTER_PROBE_PORTS = (445, 3389, 135)
 
@@ -51,12 +71,21 @@ def _probe_computer(hostname: str) -> tuple[bool, str | None]:
 
 
 @router.get("/", response_model=ComputersPublic)
-def read_computers(
+async def read_computers(
     session: SessionDep,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=500),
     q: str | None = Query(default=None),
 ) -> ComputersPublic:
+    cache_key = f"computers:{q or ''}:{skip}:{limit}"
+    try:
+        r = await get_redis()
+        cached = await r.get(cache_key)
+        if cached:
+            return ComputersPublic(**json.loads(cached))
+    except Exception:
+        pass
+
     statement = select(Computer)
     count_stmt = select(func.count()).select_from(Computer)
     if q:
@@ -69,11 +98,19 @@ def read_computers(
             count_stmt = count_stmt.where(flt)
     rows = session.exec(statement.order_by(Computer.hostname).offset(skip).limit(limit)).all()
     count = session.exec(count_stmt).one()
-    return ComputersPublic(data=rows, count=count)
+    result = ComputersPublic(data=rows, count=count)
+
+    try:
+        r = await get_redis()
+        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
+    except Exception:
+        pass
+
+    return result
 
 
 @router.post("/", response_model=ComputerPublic, dependencies=[Depends(get_current_active_superuser)])
-def create_computer(session: SessionDep, payload: ComputerCreate) -> Computer:
+async def create_computer(session: SessionDep, payload: ComputerCreate) -> Computer:
     exists = session.exec(select(Computer).where(Computer.hostname == payload.hostname)).first()
     if exists:
         raise HTTPException(status_code=409, detail="Computer with this hostname already exists")
@@ -81,11 +118,12 @@ def create_computer(session: SessionDep, payload: ComputerCreate) -> Computer:
     session.add(row)
     session.commit()
     session.refresh(row)
+    await _invalidate_cache()
     return row
 
 
 @router.patch("/{computer_id}", response_model=ComputerPublic, dependencies=[Depends(get_current_active_superuser)])
-def update_computer(session: SessionDep, computer_id: uuid.UUID, payload: ComputerUpdate) -> Computer:
+async def update_computer(session: SessionDep, computer_id: uuid.UUID, payload: ComputerUpdate) -> Computer:
     row = session.get(Computer, computer_id)
     if not row:
         raise HTTPException(status_code=404, detail="Computer not found")
@@ -102,16 +140,18 @@ def update_computer(session: SessionDep, computer_id: uuid.UUID, payload: Comput
     session.add(row)
     session.commit()
     session.refresh(row)
+    await _invalidate_cache()
     return row
 
 
 @router.delete("/{computer_id}", dependencies=[Depends(get_current_active_superuser)])
-def delete_computer(session: SessionDep, computer_id: uuid.UUID) -> Message:
+async def delete_computer(session: SessionDep, computer_id: uuid.UUID) -> Message:
     row = session.get(Computer, computer_id)
     if not row:
         raise HTTPException(status_code=404, detail="Computer not found")
     session.delete(row)
     session.commit()
+    await _invalidate_cache()
     return Message(message="Computer deleted")
 
 
