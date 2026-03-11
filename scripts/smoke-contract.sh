@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 echo "Running smoke + contract checks..."
 uv run python tools/scaffold/validate_service_descriptors.py
-uv run pytest tests/integration/api/test_observability.py tests/integration/api/test_tasks.py tests/integration/api/test_boarding_pass.py tests/unit/services/test_boarding_pass_service.py -q
+uv run pytest tests/integration/api/test_observability.py tests/integration/api/test_tasks.py tests/integration/api/test_boarding_pass.py tests/integration/api/test_qr_generator.py tests/integration/api/test_onec_exchange.py tests/unit/services/test_boarding_pass_service.py tests/unit/services/test_qr_generator_service.py -q
 cd frontend
 npm run test:run -- src/App.test.tsx src/components/BoardingPassPanel.test.tsx
 cd ..

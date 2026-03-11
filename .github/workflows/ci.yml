@@ -81,6 +81,8 @@ jobs:
         run: uv run ruff check app tests scripts
       - name: Core unit smoke
         run: uv run pytest tests/unit/services/test_boarding_pass_service.py tests/unit/services/test_qr_generator_service.py tests/unit/services/test_smart_search.py
+      - name: Route-service contract smoke
+        run: uv run pytest tests/integration/api/test_qr_generator.py tests/integration/api/test_onec_exchange.py tests/integration/api/test_boarding_pass.py
 
   frontend-test:
     name: Frontend Test

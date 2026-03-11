@@ -26,17 +26,25 @@
 ## 4) CI/CD and Deploy Safety
 
 - [x] CI содержит backend quality baseline (`ruff` + core pytest smoke).
+- [x] CI включает route-service contract smoke для `boarding/qr/1c`.
 - [x] Frontend typecheck вынесен в отдельный npm script.
 - [x] Deploy script поддерживает безопасный режим prebuilt image по умолчанию.
 - [x] Локальная пересборка включается только явным `--build-local`.
 
-## 5) Documentation and Operational Clarity
+## 5) Architecture Boundaries
+
+- [x] Для интеграционных сервисов используется единый `service-result` контракт.
+- [x] Route layer использует единый translation ошибок (`_service_errors.py`) и не содержит domain-logic.
+- [x] Frontend API декомпозирован на `api/http.ts` + bounded-context модули.
+- [x] Сохранена обратная совместимость импорта через `frontend/src/client.ts`.
+
+## 6) Documentation and Operational Clarity
 
 - [x] README синхронизирован с текущими вкладками `QR-генерация`.
 - [x] Инструкции deploy/readiness согласованы с фактическим endpoint check.
 - [x] Чек-лист задокументирован и хранится в репозитории.
 
-## 6) Post-release Manual Smoke (recommended)
+## 7) Post-release Manual Smoke (recommended)
 
 - [ ] Ручной smoke: login в UI + генерация `Штрихкоды кассиров`.
 - [ ] Ручной smoke: генерация `Посадочные` и сканирование результата.

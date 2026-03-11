@@ -4,11 +4,11 @@ import datetime
 import io
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_active_superuser
-from app.api.routes._service_errors import to_http_error
+from app.api.routes._service_errors import ServiceTimeoutError, to_http_error
 from app.core.config import settings
 from app.schemas import QRGeneratorRequest
 from app.services.qr_generator import QRGeneratorParams, QrExportService
@@ -43,12 +43,12 @@ def export_qr_docs(payload: QRGeneratorRequest) -> StreamingResponse:
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
     except FuturesTimeoutError as exc:
-        raise HTTPException(
-            status_code=504,
-            detail=(
+        raise to_http_error(
+            ServiceTimeoutError(
                 "Выгрузка QR превысила таймаут SQL. "
                 "Проверьте доступность MSSQL и уменьшите объем выборки."
             ),
+            operation="сформировать выгрузку",
         ) from exc
     except Exception as exc:
         raise to_http_error(exc, operation="сформировать выгрузку") from exc

@@ -47,6 +47,46 @@ def test_build_boarding_pass_payload_rejects_missing_required_fields():
         )
 
 
+def test_build_boarding_pass_payload_rejects_invalid_day_in_year():
+    with pytest.raises(ValueError, match="day_in_year must contain up to 3 digits"):
+        build_boarding_pass_payload(
+            BoardingPassRequest(
+                format="aztec",
+                first_name="Ivan",
+                last_name="Ivanov",
+                booking_ref="EBR123",
+                from_code="SVO",
+                to_code="LED",
+                flight_operator="SU",
+                flight_number="1234",
+                day_in_year="36A",
+                travel_class="Y",
+                seat="12A",
+                boarding_index="7",
+            )
+        )
+
+
+def test_build_boarding_pass_payload_rejects_invalid_flight_date_format():
+    with pytest.raises(ValueError, match="flight_date must use YYYY-MM-DD format"):
+        build_boarding_pass_payload(
+            BoardingPassRequest(
+                format="aztec",
+                first_name="Ivan",
+                last_name="Ivanov",
+                booking_ref="EBR123",
+                from_code="SVO",
+                to_code="LED",
+                flight_operator="SU",
+                flight_number="1234",
+                flight_date="01-02-2026",
+                travel_class="Y",
+                seat="12A",
+                boarding_index="7",
+            )
+        )
+
+
 def test_generate_boarding_pass_file_returns_png_bytes():
     generated = generate_boarding_pass_file(
         BoardingPassRequest(

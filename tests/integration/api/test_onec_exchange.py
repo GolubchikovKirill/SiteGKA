@@ -46,4 +46,34 @@ def test_onec_exchange_success(client, admin_token: str, monkeypatch):
     assert body["ok"] is True
     assert body["target"] == "duty_paid"
     assert body["request_id"] == "req-1"
+    assert body["error_kind"] is None
     assert captured["target"] == "duty_paid"
+
+
+def test_onec_exchange_propagates_error_kind(client, admin_token: str, monkeypatch):
+    async def _fake_exchange(**_kwargs):
+        return type(
+            "OneCResult",
+            (),
+            {
+                "to_dict": lambda self: {
+                    "target": "duty_free",
+                    "ok": False,
+                    "message": "1C timeout",
+                    "status_code": None,
+                    "request_id": None,
+                    "payload": None,
+                    "error_kind": "timeout",
+                }
+            },
+        )()
+
+    monkeypatch.setattr(onec_routes.onec_exchange_service, "exchange_product_docs_by_barcode", _fake_exchange)
+
+    response = client.post(
+        "/api/v1/1c-exchange/by-barcode",
+        json={"barcode": "4601234567890"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["error_kind"] == "timeout"

@@ -463,6 +463,23 @@ class BoardingPassRequest(BaseModel):
             raise ValueError("Field is too long")
         return value
 
+    @field_validator("from_code", "to_code")
+    @classmethod
+    def validate_airport_codes(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if len(v) != 3 or not re.match(r"^[A-Za-z]{3}$", v):
+            raise ValueError("Airport code must be exactly 3 letters")
+        return v.upper()
+
+    @model_validator(mode="after")
+    def validate_mode_requirements(self) -> "BoardingPassRequest":
+        if self.raw_data:
+            return self
+        if bool(self.from_code) != bool(self.to_code):
+            raise ValueError("from_code and to_code must be provided together")
+        return self
+
 
 class OneCExchangeByBarcodeRequest(BaseModel):
     target: Literal["duty_free", "duty_paid"] = "duty_free"
@@ -533,6 +550,7 @@ class OneCExchangeByBarcodeResponse(BaseModel):
     status_code: int | None = None
     request_id: str | None = None
     payload: dict | None = None
+    error_kind: Literal["validation", "integration", "timeout", "config", "unknown"] | None = None
 
 
 # ── Printer schemas ──────────────────────────────────────────────

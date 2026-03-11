@@ -1,13 +1,38 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
 
 from app.core.config import settings
+from app.services.contracts import IntegrationServiceResult
 
 
 class OneCExchangeService:
+    async def _post_with_retries(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        url: str,
+        json_body: dict[str, Any],
+        headers: dict[str, str],
+    ) -> httpx.Response:
+        retries = max(1, settings.INTERNAL_HTTP_RETRIES)
+        backoff = max(0.0, settings.INTERNAL_HTTP_RETRY_BACKOFF_SECONDS)
+        last_exc: httpx.HTTPError | None = None
+        for attempt in range(1, retries + 1):
+            try:
+                return await client.post(url, json=json_body, headers=headers)
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt >= retries:
+                    raise
+                await asyncio.sleep(backoff * attempt)
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("unreachable")
+
     def _resolve_target_settings(self, target: str) -> tuple[str, str]:
         target_to_url = {
             "duty_free": settings.ONEC_DUTY_FREE_API_URL or settings.ONEC_EXCHANGE_API_URL,
@@ -53,18 +78,19 @@ class OneCExchangeService:
         cash_register_hostnames: list[str] | None = None,
         cash_register_targets: list[dict[str, str | None]] | None = None,
         source: str = "infrascope",
-    ) -> dict[str, Any]:
+    ) -> IntegrationServiceResult:
         api_url, api_token = self._resolve_target_settings(target)
 
         if not api_url:
-            return {
-                "target": target,
-                "ok": False,
-                "message": self._build_missing_url_message(target=target),
-                "status_code": None,
-                "request_id": None,
-                "payload": None,
-            }
+            return IntegrationServiceResult(
+                target=target,
+                ok=False,
+                message=self._build_missing_url_message(target=target),
+                status_code=None,
+                request_id=None,
+                payload=None,
+                error_kind="config",
+            )
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_token:
@@ -94,7 +120,12 @@ class OneCExchangeService:
                         hostname = entry.get("hostname")
                         body["cash_register_hostnames"] = [hostname] if hostname else []
 
-                        response = await client.post(api_url, json=body, headers=headers)
+                        response = await self._post_with_retries(
+                            client,
+                            url=api_url,
+                            json_body=body,
+                            headers=headers,
+                        )
                         request_id = response.headers.get("X-Request-ID") or response.headers.get("x-request-id")
                         if request_id:
                             request_ids.append(request_id)
@@ -120,17 +151,17 @@ class OneCExchangeService:
                                 }
                             )
 
-                    return {
-                        "target": target,
-                        "ok": failed == 0,
-                        "message": (
+                    return IntegrationServiceResult(
+                        target=target,
+                        ok=failed == 0,
+                        message=(
                             f"Очередь выгрузки завершена: успешно {success} из {total}."
                             if failed == 0
                             else f"Очередь выгрузки завершена с ошибками: успешно {success}, ошибок {failed}, всего {total}."
                         ),
-                        "status_code": last_status_code,
-                        "request_id": request_ids[-1] if request_ids else None,
-                        "payload": {
+                        status_code=last_status_code,
+                        request_id=request_ids[-1] if request_ids else None,
+                        payload={
                             "total": total,
                             "success": success,
                             "failed": failed,
@@ -138,11 +169,17 @@ class OneCExchangeService:
                             "errors": errors,
                             "last_response": last_payload,
                         },
-                    }
+                        error_kind=None if failed == 0 else "integration",
+                    )
 
                 body = dict(base_body)
                 body["cash_register_hostnames"] = cash_register_hostnames or []
-                response = await client.post(api_url, json=body, headers=headers)
+                response = await self._post_with_retries(
+                    client,
+                    url=api_url,
+                    json_body=body,
+                    headers=headers,
+                )
                 request_id = response.headers.get("X-Request-ID") or response.headers.get("x-request-id")
                 content_type = response.headers.get("content-type", "")
                 payload: dict[str, Any] | None = None
@@ -151,33 +188,36 @@ class OneCExchangeService:
                     payload = parsed if isinstance(parsed, dict) else {"value": parsed}
 
                 if response.is_success:
-                    return {
-                        "target": target,
-                        "ok": True,
-                        "message": "Обмен с 1С выполнен успешно.",
-                        "status_code": response.status_code,
-                        "request_id": request_id,
-                        "payload": payload,
-                    }
+                    return IntegrationServiceResult(
+                        target=target,
+                        ok=True,
+                        message="Обмен с 1С выполнен успешно.",
+                        status_code=response.status_code,
+                        request_id=request_id,
+                        payload=payload,
+                        error_kind=None,
+                    )
 
                 detail = payload.get("detail") if isinstance(payload, dict) else None
-                return {
-                    "target": target,
-                    "ok": False,
-                    "message": f"1С вернула ошибку ({response.status_code})" + (f": {detail}" if detail else ""),
-                    "status_code": response.status_code,
-                    "request_id": request_id,
-                    "payload": payload,
-                }
+                return IntegrationServiceResult(
+                    target=target,
+                    ok=False,
+                    message=f"1С вернула ошибку ({response.status_code})" + (f": {detail}" if detail else ""),
+                    status_code=response.status_code,
+                    request_id=request_id,
+                    payload=payload,
+                    error_kind="integration",
+                )
         except httpx.HTTPError as exc:
-            return {
-                "target": target,
-                "ok": False,
-                "message": f"Не удалось выполнить запрос к 1С: {exc}",
-                "status_code": None,
-                "request_id": None,
-                "payload": None,
-            }
+            return IntegrationServiceResult(
+                target=target,
+                ok=False,
+                message=f"Не удалось выполнить запрос к 1С: {exc}",
+                status_code=None,
+                request_id=None,
+                payload=None,
+                error_kind="timeout",
+            )
 
 
 _default_service = OneCExchangeService()
@@ -190,7 +230,7 @@ async def exchange_product_docs_by_barcode(
     cash_register_hostnames: list[str] | None = None,
     cash_register_targets: list[dict[str, str | None]] | None = None,
     source: str = "infrascope",
-) -> dict[str, Any]:
+) -> IntegrationServiceResult:
     return await _default_service.exchange_product_docs_by_barcode(
         target=target,
         barcode=barcode,

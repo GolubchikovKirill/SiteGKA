@@ -92,4 +92,5 @@ async def run_exchange_by_barcode(
         cash_register_targets=resolved_targets,
         source=payload.source,
     )
-    return OneCExchangeByBarcodeResponse(**result)
+    result_payload = result.to_dict() if hasattr(result, "to_dict") else result
+    return OneCExchangeByBarcodeResponse(**result_payload)
