@@ -81,4 +81,4 @@ done
 
 echo "Deployment complete."
 echo "Health endpoint:"
-curl -kfsS "https://127.0.0.1/ready" >/dev/null 2>&1 && echo "  frontend proxy readiness: ok" || echo "  frontend proxy readiness: unreachable"
+curl -kfsS "https://localhost/ready" >/dev/null 2>&1 && echo "  frontend proxy readiness: ok" || echo "  frontend proxy readiness: unreachable"
