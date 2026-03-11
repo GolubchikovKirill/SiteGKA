@@ -33,8 +33,7 @@ class CiscoSwitchProvider:
 
     def get_ports(self, switch: NetworkSwitch) -> list[SwitchPortState]:
         ports = self.snmp_provider.get_ports(switch)
-        status_map = self._get_interfaces_status_map(switch)
-        switchport_map = self._get_switchport_details(switch)
+        status_map, switchport_map = self._get_status_and_switchport_maps(switch)
         if ports:
             self._enrich_ports_with_status(ports, status_map)
             self._enrich_ports_with_switchport(ports, switchport_map)
@@ -42,6 +41,27 @@ class CiscoSwitchProvider:
         ssh_ports = list(status_map.values()) if status_map else self._get_ports_via_ssh(switch)
         self._enrich_ports_with_switchport(ssh_ports, switchport_map)
         return ssh_ports
+
+    def _get_status_and_switchport_maps(
+        self, switch: NetworkSwitch
+    ) -> tuple[dict[str, SwitchPortState], dict[str, dict[str, str]]]:
+        """Fetch both datasets in one SSH session to avoid extra logins."""
+        ssh = CiscoSSH(
+            switch.ip_address,
+            switch.ssh_username,
+            switch.ssh_password,
+            switch.enable_password,
+            switch.ssh_port,
+        )
+        if not ssh.connect():
+            return {}, {}
+        try:
+            status_output = ssh.execute("show interfaces status")
+            switchport_output = ssh.execute("show interfaces switchport")
+        finally:
+            ssh.close()
+        rows = self._parse_interfaces_status(status_output)
+        return {self._normalize_port(r.port): r for r in rows}, self._parse_switchport_output(switchport_output)
 
     def _get_ports_via_ssh(self, switch: NetworkSwitch) -> list[SwitchPortState]:
         ssh = CiscoSSH(
@@ -272,9 +292,27 @@ class CiscoSwitchProvider:
         if action == "off":
             self._exec_config(switch, [f"interface {port}", "power inline never"])
             return
-        self._exec_config(switch, [f"interface {port}", "power inline never"])
-        time.sleep(3)
-        self._exec_config(switch, [f"interface {port}", "power inline auto"])
+        ssh = CiscoSSH(
+            switch.ip_address,
+            switch.ssh_username,
+            switch.ssh_password,
+            switch.enable_password,
+            switch.ssh_port,
+        )
+        if not ssh.connect():
+            raise RuntimeError("SSH connection failed")
+        try:
+            ssh.execute("configure terminal")
+            ssh.execute(f"interface {port}")
+            ssh.execute("power inline never")
+            ssh.execute("end")
+            time.sleep(3)
+            ssh.execute("configure terminal")
+            ssh.execute(f"interface {port}")
+            ssh.execute("power inline auto")
+            ssh.execute("end")
+        finally:
+            ssh.close()
 
     def _exec_config(self, switch: NetworkSwitch, commands: list[str]) -> None:
         ssh = CiscoSSH(

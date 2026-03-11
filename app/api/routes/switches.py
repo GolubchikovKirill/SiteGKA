@@ -1,9 +1,10 @@
 import asyncio
 import json
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
-from time import perf_counter
+from time import monotonic, perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import func, select
@@ -50,6 +51,93 @@ from app.services.switches import resolve_switch_provider
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["switches"])
+_local_safety_mutex = asyncio.Lock()
+_local_switch_write_locks: dict[str, float] = {}
+_local_switch_cooldowns: dict[str, float] = {}
+_SAFE_PORT_PATTERN = re.compile(
+    r"^(?:"
+    r"Gi|GigabitEthernet|"
+    r"Fa|FastEthernet|"
+    r"Te|TenGigabitEthernet|"
+    r"Twe|TwentyFiveGigE|"
+    r"Po|Port-channel"
+    r")\d+(?:/\d+){0,3}$",
+    re.IGNORECASE,
+)
+
+
+def _validate_switch_port(port: str) -> str:
+    value = port.strip()
+    if not value or len(value) > 64:
+        raise HTTPException(status_code=422, detail="Invalid switch port identifier")
+    if not _SAFE_PORT_PATTERN.match(value):
+        raise HTTPException(status_code=422, detail="Unsafe or unsupported switch port format")
+    return value
+
+
+async def _acquire_switch_write_lock(switch_id: uuid.UUID) -> str | None:
+    lock_key = f"lock:switch-write:{switch_id}"
+    try:
+        r = await asyncio.wait_for(get_redis(), timeout=0.2)
+        locked = await asyncio.wait_for(
+            r.set(lock_key, "1", ex=settings.SWITCH_WRITE_LOCK_SECONDS, nx=True),
+            timeout=0.3,
+        )
+        if not locked:
+            raise HTTPException(status_code=409, detail="Another switch write operation is already running")
+        return lock_key
+    except HTTPException:
+        raise
+    except Exception:
+        expires_at = monotonic() + max(int(settings.SWITCH_WRITE_LOCK_SECONDS), 1)
+        async with _local_safety_mutex:
+            existing = _local_switch_write_locks.get(lock_key)
+            if existing and existing > monotonic():
+                raise HTTPException(status_code=409, detail="Another switch write operation is already running")
+            _local_switch_write_locks[lock_key] = expires_at
+        return f"local:{lock_key}"
+
+
+async def _release_switch_write_lock(lock_key: str | None) -> None:
+    if not lock_key:
+        return
+    if lock_key.startswith("local:"):
+        raw_key = lock_key.removeprefix("local:")
+        async with _local_safety_mutex:
+            _local_switch_write_locks.pop(raw_key, None)
+        return
+    try:
+        r = await asyncio.wait_for(get_redis(), timeout=0.2)
+        await asyncio.wait_for(r.delete(lock_key), timeout=0.3)
+    except Exception:
+        pass
+
+
+async def _enforce_switch_cooldown(*, switch_id: uuid.UUID, port: str, operation: str) -> None:
+    cooldown = max(int(settings.SWITCH_SAFETY_COOLDOWN_SECONDS), 0)
+    if cooldown == 0:
+        return
+    cooldown_key = f"cooldown:switch-write:{switch_id}:{operation}:{port}"
+    try:
+        r = await asyncio.wait_for(get_redis(), timeout=0.2)
+        ok = await asyncio.wait_for(r.set(cooldown_key, "1", ex=cooldown, nx=True), timeout=0.3)
+        if not ok:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Operation throttled by safety cooldown ({cooldown}s). Try again later.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        now = monotonic()
+        async with _local_safety_mutex:
+            existing = _local_switch_cooldowns.get(cooldown_key)
+            if existing and existing > now:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Operation throttled by safety cooldown ({cooldown}s). Try again later.",
+                )
+            _local_switch_cooldowns[cooldown_key] = now + cooldown
 
 
 def _record_status_change(session: SessionDep, sw: NetworkSwitch, was_online: bool | None) -> None:
@@ -509,52 +597,58 @@ async def reboot_access_point(
     current_user: CurrentUser,
     payload: dict,
 ) -> dict:
-    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
-        return await _proxy_request(
-            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-            method="POST",
-            path=f"/switches/{switch_id}/reboot-ap",
-            json_body=payload,
-        )
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
-        raise HTTPException(status_code=404, detail="Switch not found")
-    if switch.vendor != "cisco":
-        raise HTTPException(status_code=400, detail="AP reboot is available for Cisco switches")
-
-    interface = str(payload.get("interface", "")).strip()
+    interface = _validate_switch_port(str(payload.get("interface", "")))
     method = str(payload.get("method", "poe")).strip().lower()
-    if not interface:
-        raise HTTPException(status_code=422, detail="interface is required")
     if method not in {"poe", "shutdown"}:
         raise HTTPException(status_code=422, detail="method must be 'poe' or 'shutdown'")
+    lock_key = await _acquire_switch_write_lock(switch_id)
+    await _enforce_switch_cooldown(switch_id=switch_id, port=interface, operation=f"reboot_ap_{method}")
 
-    if method == "poe":
-        ok = await asyncio.to_thread(
-            poe_cycle_ap,
-            switch.ip_address,
-            switch.ssh_username,
-            switch.ssh_password,
-            switch.enable_password,
-            switch.ssh_port,
-            interface,
-        )
-    else:
-        ok = await asyncio.to_thread(
-            reboot_ap,
-            switch.ip_address,
-            switch.ssh_username,
-            switch.ssh_password,
-            switch.enable_password,
-            switch.ssh_port,
-            interface,
-        )
+    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
+        try:
+            return await _proxy_request(
+                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+                method="POST",
+                path=f"/switches/{switch_id}/reboot-ap",
+                json_body={"interface": interface, "method": method},
+            )
+        finally:
+            await _release_switch_write_lock(lock_key)
+    try:
+        switch = session.get(NetworkSwitch, switch_id)
+        if not switch:
+            raise HTTPException(status_code=404, detail="Switch not found")
+        if switch.vendor != "cisco":
+            raise HTTPException(status_code=400, detail="AP reboot is available for Cisco switches")
 
-    if not ok:
-        switch_ops_total.labels(operation="reboot_ap", result="error").inc()
-        raise HTTPException(status_code=502, detail="Failed to reboot AP")
-    switch_ops_total.labels(operation="reboot_ap", result="success").inc()
-    return {"status": "rebooting", "interface": interface, "method": method}
+        if method == "poe":
+            ok = await asyncio.to_thread(
+                poe_cycle_ap,
+                switch.ip_address,
+                switch.ssh_username,
+                switch.ssh_password,
+                switch.enable_password,
+                switch.ssh_port,
+                interface,
+            )
+        else:
+            ok = await asyncio.to_thread(
+                reboot_ap,
+                switch.ip_address,
+                switch.ssh_username,
+                switch.ssh_password,
+                switch.enable_password,
+                switch.ssh_port,
+                interface,
+            )
+
+        if not ok:
+            switch_ops_total.labels(operation="reboot_ap", result="error").inc()
+            raise HTTPException(status_code=502, detail="Failed to reboot AP")
+        switch_ops_total.labels(operation="reboot_ap", result="success").inc()
+        return {"status": "rebooting", "interface": interface, "method": method}
+    finally:
+        await _release_switch_write_lock(lock_key)
 
 
 @router.get("/{switch_id}/ports", response_model=SwitchPortsPublic)
@@ -638,19 +732,26 @@ async def _run_port_write(
     callback,
 ) -> Message:
     _require_superuser(current_user)
+    safe_port = _validate_switch_port(port)
     switch = session.get(NetworkSwitch, switch_id)
     if not switch:
         raise HTTPException(status_code=404, detail="Switch not found")
+    lock_key = await _acquire_switch_write_lock(switch_id)
+    if operation in {"admin_state", "vlan", "poe", "mode"}:
+        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation=operation)
     provider = resolve_switch_provider(switch)
     vendor = switch.vendor
-    with switch_port_op_duration_seconds.labels(vendor=vendor, operation=operation).time():
-        try:
-            await asyncio.to_thread(callback, switch, provider, port)
-            switch_port_ops_total.labels(vendor=vendor, operation=operation, result="success").inc()
-        except Exception as exc:
-            switch_port_ops_total.labels(vendor=vendor, operation=operation, result="error").inc()
-            raise HTTPException(status_code=502, detail=f"Port operation failed: {exc}") from exc
-    return Message(message="ok")
+    try:
+        with switch_port_op_duration_seconds.labels(vendor=vendor, operation=operation).time():
+            try:
+                await asyncio.to_thread(callback, switch, provider, safe_port)
+                switch_port_ops_total.labels(vendor=vendor, operation=operation, result="success").inc()
+            except Exception as exc:
+                switch_port_ops_total.labels(vendor=vendor, operation=operation, result="error").inc()
+                raise HTTPException(status_code=502, detail=f"Port operation failed: {exc}") from exc
+        return Message(message="ok")
+    finally:
+        await _release_switch_write_lock(lock_key)
 
 
 @router.post("/{switch_id}/ports/{port:path}/admin-state", response_model=Message)
@@ -661,21 +762,27 @@ async def set_port_admin_state(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    safe_port = _validate_switch_port(port)
     if settings.NETWORK_CONTROL_SERVICE_ENABLED:
         _require_superuser(current_user)
-        payload = await _proxy_request(
-            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-            method="POST",
-            path=f"/switches/{switch_id}/ports/{port}/admin-state",
-            json_body={"admin_state": body.admin_state},
-        )
-        return Message.model_validate(payload)
+        lock_key = await _acquire_switch_write_lock(switch_id)
+        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="admin_state")
+        try:
+            payload = await _proxy_request(
+                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+                method="POST",
+                path=f"/switches/{switch_id}/ports/{safe_port}/admin-state",
+                json_body={"admin_state": body.admin_state},
+            )
+            return Message.model_validate(payload)
+        finally:
+            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
         current_user=current_user,
         operation="admin_state",
-        port=port,
+        port=safe_port,
         callback=lambda sw, provider, p: provider.set_admin_state(sw, p, body.admin_state),
     )
 
@@ -688,21 +795,26 @@ async def set_port_description(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    safe_port = _validate_switch_port(port)
     if settings.NETWORK_CONTROL_SERVICE_ENABLED:
         _require_superuser(current_user)
-        payload = await _proxy_request(
-            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-            method="POST",
-            path=f"/switches/{switch_id}/ports/{port}/description",
-            json_body={"description": body.description},
-        )
-        return Message.model_validate(payload)
+        lock_key = await _acquire_switch_write_lock(switch_id)
+        try:
+            payload = await _proxy_request(
+                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+                method="POST",
+                path=f"/switches/{switch_id}/ports/{safe_port}/description",
+                json_body={"description": body.description},
+            )
+            return Message.model_validate(payload)
+        finally:
+            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
         current_user=current_user,
         operation="description",
-        port=port,
+        port=safe_port,
         callback=lambda sw, provider, p: provider.set_description(sw, p, body.description),
     )
 
@@ -715,21 +827,27 @@ async def set_port_vlan(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    safe_port = _validate_switch_port(port)
     if settings.NETWORK_CONTROL_SERVICE_ENABLED:
         _require_superuser(current_user)
-        payload = await _proxy_request(
-            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-            method="POST",
-            path=f"/switches/{switch_id}/ports/{port}/vlan",
-            json_body={"vlan": body.vlan},
-        )
-        return Message.model_validate(payload)
+        lock_key = await _acquire_switch_write_lock(switch_id)
+        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="vlan")
+        try:
+            payload = await _proxy_request(
+                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+                method="POST",
+                path=f"/switches/{switch_id}/ports/{safe_port}/vlan",
+                json_body={"vlan": body.vlan},
+            )
+            return Message.model_validate(payload)
+        finally:
+            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
         current_user=current_user,
         operation="vlan",
-        port=port,
+        port=safe_port,
         callback=lambda sw, provider, p: provider.set_vlan(sw, p, body.vlan),
     )
 
@@ -742,21 +860,27 @@ async def set_port_poe(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    safe_port = _validate_switch_port(port)
     if settings.NETWORK_CONTROL_SERVICE_ENABLED:
         _require_superuser(current_user)
-        payload = await _proxy_request(
-            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-            method="POST",
-            path=f"/switches/{switch_id}/ports/{port}/poe",
-            json_body={"action": body.action},
-        )
-        return Message.model_validate(payload)
+        lock_key = await _acquire_switch_write_lock(switch_id)
+        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="poe")
+        try:
+            payload = await _proxy_request(
+                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+                method="POST",
+                path=f"/switches/{switch_id}/ports/{safe_port}/poe",
+                json_body={"action": body.action},
+            )
+            return Message.model_validate(payload)
+        finally:
+            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
         current_user=current_user,
         operation="poe",
-        port=port,
+        port=safe_port,
         callback=lambda sw, provider, p: provider.set_poe(sw, p, body.action),
     )
 
@@ -769,26 +893,32 @@ async def set_port_mode(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> Message:
+    safe_port = _validate_switch_port(port)
     if settings.NETWORK_CONTROL_SERVICE_ENABLED:
         _require_superuser(current_user)
-        payload = await _proxy_request(
-            base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-            method="POST",
-            path=f"/switches/{switch_id}/ports/{port}/mode",
-            json_body={
-                "mode": body.mode,
-                "access_vlan": body.access_vlan,
-                "native_vlan": body.native_vlan,
-                "allowed_vlans": body.allowed_vlans,
-            },
-        )
-        return Message.model_validate(payload)
+        lock_key = await _acquire_switch_write_lock(switch_id)
+        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="mode")
+        try:
+            payload = await _proxy_request(
+                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
+                method="POST",
+                path=f"/switches/{switch_id}/ports/{safe_port}/mode",
+                json_body={
+                    "mode": body.mode,
+                    "access_vlan": body.access_vlan,
+                    "native_vlan": body.native_vlan,
+                    "allowed_vlans": body.allowed_vlans,
+                },
+            )
+            return Message.model_validate(payload)
+        finally:
+            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
         current_user=current_user,
         operation="mode",
-        port=port,
+        port=safe_port,
         callback=lambda sw, provider, p: provider.set_mode(
             sw,
             p,

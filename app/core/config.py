@@ -127,6 +127,8 @@ class Settings(BaseSettings):
     ONEC_EXCHANGE_API_URL: str = ""
     ONEC_EXCHANGE_API_TOKEN: str = ""
     ONEC_EXCHANGE_TIMEOUT_SECONDS: float = 20.0
+    SWITCH_WRITE_LOCK_SECONDS: int = 20
+    SWITCH_SAFETY_COOLDOWN_SECONDS: int = 8
 
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 

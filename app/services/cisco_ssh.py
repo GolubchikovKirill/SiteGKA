@@ -8,6 +8,7 @@ Supports:
 
 from __future__ import annotations
 
+from contextlib import suppress
 import logging
 import re
 import socket
@@ -190,9 +191,18 @@ class CiscoSSH:
     def close(self) -> None:
         try:
             if self.shell:
-                self.shell.close()
+                # Graceful session teardown on Cisco side before channel close.
+                with suppress(Exception):
+                    self.shell.send("exit\n")
+                with suppress(Exception):
+                    self.shell.close()
             if self.client:
-                self.client.close()
+                with suppress(Exception):
+                    transport = self.client.get_transport()
+                    if transport:
+                        transport.close()
+                with suppress(Exception):
+                    self.client.close()
         except Exception:
             pass
         self.shell = None
