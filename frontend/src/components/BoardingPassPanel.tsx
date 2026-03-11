@@ -22,25 +22,41 @@ type FormState = {
   raw_data: string;
 };
 
-const initialState: FormState = {
-  format: "aztec",
-  first_name: "",
-  last_name: "",
-  booking_ref: "",
-  from_code: "",
-  to_code: "",
-  flight_operator: "",
-  flight_number: "",
-  flight_date: "",
-  day_in_year: "",
-  travel_class: "",
-  seat: "",
-  boarding_index: "",
-  raw_data: "",
-};
+function getTodayDefaults() {
+  const today = new Date();
+  const yearStart = new Date(today.getFullYear(), 0, 0);
+  const dayInYear = String(
+    Math.floor((today.getTime() - yearStart.getTime()) / 86_400_000),
+  ).padStart(3, "0");
+
+  return {
+    flight_date: today.toISOString().slice(0, 10),
+    day_in_year: dayInYear,
+  };
+}
+
+function createInitialState(): FormState {
+  const { flight_date, day_in_year } = getTodayDefaults();
+  return {
+    format: "aztec",
+    first_name: "",
+    last_name: "",
+    booking_ref: "",
+    from_code: "",
+    to_code: "",
+    flight_operator: "",
+    flight_number: "",
+    flight_date,
+    day_in_year,
+    travel_class: "",
+    seat: "",
+    boarding_index: "",
+    raw_data: "",
+  };
+}
 
 export default function BoardingPassPanel() {
-  const [form, setForm] = useState<FormState>(initialState);
+  const [form, setForm] = useState<FormState>(() => createInitialState());
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -235,7 +251,7 @@ export default function BoardingPassPanel() {
         <button
           type="button"
           onClick={() => {
-            setForm(initialState);
+            setForm(createInitialState());
             setMessage(null);
             setError(null);
           }}

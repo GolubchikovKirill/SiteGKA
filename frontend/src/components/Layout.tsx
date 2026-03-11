@@ -55,7 +55,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/network-search", label: "Поиск в сети", icon: Radar, visible: true },
   ];
   const baseItems = [
-    { to: "/onec", label: "1C", icon: Cable, visible: true },
+    { to: "/onec", label: "QR-генерация", icon: Cable, visible: true },
     { to: "/settings", label: "Настройки", icon: Settings2, visible: true },
     { to: "/logs", label: "Логи", icon: ScrollText, visible: true },
     { to: "/users", label: "Пользователи", icon: Users, visible: isSuperuser },

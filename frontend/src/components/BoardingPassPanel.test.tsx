@@ -31,6 +31,18 @@ describe("BoardingPassPanel", () => {
     api.exportBoardingPass.mockReset();
   });
 
+  it("prefills today's flight date and day in year", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-11T12:00:00Z"));
+
+    renderPanel();
+
+    expect(screen.getByLabelText("Дата рейса")).toHaveValue("2026-03-11");
+    expect(screen.getByDisplayValue("070")).toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
   it("submits normalized payload and downloads blob", async () => {
     api.exportBoardingPass.mockResolvedValue(new Blob(["png-content"], { type: "image/png" }));
     const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
