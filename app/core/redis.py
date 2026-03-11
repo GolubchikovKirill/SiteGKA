@@ -15,7 +15,7 @@ async def get_redis() -> aioredis.Redis:
         _pool = aioredis.from_url(
             settings.REDIS_URL,
             decode_responses=True,
-            max_connections=20,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
         )
     return _pool
 

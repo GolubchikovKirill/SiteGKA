@@ -6,14 +6,16 @@ cd "$ROOT_DIR"
 
 USE_PROD_NETWORK=0
 SKIP_GIT_PULL=0
+BUILD_LOCAL=0
 
 for arg in "$@"; do
   case "$arg" in
     --prod-network) USE_PROD_NETWORK=1 ;;
     --no-pull) SKIP_GIT_PULL=1 ;;
+    --build-local) BUILD_LOCAL=1 ;;
     *)
       echo "Unknown argument: $arg"
-      echo "Usage: ./scripts/deploy.sh [--prod-network] [--no-pull]"
+      echo "Usage: ./scripts/deploy.sh [--prod-network] [--no-pull] [--build-local]"
       exit 1
       ;;
   esac
@@ -43,7 +45,13 @@ if [ "$USE_PROD_NETWORK" -eq 1 ]; then
 fi
 
 echo "Starting deployment..."
-docker compose "${COMPOSE_FILES[@]}" up -d --build
+if [ "$BUILD_LOCAL" -eq 1 ]; then
+  echo "Local image build mode is enabled."
+  docker compose "${COMPOSE_FILES[@]}" up -d --build
+else
+  echo "Immutable deploy mode: using prebuilt images."
+  docker compose "${COMPOSE_FILES[@]}" up -d
+fi
 
 check_health() {
   local service="$1"
@@ -73,4 +81,4 @@ done
 
 echo "Deployment complete."
 echo "Health endpoint:"
-curl -fsS "http://127.0.0.1/health" >/dev/null 2>&1 && echo "  frontend proxy: ok" || echo "  frontend proxy: unreachable"
+curl -kfsS "https://127.0.0.1/ready" >/dev/null 2>&1 && echo "  frontend proxy readiness: ok" || echo "  frontend proxy readiness: unreachable"

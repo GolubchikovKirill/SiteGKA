@@ -1,4 +1,5 @@
 import OneCQrPanel from "../components/OneCQrPanel";
+import { SectionCard } from "../components/ui/AsyncState";
 
 export default function QrGeneratorPage() {
   return (
@@ -12,9 +13,9 @@ export default function QrGeneratorPage() {
         </div>
       </div>
 
-      <div className="app-panel p-4 sm:p-5">
+      <SectionCard>
         <OneCQrPanel />
-      </div>
+      </SectionCard>
     </div>
   );
 }

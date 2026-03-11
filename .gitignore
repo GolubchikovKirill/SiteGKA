@@ -25,6 +25,8 @@ certs/*
 # Frontend
 frontend/node_modules/
 frontend/dist/
+/tmp_*.png
+/test_infrascope.db
 
 # Testing / Linting
 .pytest_cache/

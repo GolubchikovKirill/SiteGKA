@@ -7,8 +7,12 @@ on:
     branches: [main]
 
 env:
-  PYTHON_VERSION: "3.14"
+  PYTHON_VERSION: "3.13"
   NODE_VERSION: "22"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate-descriptors:
@@ -62,10 +66,26 @@ jobs:
       lint_command: ${{ matrix.lint }}
       test_command: ${{ matrix.test }}
 
+  backend-quality-baseline:
+    name: Backend Quality Baseline
+    runs-on: ubuntu-latest
+    needs: validate-descriptors
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Ruff check
+        run: uv run ruff check app tests scripts
+      - name: Core unit smoke
+        run: uv run pytest tests/unit/services/test_boarding_pass_service.py tests/unit/services/test_qr_generator_service.py tests/unit/services/test_smart_search.py
+
   frontend-test:
     name: Frontend Test
     runs-on: ubuntu-latest
-    needs: service-ci
+    needs: [service-ci, backend-quality-baseline]
     defaults:
       run:
         working-directory: frontend
@@ -129,7 +149,7 @@ jobs:
         run: npm ci
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Build
         run: npm run build

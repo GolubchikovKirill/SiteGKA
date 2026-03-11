@@ -302,3 +302,8 @@ def generate_qr_docs_zip(params: QRGeneratorParams) -> bytes:
         for filename, content in generated_docs:
             archive.writestr(filename, content)
     return zip_buffer.getvalue()
+
+
+class QrExportService:
+    def generate_zip(self, params: QRGeneratorParams) -> bytes:
+        return generate_qr_docs_zip(params)

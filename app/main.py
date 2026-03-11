@@ -8,13 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import text
 from sqlmodel import Session
 
 from app.api.main import api_router
 from app.core.config import settings
 from app.core.db import engine, init_db
 from app.core.limiter import limiter
+from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import close_redis, get_redis
 from app.observability.tracing import setup_tracing
 from app.services.event_log import write_event_log
@@ -113,25 +113,8 @@ def health_check():
 @app.get("/ready")
 async def readiness_check():
     """Readiness probe for orchestrators and load balancers."""
-    checks: dict[str, bool] = {"database": False, "redis": False}
-
-    try:
-        with Session(engine) as session:
-            session.exec(text("SELECT 1")).one()
-        checks["database"] = True
-    except Exception:
-        checks["database"] = False
-
-    try:
-        redis = await get_redis()
-        await redis.ping()
-        checks["redis"] = True
-    except Exception:
-        checks["redis"] = False
-
-    if all(checks.values()):
-        return {"status": "ready", "checks": checks}
-    return JSONResponse(
-        status_code=503,
-        content={"status": "degraded", "checks": checks},
-    )
+    checks = {
+        "database": check_database(engine),
+        "redis": await check_redis(get_redis),
+    }
+    return build_readiness_response(checks)

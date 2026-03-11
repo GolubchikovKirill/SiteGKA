@@ -22,7 +22,7 @@ def test_qr_generator_returns_zip(client, admin_token: str, monkeypatch):
     def _fake_generate(_params):
         return b"fake-zip-content"
 
-    monkeypatch.setattr(qr_routes, "generate_qr_docs_zip", _fake_generate)
+    monkeypatch.setattr(qr_routes.qr_export_service, "generate_zip", _fake_generate)
 
     response = client.post(
         "/api/v1/qr-generator/export",

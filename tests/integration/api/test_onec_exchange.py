@@ -29,7 +29,7 @@ def test_onec_exchange_success(client, admin_token: str, monkeypatch):
             "payload": {"accepted": True},
         }
 
-    monkeypatch.setattr(onec_routes, "exchange_product_docs_by_barcode", _fake_exchange)
+    monkeypatch.setattr(onec_routes.onec_exchange_service, "exchange_product_docs_by_barcode", _fake_exchange)
 
     response = client.post(
         "/api/v1/1c-exchange/by-barcode",

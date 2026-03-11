@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plane, QrCode } from "lucide-react";
 import BoardingPassPanel from "../components/BoardingPassPanel";
 import OneCQrPanel from "../components/OneCQrPanel";
+import { SectionCard } from "../components/ui/AsyncState";
 
 type Tab = "qr" | "boarding";
 
@@ -32,13 +33,13 @@ export default function OneCPage() {
       </div>
 
       {tab === "qr" ? (
-        <div className="app-panel p-4 sm:p-5">
+        <SectionCard>
           <OneCQrPanel />
-        </div>
+        </SectionCard>
       ) : (
-        <div className="app-panel p-4 sm:p-5">
+        <SectionCard>
           <BoardingPassPanel />
-        </div>
+        </SectionCard>
       )}
     </div>
   );

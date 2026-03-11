@@ -10,7 +10,8 @@ from sqlmodel import Session, select
 from app.api.routes import cash_registers, media_players, printers, switches
 from app.core.config import settings
 from app.core.db import engine
-from app.core.redis import close_redis
+from app.core.readiness import build_readiness_response, check_database, check_redis
+from app.core.redis import close_redis, get_redis
 from app.models import CashRegister, MediaPlayer, NetworkSwitch, Printer
 from app.observability.tracing import setup_tracing
 from app.schemas import (
@@ -46,6 +47,15 @@ Instrumentator(excluded_handlers=["/metrics", "/health"]).instrument(app).expose
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready() -> dict | object:
+    checks = {
+        "database": check_database(engine),
+        "redis": await check_redis(get_redis),
+    }
+    return build_readiness_response(checks)
 
 
 @app.post("/poll/printers", response_model=PrintersPublic, dependencies=[Depends(_verify_internal_token)])

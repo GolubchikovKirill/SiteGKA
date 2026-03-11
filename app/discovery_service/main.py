@@ -8,7 +8,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.config import settings
-from app.core.redis import close_redis
+from app.core.readiness import build_readiness_response, check_redis
+from app.core.redis import close_redis, get_redis
 from app.observability.tracing import setup_tracing
 from app.schemas import DiscoveryResults, ScanProgress, ScanResults
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
@@ -38,6 +39,14 @@ Instrumentator(excluded_handlers=["/metrics", "/health"]).instrument(app).expose
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready() -> dict | object:
+    checks = {
+        "redis": await check_redis(get_redis),
+    }
+    return build_readiness_response(checks)
 
 
 @app.post("/discover/printers/scan", response_model=ScanProgress, dependencies=[Depends(_verify_internal_token)])

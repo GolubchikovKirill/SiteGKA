@@ -3,15 +3,17 @@ from __future__ import annotations
 import datetime
 import io
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_active_superuser
+from app.api.routes._service_errors import to_http_error
 from app.core.config import settings
 from app.schemas import QRGeneratorRequest
-from app.services.qr_generator import QRGeneratorParams, generate_qr_docs_zip
+from app.services.qr_generator import QRGeneratorParams, QrExportService
 
 router = APIRouter(tags=["qr-generator"])
+qr_export_service = QrExportService()
 
 
 @router.post("/export", dependencies=[Depends(get_current_active_superuser)])
@@ -23,7 +25,7 @@ def export_qr_docs(payload: QRGeneratorRequest) -> StreamingResponse:
         else "DC1-SRV-KC01.regstaer.local"
     )
     try:
-        zip_bytes = generate_qr_docs_zip(
+        zip_bytes = qr_export_service.generate_zip(
             QRGeneratorParams(
                 server=server,
                 database=settings.QR_SQL_DATABASE,
@@ -35,10 +37,8 @@ def export_qr_docs(payload: QRGeneratorRequest) -> StreamingResponse:
                 both_databases=both_databases,
             )
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Не удалось сформировать выгрузку: {exc}") from exc
+        raise to_http_error(exc, operation="сформировать выгрузку") from exc
 
     filename = f"qr_export_{datetime.date.today().isoformat()}.zip"
     return StreamingResponse(

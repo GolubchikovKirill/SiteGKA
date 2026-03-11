@@ -1,26 +1,28 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Download, Plane, RotateCcw } from "lucide-react";
+import { Plane, RotateCcw } from "lucide-react";
 import { exportBoardingPass } from "../client";
+import { ErrorState, FormActions } from "./ui/AsyncState";
 
 type BarcodeFormat = "aztec" | "pdf417";
 
 type FormState = {
   format: BarcodeFormat;
-  first_name: string;
-  last_name: string;
-  booking_ref: string;
   from_code: string;
   to_code: string;
-  flight_operator: string;
-  flight_number: string;
-  flight_date: string;
-  day_in_year: string;
-  travel_class: string;
-  seat: string;
-  boarding_index: string;
   raw_data: string;
 };
+
+const DEFAULT_BOARDING_TEMPLATE = {
+  first_name: "JOHN",
+  last_name: "DOE",
+  booking_ref: "XYZ123",
+  flight_operator: "BA",
+  flight_number: "1234",
+  travel_class: "Y",
+  seat: "35A",
+  boarding_index: "0001",
+} as const;
 
 function getTodayDefaults() {
   const today = new Date();
@@ -36,22 +38,34 @@ function getTodayDefaults() {
 }
 
 function createInitialState(): FormState {
-  const { flight_date, day_in_year } = getTodayDefaults();
   return {
     format: "aztec",
-    first_name: "",
-    last_name: "",
-    booking_ref: "",
-    from_code: "",
-    to_code: "",
-    flight_operator: "",
-    flight_number: "",
+    from_code: "SVO",
+    to_code: "LED",
+    raw_data: "",
+  };
+}
+
+function normalizeAirportCode(value: string) {
+  return value.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase();
+}
+
+function buildPresetPayload(form: FormState) {
+  const { flight_date, day_in_year } = getTodayDefaults();
+  return {
+    format: form.format,
+    first_name: DEFAULT_BOARDING_TEMPLATE.first_name,
+    last_name: DEFAULT_BOARDING_TEMPLATE.last_name,
+    booking_ref: DEFAULT_BOARDING_TEMPLATE.booking_ref,
+    from_code: form.from_code,
+    to_code: form.to_code,
+    flight_operator: DEFAULT_BOARDING_TEMPLATE.flight_operator,
+    flight_number: DEFAULT_BOARDING_TEMPLATE.flight_number,
     flight_date,
     day_in_year,
-    travel_class: "",
-    seat: "",
-    boarding_index: "",
-    raw_data: "",
+    travel_class: DEFAULT_BOARDING_TEMPLATE.travel_class,
+    seat: DEFAULT_BOARDING_TEMPLATE.seat,
+    boarding_index: DEFAULT_BOARDING_TEMPLATE.boarding_index,
   };
 }
 
@@ -84,169 +98,103 @@ export default function BoardingPassPanel() {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
+  const canSubmit = Boolean(form.raw_data.trim() || (form.from_code.length === 3 && form.to_code.length === 3));
+
   const runExport = () => {
     setMessage(null);
     setError(null);
-    exportMut.mutate({
-      format: form.format,
-      first_name: form.first_name.trim() || undefined,
-      last_name: form.last_name.trim() || undefined,
-      booking_ref: form.booking_ref.trim() || undefined,
-      from_code: form.from_code.trim() || undefined,
-      to_code: form.to_code.trim() || undefined,
-      flight_operator: form.flight_operator.trim() || undefined,
-      flight_number: form.flight_number.trim() || undefined,
-      flight_date: form.flight_date.trim() || undefined,
-      day_in_year: form.day_in_year.trim() || undefined,
-      travel_class: form.travel_class.trim() || undefined,
-      seat: form.seat.trim() || undefined,
-      boarding_index: form.boarding_index.trim() || undefined,
-      raw_data: form.raw_data.trim() || undefined,
-    });
+    exportMut.mutate(
+      form.raw_data.trim()
+        ? {
+            format: form.format,
+            raw_data: form.raw_data.trim(),
+          }
+        : buildPresetPayload(form),
+    );
   };
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Симвология</span>
-          <select
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.format}
-            onChange={(e) => setField("format", e.target.value as BarcodeFormat)}
-          >
-            <option value="aztec">Aztec</option>
-            <option value="pdf417">PDF417</option>
-          </select>
-        </label>
-        <label className="text-sm md:col-span-2">
-          <span className="mb-1 block text-slate-600">Raw payload (если нужно обойти сборку из полей)</span>
-          <textarea
-            className="app-input w-full py-2 px-3 text-sm min-h-24"
-            value={form.raw_data}
-            onChange={(e) => setField("raw_data", e.target.value)}
-            placeholder="M1IVANOV/IVAN EBR123 SVOLED..."
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Имя</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.first_name}
-            onChange={(e) => setField("first_name", e.target.value)}
-            placeholder="IVAN"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Фамилия</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.last_name}
-            onChange={(e) => setField("last_name", e.target.value)}
-            placeholder="IVANOV"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Booking ref</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.booking_ref}
-            onChange={(e) => setField("booking_ref", e.target.value)}
-            placeholder="EBR123"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Откуда</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.from_code}
-            onChange={(e) => setField("from_code", e.target.value)}
-            placeholder="SVO"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Куда</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.to_code}
-            onChange={(e) => setField("to_code", e.target.value)}
-            placeholder="LED"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Оператор</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.flight_operator}
-            onChange={(e) => setField("flight_operator", e.target.value)}
-            placeholder="SU"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Номер рейса</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.flight_number}
-            onChange={(e) => setField("flight_number", e.target.value)}
-            placeholder="1234"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Дата рейса</span>
-          <input
-            type="date"
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.flight_date}
-            onChange={(e) => setField("flight_date", e.target.value)}
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Day in year</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.day_in_year}
-            onChange={(e) => setField("day_in_year", e.target.value)}
-            placeholder="032"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Класс</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.travel_class}
-            onChange={(e) => setField("travel_class", e.target.value)}
-            placeholder="Y"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Место</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.seat}
-            onChange={(e) => setField("seat", e.target.value)}
-            placeholder="12A"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Boarding index</span>
-          <input
-            className="app-input w-full py-2 px-3 text-sm"
-            value={form.boarding_index}
-            onChange={(e) => setField("boarding_index", e.target.value)}
-            placeholder="001"
-          />
-        </label>
+      <div className="rounded-2xl border border-[var(--app-panel-border)] bg-white/60 p-4 shadow-sm dark:bg-slate-900/30">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              Простой режим генерации
+            </div>
+            <div className="text-xs text-slate-500">
+              Заполните только маршрут. Остальные данные подставятся автоматически.
+            </div>
+          </div>
+          <label className="text-sm min-w-40">
+            <span className="mb-1 block text-slate-600">Симвология</span>
+            <select
+              className="app-input w-full py-2 px-3 text-sm"
+              value={form.format}
+              onChange={(e) => setField("format", e.target.value as BarcodeFormat)}
+            >
+              <option value="aztec">Aztec</option>
+              <option value="pdf417">PDF417</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="text-sm">
+            <span className="mb-1 block text-slate-600">Откуда</span>
+            <input
+              className="app-input w-full py-3 px-3 text-base font-medium tracking-[0.2em] uppercase"
+              value={form.from_code}
+              onChange={(e) => setField("from_code", normalizeAirportCode(e.target.value))}
+              placeholder="SVO"
+              maxLength={3}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-slate-600">Куда</span>
+            <input
+              className="app-input w-full py-3 px-3 text-base font-medium tracking-[0.2em] uppercase"
+              value={form.to_code}
+              onChange={(e) => setField("to_code", normalizeAirportCode(e.target.value))}
+              placeholder="LED"
+              maxLength={3}
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+          Шаблон по умолчанию: John Doe, BA1234, место 35A, сегодняшняя дата.
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <details className="rounded-xl border border-[var(--app-panel-border)] px-4 py-3">
+        <summary className="cursor-pointer select-none text-sm font-medium text-slate-700 dark:text-slate-200">
+          Расширенный режим
+        </summary>
+        <div className="mt-3">
+          <label className="text-sm block">
+            <span className="mb-1 block text-slate-600">Raw payload</span>
+            <textarea
+              className="app-input w-full py-2 px-3 text-sm min-h-24"
+              value={form.raw_data}
+              onChange={(e) => setField("raw_data", e.target.value)}
+              placeholder="M1DOE/JOHN XYZ123 SVOLEDBA1234..."
+            />
+          </label>
+          <div className="mt-2 text-xs text-slate-500">
+            Если заполнить `raw payload`, backend использует его напрямую вместо автосборки.
+          </div>
+        </div>
+      </details>
+
+      <FormActions>
         <button
           type="button"
           onClick={runExport}
-          disabled={exportMut.isPending}
+          disabled={exportMut.isPending || !canSubmit}
           className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-60"
         >
           <Plane className="h-4 w-4" />
-          {exportMut.isPending ? "Формирование..." : "Сформировать и скачать PNG"}
+          {exportMut.isPending ? "Формирование..." : "Сформировать PNG"}
         </button>
         <button
           type="button"
@@ -260,13 +208,13 @@ export default function BoardingPassPanel() {
           <RotateCcw className="h-4 w-4" />
           Сбросить
         </button>
-      </div>
+        <div className="text-xs text-slate-500">
+          Для автогенерации достаточно заполнить только `Откуда` и `Куда`.
+        </div>
+      </FormActions>
 
       {message && <div className="text-sm text-emerald-700">{message}</div>}
-      {error && <div className="text-sm text-rose-700">{error}</div>}
-      <div className="text-xs text-slate-500">
-        Если `raw payload` заполнен, backend использует его напрямую вместо сборки строки из полей.
-      </div>
+      {error && <ErrorState text={error} />}
     </div>
   );
 }

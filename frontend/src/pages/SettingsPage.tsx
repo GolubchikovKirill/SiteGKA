@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Save, Settings2 } from "lucide-react";
 import { getGeneralSettings, getScannerSettings, updateGeneralSettings } from "../client";
+import { EmptyState, ErrorState, FormActions, LoadingState, SectionCard } from "../components/ui/AsyncState";
 
 type SettingsForm = {
   scan_subnet: string;
@@ -46,13 +47,13 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="app-panel p-5 space-y-4">
+      <SectionCard className="space-y-4">
         <div className="flex items-center gap-2 text-slate-900">
           <Settings2 className="h-4 w-4" />
           <h2 className="text-base font-semibold">Сеть и сканирование</h2>
         </div>
         {isLoading ? (
-          <div className="text-sm text-gray-500">Загрузка...</div>
+          <LoadingState />
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -72,7 +73,7 @@ export default function SettingsPage() {
                 onChange={(v) => setForm((s) => ({ ...s, dns_search_suffixes: v }))}
               />
             </div>
-            <div className="flex justify-end">
+            <FormActions className="justify-end">
               <button
                 onClick={submit}
                 className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
@@ -81,18 +82,14 @@ export default function SettingsPage() {
                 <Save className="h-4 w-4" />
                 {saveMut.isPending ? "Сохранение..." : "Сохранить"}
               </button>
-            </div>
-            {saveMut.isError && (
-              <div className="text-sm text-rose-600">
-                Не удалось сохранить настройки. Проверьте корректность значений.
-              </div>
-            )}
+            </FormActions>
+            {saveMut.isError && <ErrorState text="Не удалось сохранить настройки. Проверьте корректность значений." />}
           </>
         )}
-      </div>
+      </SectionCard>
 
-      {scannerSettings && (
-        <div className="app-panel p-5 space-y-2">
+      {scannerSettings ? (
+        <SectionCard className="space-y-2">
           <h3 className="text-sm font-semibold text-slate-900">Текущие системные лимиты сканера</h3>
           <div className="grid gap-1 text-xs text-gray-500 sm:grid-cols-2 lg:grid-cols-4">
             <div>max_hosts: {scannerSettings.max_hosts}</div>
@@ -100,7 +97,9 @@ export default function SettingsPage() {
             <div>tcp_retries: {scannerSettings.tcp_retries}</div>
             <div>tcp_concurrency: {scannerSettings.tcp_concurrency}</div>
           </div>
-        </div>
+        </SectionCard>
+      ) : (
+        <EmptyState text="Системные лимиты сканера пока не доступны." />
       )}
     </div>
   );

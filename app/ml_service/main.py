@@ -11,6 +11,8 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.db import engine
+from app.core.readiness import build_readiness_response, check_database, check_redis
+from app.core.redis import get_redis
 from app.ml.pipeline import run_scoring_cycle, run_training_cycle
 from app.models import MLModelRegistry
 from app.observability.metrics import ml_train_runs_total
@@ -92,6 +94,16 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_sch
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ml"}
+
+
+@app.get("/ready")
+async def ready() -> dict:
+    checks = {
+        "database": check_database(engine),
+        "redis": await check_redis(get_redis),
+        "ml_enabled": settings.ML_ENABLED,
+    }
+    return build_readiness_response(checks)
 
 
 @app.post("/train")

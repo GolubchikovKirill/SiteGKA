@@ -63,8 +63,12 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "infrascope"
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
 
     REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_MAX_CONNECTIONS: int = 10
+    UVICORN_WORKERS: int = 2
     ML_ENABLED: bool = True
     ML_SERVICE_URL: str = "http://ml-service:8010"
     POLLING_SERVICE_ENABLED: bool = False

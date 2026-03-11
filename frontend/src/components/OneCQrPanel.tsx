@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Download, QrCode, Server } from "lucide-react";
 import { exportQrGenerator } from "../client";
+import { ErrorState, FormActions } from "./ui/AsyncState";
 
 type DatabaseMode = "duty_free" | "duty_paid" | "both";
 
@@ -107,7 +108,7 @@ export default function OneCQrPanel() {
         </label>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <FormActions>
         <button
           onClick={runExport}
           disabled={exportMut.isPending}
@@ -127,10 +128,10 @@ export default function OneCQrPanel() {
           <Download className="h-4 w-4" />
           Сбросить
         </button>
-      </div>
+      </FormActions>
 
       {message && <div className="text-sm text-emerald-700">{message}</div>}
-      {error && <div className="text-sm text-rose-700">{error}</div>}
+      {error && <ErrorState text={error} />}
     </div>
   );
 }

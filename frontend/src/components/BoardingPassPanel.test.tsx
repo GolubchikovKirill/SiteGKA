@@ -31,58 +31,50 @@ describe("BoardingPassPanel", () => {
     api.exportBoardingPass.mockReset();
   });
 
-  it("prefills today's flight date and day in year", () => {
+  it("prefills simple route mode with defaults", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-11T12:00:00Z"));
 
     renderPanel();
 
-    expect(screen.getByLabelText("Дата рейса")).toHaveValue("2026-03-11");
-    expect(screen.getByDisplayValue("070")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("SVO")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("LED")).toBeInTheDocument();
+    expect(screen.getByText("Шаблон по умолчанию: John Doe, BA1234, место 35A, сегодняшняя дата.")).toBeInTheDocument();
 
     vi.useRealTimers();
   });
 
-  it("submits normalized payload and downloads blob", async () => {
+  it("submits only route fields and auto-fills the rest", async () => {
     api.exportBoardingPass.mockResolvedValue(new Blob(["png-content"], { type: "image/png" }));
     const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
     const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-11T12:00:00Z"));
 
     renderPanel();
 
     fireEvent.change(screen.getByDisplayValue("Aztec"), { target: { value: "pdf417" } });
-    fireEvent.change(screen.getByPlaceholderText("IVAN"), { target: { value: " ivan " } });
-    fireEvent.change(screen.getByPlaceholderText("IVANOV"), { target: { value: " ivanov " } });
-    fireEvent.change(screen.getByPlaceholderText("EBR123"), { target: { value: " ebr123 " } });
-    fireEvent.change(screen.getByPlaceholderText("SVO"), { target: { value: " svo " } });
-    fireEvent.change(screen.getByPlaceholderText("LED"), { target: { value: " led " } });
-    fireEvent.change(screen.getByPlaceholderText("SU"), { target: { value: " su " } });
-    fireEvent.change(screen.getByPlaceholderText("1234"), { target: { value: " 1234 " } });
-    fireEvent.change(screen.getByLabelText("Дата рейса"), { target: { value: "2026-02-01" } });
-    fireEvent.change(screen.getByPlaceholderText("032"), { target: { value: " 032 " } });
-    fireEvent.change(screen.getByPlaceholderText("Y"), { target: { value: " y " } });
-    fireEvent.change(screen.getByPlaceholderText("12A"), { target: { value: " 12a " } });
-    fireEvent.change(screen.getByPlaceholderText("001"), { target: { value: " 7 " } });
-    fireEvent.click(screen.getByRole("button", { name: "Сформировать и скачать PNG" }));
+    fireEvent.change(screen.getByDisplayValue("SVO"), { target: { value: " zrh1 " } });
+    fireEvent.change(screen.getByDisplayValue("LED"), { target: { value: " sfo " } });
+    fireEvent.click(screen.getByRole("button", { name: "Сформировать PNG" }));
 
     await waitFor(() => {
       expect(api.exportBoardingPass).toHaveBeenCalled();
       expect(api.exportBoardingPass.mock.calls[0]?.[0]).toEqual({
         format: "pdf417",
-        first_name: "ivan",
-        last_name: "ivanov",
-        booking_ref: "ebr123",
-        from_code: "svo",
-        to_code: "led",
-        flight_operator: "su",
+        first_name: "JOHN",
+        last_name: "DOE",
+        booking_ref: "XYZ123",
+        from_code: "ZRH",
+        to_code: "SFO",
+        flight_operator: "BA",
         flight_number: "1234",
-        flight_date: "2026-02-01",
-        day_in_year: "032",
-        travel_class: "y",
-        seat: "12a",
-        boarding_index: "7",
-        raw_data: undefined,
+        flight_date: "2026-03-11",
+        day_in_year: "070",
+        travel_class: "Y",
+        seat: "35A",
+        boarding_index: "0001",
       });
     });
     expect(await screen.findByText("Файл boarding pass сформирован и скачан.")).toBeInTheDocument();
@@ -90,6 +82,7 @@ describe("BoardingPassPanel", () => {
     createUrl.mockRestore();
     revokeUrl.mockRestore();
     clickSpy.mockRestore();
+    vi.useRealTimers();
   });
 
   it("uses raw payload when it is provided", async () => {
@@ -100,10 +93,11 @@ describe("BoardingPassPanel", () => {
 
     renderPanel();
 
-    fireEvent.change(screen.getByPlaceholderText("M1IVANOV/IVAN EBR123 SVOLED..."), {
+    fireEvent.click(screen.getByText("Расширенный режим"));
+    fireEvent.change(screen.getByPlaceholderText("M1DOE/JOHN XYZ123 SVOLEDBA1234..."), {
       target: { value: " M1RAW " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Сформировать и скачать PNG" }));
+    fireEvent.click(screen.getByRole("button", { name: "Сформировать PNG" }));
 
     await waitFor(() => {
       expect(api.exportBoardingPass.mock.calls[0]?.[0]).toMatchObject({
@@ -123,7 +117,9 @@ describe("BoardingPassPanel", () => {
     });
 
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Сформировать и скачать PNG" }));
+    fireEvent.change(screen.getByDisplayValue("SVO"), { target: { value: "DME" } });
+    fireEvent.change(screen.getByDisplayValue("LED"), { target: { value: "AER" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сформировать PNG" }));
 
     expect(await screen.findByText("last_name is required")).toBeInTheDocument();
   });

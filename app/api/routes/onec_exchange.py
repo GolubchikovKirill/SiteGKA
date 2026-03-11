@@ -6,9 +6,10 @@ from sqlmodel import select
 from app.api.deps import SessionDep, get_current_active_superuser
 from app.models import CashRegister
 from app.schemas import OneCExchangeByBarcodeRequest, OneCExchangeByBarcodeResponse
-from app.services.onec_exchange import exchange_product_docs_by_barcode
+from app.services.onec_exchange import OneCExchangeService
 
 router = APIRouter(tags=["1c-exchange"])
+onec_exchange_service = OneCExchangeService()
 
 
 def _resolve_cash_register_targets(
@@ -84,7 +85,7 @@ async def run_exchange_by_barcode(
         payload.cash_register_identifiers,
         payload.cash_register_identifier_kind,
     )
-    result = await exchange_product_docs_by_barcode(
+    result = await onec_exchange_service.exchange_product_docs_by_barcode(
         target=payload.target,
         barcode=payload.barcode,
         cash_register_hostnames=payload.cash_register_hostnames,

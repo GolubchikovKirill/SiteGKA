@@ -38,7 +38,7 @@ def test_boarding_pass_returns_png(client, admin_token: str, monkeypatch):
             },
         )()
 
-    monkeypatch.setattr(boarding_routes, "generate_boarding_pass_file", _fake_generate)
+    monkeypatch.setattr(boarding_routes.boarding_pass_service, "generate_file", _fake_generate)
 
     response = client.post(
         "/api/v1/boarding-pass/export",
