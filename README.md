@@ -255,6 +255,7 @@ Kubernetes-first артефакты:
   - `INTERNAL_SERVICE_TOKEN` (обязателен при включенных внутренних сервисах в `production`)
   - `GRAFANA_ADMIN_PASSWORD`
   - `QR_SQL_LOGIN`, `QR_SQL_PASSWORD` (если используется QR генерация через SQL)
+  - `QR_SQL_TIMEOUT_SECONDS` (таймаут SQL-запроса для QR-генерации)
 - Проверить, что monitoring/UI-порты не открыты наружу без VPN/reverse proxy:
   - `PROMETHEUS_BIND`, `GRAFANA_BIND`, `KAFKA_UI_BIND`, `JAEGER_BIND`
 - Проверить whitelist CORS (`BACKEND_CORS_ORIGINS`) и удалить лишние origin.

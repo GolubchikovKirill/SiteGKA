@@ -113,6 +113,7 @@ class Settings(BaseSettings):
     QR_SQL_LOGIN: str = ""
     QR_SQL_PASSWORD: str = ""
     QR_SQL_DATABASE: str = "CashDB51"
+    QR_SQL_TIMEOUT_SECONDS: float = 20.0
     ONEC_DUTY_FREE_API_URL: str = ""
     ONEC_DUTY_FREE_API_TOKEN: str = ""
     ONEC_DUTY_PAID_API_URL: str = ""

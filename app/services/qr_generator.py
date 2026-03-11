@@ -16,6 +16,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Mm, Pt
 
+from app.core.config import settings
+
 
 @dataclass
 class QRGeneratorParams:
@@ -64,6 +66,8 @@ def _query_rows(
         database=database,
         user=sql_login,
         password=sql_password,
+        timeout=settings.QR_SQL_TIMEOUT_SECONDS,
+        login_timeout=settings.QR_SQL_TIMEOUT_SECONDS,
         autocommit=True,
         as_dict=True,
     ) as conn:
