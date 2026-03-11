@@ -4,6 +4,7 @@ from app.api import websockets
 from app.api.routes import (
     app_settings,
     auth,
+    boarding_pass,
     cash_registers,
     computers,
     logs,
@@ -34,5 +35,6 @@ api_router.include_router(logs.router, prefix="/logs")
 api_router.include_router(app_settings.router, prefix="/app-settings")
 api_router.include_router(onec_exchange.router, prefix="/1c-exchange")
 api_router.include_router(qr_generator.router, prefix="/qr-generator")
+api_router.include_router(boarding_pass.router, prefix="/boarding-pass")
 api_router.include_router(observability.router, prefix="/observability")
 api_router.include_router(tasks.router, prefix="/tasks")

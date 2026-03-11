@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Cable, QrCode, SendHorizontal } from "lucide-react";
+import { Cable, Plane, QrCode, SendHorizontal } from "lucide-react";
 import { runOneCExchangeByBarcode } from "../client";
+import BoardingPassPanel from "../components/BoardingPassPanel";
 import OneCQrPanel from "../components/OneCQrPanel";
 
-type Tab = "qr" | "products";
+type Tab = "qr" | "products" | "boarding";
 type ExchangeTarget = "duty_free" | "duty_paid";
 type IdentifierKind = "kkm_number" | "serial_number" | "hostname" | "inventory_number" | "cash_number";
 
@@ -52,12 +53,24 @@ export default function OneCPage() {
             <Cable className="h-4 w-4" />
             Выгрузка товара
           </button>
+          <button
+            type="button"
+            onClick={() => setTab("boarding")}
+            className={`app-tab inline-flex items-center gap-2 px-4 py-2 text-sm font-medium ${tab === "boarding" ? "active" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            <Plane className="h-4 w-4" />
+            Boarding pass
+          </button>
         </div>
       </div>
 
       {tab === "qr" ? (
         <div className="app-panel p-4 sm:p-5">
           <OneCQrPanel />
+        </div>
+      ) : tab === "boarding" ? (
+        <div className="app-panel p-4 sm:p-5">
+          <BoardingPassPanel />
         </div>
       ) : (
         <div className="app-panel p-4 sm:p-5 space-y-4">

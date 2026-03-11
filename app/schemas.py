@@ -421,6 +421,49 @@ class QRGeneratorRequest(BaseModel):
         return value
 
 
+class BoardingPassRequest(BaseModel):
+    format: Literal["aztec", "pdf417"] = "aztec"
+    first_name: str | None = None
+    last_name: str | None = None
+    booking_ref: str | None = None
+    from_code: str | None = None
+    to_code: str | None = None
+    flight_operator: str | None = None
+    flight_number: str | None = None
+    flight_date: str | None = None
+    day_in_year: str | None = None
+    travel_class: str | None = None
+    seat: str | None = None
+    boarding_index: str | None = None
+    raw_data: str | None = None
+
+    @field_validator(
+        "first_name",
+        "last_name",
+        "booking_ref",
+        "from_code",
+        "to_code",
+        "flight_operator",
+        "flight_number",
+        "flight_date",
+        "day_in_year",
+        "travel_class",
+        "seat",
+        "boarding_index",
+        "raw_data",
+    )
+    @classmethod
+    def normalize_optional_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip()
+        if not value:
+            return None
+        if len(value) > 512:
+            raise ValueError("Field is too long")
+        return value
+
+
 class OneCExchangeByBarcodeRequest(BaseModel):
     target: Literal["duty_free", "duty_paid"] = "duty_free"
     barcode: str
