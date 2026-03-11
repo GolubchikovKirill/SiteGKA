@@ -10,9 +10,6 @@ import httpx
 from celery import shared_task
 from sqlmodel import Session, select
 
-from app.api.routes import media_players as media_routes
-from app.api.routes import printers as printer_routes
-from app.api.routes import switches as switch_routes
 from app.core.config import settings
 from app.core.db import engine
 from app.models import MediaPlayer, NetworkSwitch, Printer
@@ -21,6 +18,11 @@ from app.observability.metrics import (
     worker_task_duration_seconds,
     worker_task_executions_total,
     worker_tasks_in_progress,
+)
+from app.services.polling_orchestrator import (
+    poll_all_media_players_local,
+    poll_all_printers_local,
+    poll_switch_local,
 )
 from app.services.scanner import scan_subnet
 
@@ -145,7 +147,7 @@ def poll_all_printers_task(self, printer_type: str = "laser") -> dict:
             total_count = len(all_printers)
         else:
             with Session(engine) as session:
-                asyncio.run(printer_routes.poll_all_printers(session=session, current_user=None, printer_type=printer_type))
+                asyncio.run(poll_all_printers_local(session=session, printer_type=printer_type))
                 all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
             online_count = sum(1 for p in all_printers if p.is_online)
             total_count = len(all_printers)
@@ -188,9 +190,8 @@ def poll_all_media_players_task(self, device_type: str | None = None) -> dict:
         else:
             with Session(engine) as session:
                 asyncio.run(
-                    media_routes.poll_all_players(
+                    poll_all_media_players_local(
                         session=session,
-                        current_user=None,
                         device_type=device_type,
                     )
                 )
@@ -237,7 +238,7 @@ def poll_switch_task(self, switch_id: str) -> dict:
             hostname = sw.get("hostname")
         else:
             with Session(engine) as session:
-                sw = asyncio.run(switch_routes.poll_switch(switch_id=switch_uuid, session=session, current_user=None))
+                sw = asyncio.run(poll_switch_local(switch_id=switch_uuid, session=session))
             is_online = bool(sw.is_online)
             hostname = sw.hostname
         payload = {
@@ -284,7 +285,7 @@ def poll_all_switches_task(self) -> dict:
             with Session(engine) as session:
                 switches = session.exec(select(NetworkSwitch)).all()
                 for sw in switches:
-                    updated = asyncio.run(switch_routes.poll_switch(switch_id=sw.id, session=session, current_user=None))
+                    updated = asyncio.run(poll_switch_local(switch_id=sw.id, session=session))
                     results.append(
                         {
                             "switch_id": str(updated.id),

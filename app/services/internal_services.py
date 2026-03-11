@@ -16,6 +16,17 @@ _RETRYABLE_STATUS_CODES = {502, 503, 504}
 _http_client: httpx.AsyncClient | None = None
 
 
+def _raise_proxy_http_error(*, status_code: int, kind: str, code: str, detail: str) -> None:
+    raise HTTPException(
+        status_code=status_code,
+        detail={
+            "kind": kind,
+            "code": code,
+            "detail": detail,
+        },
+    )
+
+
 def _get_http_client(timeout: float) -> httpx.AsyncClient:
     global _http_client
     if _http_client is None:
@@ -71,7 +82,12 @@ async def _proxy_request(
             data = response.json()
             if isinstance(data, dict):
                 return data
-            raise HTTPException(status_code=502, detail="internal service returned invalid payload")
+            _raise_proxy_http_error(
+                status_code=502,
+                kind="integration",
+                code="invalid_payload",
+                detail="internal service returned invalid payload",
+            )
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code if exc.response is not None else None
             should_retry = status in _RETRYABLE_STATUS_CODES and attempt < attempts
@@ -79,13 +95,29 @@ async def _proxy_request(
                 await asyncio.sleep(backoff * attempt)
                 continue
             detail = exc.response.text if exc.response is not None else "internal service status error"
-            raise HTTPException(status_code=502, detail=detail) from exc
+            mapped_status = status if status in {400, 401, 403, 404, 409, 422} else 502
+            _raise_proxy_http_error(
+                status_code=mapped_status,
+                kind="integration",
+                code=f"http_{status or 'unknown'}",
+                detail=detail,
+            )
         except httpx.HTTPError as exc:
             if attempt < attempts:
                 await asyncio.sleep(backoff * attempt)
                 continue
-            raise HTTPException(status_code=502, detail=f"internal service unavailable: {exc}") from exc
-    raise HTTPException(status_code=502, detail="internal service unavailable")
+            _raise_proxy_http_error(
+                status_code=504,
+                kind="timeout",
+                code="unavailable",
+                detail=f"internal service unavailable: {exc}",
+            )
+    _raise_proxy_http_error(
+        status_code=504,
+        kind="timeout",
+        code="unavailable",
+        detail="internal service unavailable",
+    )
 
 
 async def maybe_proxy(

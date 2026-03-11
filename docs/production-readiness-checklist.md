@@ -37,6 +37,8 @@
 - [x] Route layer использует единый translation ошибок (`_service_errors.py`) и не содержит domain-logic.
 - [x] Frontend API декомпозирован на `api/http.ts` + bounded-context модули.
 - [x] Сохранена обратная совместимость импорта через `frontend/src/client.ts`.
+- [x] Добавлен архитектурный guard-test: `worker`/`polling-service` не импортируют `app.api.routes` напрямую.
+- [x] Убрана private-coupling зависимость `discovery -> scanner._parse_arp_table` (вынесено в `net_inventory`).
 
 ## 6) Documentation and Operational Clarity
 
@@ -49,5 +51,6 @@
 - [ ] Ручной smoke: login в UI + генерация `Штрихкоды кассиров`.
 - [ ] Ручной smoke: генерация `Посадочные` и сканирование результата.
 - [ ] Ручной smoke: `1c-exchange/by-barcode` для `duty_free` и `duty_paid`.
+- [x] Автоматизированный post-deploy smoke доступен через `scripts/smoke_post_deploy.py`.
 
 > Пункты этого блока зависят от доступности реальных внешних интеграций и выполняются на окружении, где доступны целевые 1C endpoints/данные.

@@ -17,6 +17,7 @@ from app.observability.metrics import (
     network_discovery_devices_total,
     network_discovery_runs_total,
 )
+from app.services.net_inventory import parse_arp_table
 
 logger = logging.getLogger(__name__)
 
@@ -348,9 +349,7 @@ async def run_discovery_scan(kind: str, subnet: str, ports_str: str, known_devic
                 await asyncio.gather(*[_identify_switch(dev) for dev in devices])
 
             # Best-effort ARP enrich and known by MAC.
-            from app.services.scanner import _parse_arp_table
-
-            arp = await asyncio.to_thread(_parse_arp_table)
+            arp = await asyncio.to_thread(parse_arp_table)
             for dev in devices:
                 mac = arp.get(dev.ip)
                 if mac:

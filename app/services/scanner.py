@@ -12,10 +12,7 @@ import asyncio
 import ipaddress
 import json
 import logging
-import platform
-import re
 import socket
-import subprocess
 from dataclasses import asdict, dataclass, field
 from time import perf_counter
 
@@ -26,6 +23,7 @@ from app.observability.metrics import (
     scanner_duration_seconds,
     scanner_runs_total,
 )
+from app.services.net_inventory import parse_arp_table
 
 logger = logging.getLogger(__name__)
 
@@ -50,55 +48,6 @@ class DiscoveredDevice:
 
 class SubnetLimitExceeded(ValueError):
     """Raised when subnet expansion exceeds configured host limit."""
-
-
-def _parse_arp_table() -> dict[str, str]:
-    """Read system ARP table. Cross-platform with graceful fallback."""
-    result: dict[str, str] = {}
-    system = platform.system()
-    try:
-        if system == "Linux":
-            # Try /proc/net/arp first (fastest)
-            try:
-                with open("/proc/net/arp") as f:
-                    for line in f.readlines()[1:]:
-                        parts = line.split()
-                        if len(parts) >= 4 and parts[3] != "00:00:00:00:00:00":
-                            result[parts[0]] = parts[3].lower()
-            except FileNotFoundError:
-                pass
-            # Also try `ip neigh` which may have more entries
-            if not result:
-                try:
-                    out = subprocess.run(
-                        ["ip", "neigh"], capture_output=True, text=True, timeout=5
-                    ).stdout
-                    for line in out.splitlines():
-                        parts = line.split()
-                        if len(parts) >= 5 and parts[3] == "lladdr":
-                            result[parts[0]] = parts[4].lower()
-                except FileNotFoundError:
-                    pass
-        elif system == "Darwin":
-            out = subprocess.run(
-                ["arp", "-a"], capture_output=True, text=True, timeout=10
-            ).stdout
-            for line in out.splitlines():
-                m = re.search(r"\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-f:]+)", line, re.I)
-                if m and m.group(2) != "(incomplete)":
-                    result[m.group(1)] = m.group(2).lower()
-        elif system == "Windows":
-            out = subprocess.run(
-                ["arp", "-a"], capture_output=True, text=True, timeout=10
-            ).stdout
-            for line in out.splitlines():
-                m = re.search(r"(\d+\.\d+\.\d+\.\d+)\s+([\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2}-[\da-f]{2})", line, re.I)
-                if m:
-                    mac = m.group(2).replace("-", ":").lower()
-                    result[m.group(1)] = mac
-    except Exception as e:
-        logger.debug("ARP table read (best-effort): %s", e)
-    return result
 
 
 async def _tcp_check(ip: str, port: int) -> bool:
@@ -346,7 +295,7 @@ async def scan_subnet(subnet: str, ports_str: str, known_printers: list[dict]) -
             logger.info("SNMP done: %d/%d identified", identified, len(snmp_candidates))
 
         # ARP table for remaining devices without SNMP MAC (best-effort)
-        arp = await asyncio.to_thread(_parse_arp_table)
+        arp = await asyncio.to_thread(parse_arp_table)
         for dev in devices:
             if dev.mac:
                 continue

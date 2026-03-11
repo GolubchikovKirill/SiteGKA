@@ -7,13 +7,20 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlmodel import Session, select
 
-from app.api.routes import cash_registers, media_players, printers, switches
 from app.core.config import settings
 from app.core.db import engine
 from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import close_redis, get_redis
 from app.models import CashRegister, MediaPlayer, NetworkSwitch, Printer
 from app.observability.tracing import setup_tracing
+from app.services.polling_orchestrator import (
+    poll_all_cash_registers_local,
+    poll_all_media_players_local,
+    poll_all_printers_local,
+    poll_all_switches_local,
+    poll_cash_register_local,
+    poll_switch_local,
+)
 from app.schemas import (
     CashRegisterPublic,
     CashRegistersPublic,
@@ -61,32 +68,31 @@ async def ready() -> dict | object:
 @app.post("/poll/printers", response_model=PrintersPublic, dependencies=[Depends(_verify_internal_token)])
 async def poll_printers(printer_type: str = "laser") -> PrintersPublic:
     with Session(engine) as session:
-        return await printers.poll_all_printers(session=session, current_user=None, printer_type=printer_type)
+        return await poll_all_printers_local(session=session, printer_type=printer_type)
 
 
 @app.post("/poll/media-players", response_model=MediaPlayersPublic, dependencies=[Depends(_verify_internal_token)])
 async def poll_media(device_type: str | None = None) -> MediaPlayersPublic:
     with Session(engine) as session:
-        return await media_players.poll_all_players(session=session, current_user=None, device_type=device_type)
+        return await poll_all_media_players_local(session=session, device_type=device_type)
 
 
 @app.post("/poll/switches", response_model=Message, dependencies=[Depends(_verify_internal_token)])
 async def poll_switches() -> Message:
     with Session(engine) as session:
-        return await switches.poll_all_switches(session=session, current_user=None)
+        return await poll_all_switches_local(session=session)
 
 
 @app.post("/poll/switches/{switch_id}", response_model=NetworkSwitchPublic, dependencies=[Depends(_verify_internal_token)])
 async def poll_switch(switch_id: str) -> NetworkSwitchPublic:
     with Session(engine) as session:
-        sw = await switches.poll_switch(switch_id=uuid.UUID(switch_id), session=session, current_user=None)
-    return NetworkSwitchPublic.model_validate(sw)
+        return await poll_switch_local(switch_id=uuid.UUID(switch_id), session=session)
 
 
 @app.post("/poll/cash-registers", response_model=CashRegistersPublic, dependencies=[Depends(_verify_internal_token)])
 async def poll_cash_registers() -> CashRegistersPublic:
     with Session(engine) as session:
-        return await cash_registers.poll_all_cash_registers(session=session, current_user=None)
+        return await poll_all_cash_registers_local(session=session)
 
 
 @app.post(
@@ -96,8 +102,7 @@ async def poll_cash_registers() -> CashRegistersPublic:
 )
 async def poll_cash_register(cash_id: str) -> CashRegisterPublic:
     with Session(engine) as session:
-        item = await cash_registers.poll_cash_register(cash_id=uuid.UUID(cash_id), session=session, current_user=None)
-    return CashRegisterPublic.model_validate(item)
+        return await poll_cash_register_local(cash_id=uuid.UUID(cash_id), session=session)
 
 
 @app.get("/summary/printers", dependencies=[Depends(_verify_internal_token)])
