@@ -5,16 +5,9 @@ from sqlmodel import func, select
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
-from app.models import User
-from app.schemas import (
-    Message,
-    UpdatePassword,
-    UserCreate,
-    UserPublic,
-    UsersPublic,
-    UserUpdate,
-    UserUpdateMe,
-)
+from app.domains.identity.models import User
+from app.domains.identity.schemas import UpdatePassword, UserCreate, UserPublic, UsersPublic, UserUpdate, UserUpdateMe
+from app.domains.shared.schemas import Message
 
 router = APIRouter(tags=["users"])
 

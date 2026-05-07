@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from app.api.deps import get_current_active_superuser
 from app.api.routes._service_errors import ServiceTimeoutError, to_http_error
 from app.core.config import settings
-from app.schemas import QRGeneratorRequest
+from app.domains.integrations.schemas import QRGeneratorRequest
 from app.services.qr_generator import QRGeneratorParams, QrExportService
 
 router = APIRouter(tags=["qr-generator"])
@@ -20,11 +20,7 @@ qr_export_service = QrExportService()
 @router.post("/export", dependencies=[Depends(get_current_active_superuser)])
 def export_qr_docs(payload: QRGeneratorRequest) -> StreamingResponse:
     both_databases = payload.db_mode == "both"
-    server = (
-        "DC1-SRV-KC02.regstaer.local"
-        if payload.db_mode == "duty_paid"
-        else "DC1-SRV-KC01.regstaer.local"
-    )
+    server = "DC1-SRV-KC02.regstaer.local" if payload.db_mode == "duty_paid" else "DC1-SRV-KC01.regstaer.local"
     try:
         params = QRGeneratorParams(
             server=server,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.models import NetworkSwitch
+from app.domains.inventory.models import NetworkSwitch
 
 
 @dataclass

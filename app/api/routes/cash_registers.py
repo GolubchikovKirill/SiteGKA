@@ -1,8 +1,6 @@
 import asyncio
 import csv
-import json
 import logging
-import socket
 import uuid
 from datetime import UTC, datetime
 from io import StringIO
@@ -13,18 +11,18 @@ from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
-from app.core.redis import get_redis
-from app.models import CashRegister
-from app.schemas import (
+from app.domains.inventory.reachability import probe_host_ports
+from app.domains.operations.models import CashRegister
+from app.domains.operations.schemas import (
     CashRegisterCreate,
     CashRegisterPublic,
     CashRegistersPublic,
     CashRegisterUpdate,
-    Message,
 )
+from app.domains.shared.schemas import Message
+from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
 from app.services.event_log import write_event_log
 from app.services.internal_services import _proxy_request
-from app.services.ping import check_port
 from app.services.smart_search import build_ilike_filter
 
 logger = logging.getLogger(__name__)
@@ -33,47 +31,20 @@ CACHE_TTL = 30
 
 
 async def _invalidate_cache() -> None:
-    try:
-        from app.api.websockets import broadcast_event
-
-        await broadcast_event("invalidate", "cash_registers")
-        r = await get_redis()
-        keys = []
-        async for key in r.scan_iter("cash_registers:*"):
-            keys.append(key)
-        if keys:
-            await r.delete(*keys)
-    except Exception as e:
-        logger.warning("Cash registers cache invalidation failed: %s", e)
+    await invalidate_entity_cache("cash_registers")
 
 
 router = APIRouter(tags=["cash-registers"])
 
 
 def _probe_register(hostname: str) -> tuple[bool, str | None]:
-    # Resolve first so obvious DNS issues are treated as offline fast.
-    host = hostname.strip()
-    resolved_target: str | None = None
-    candidates = [host]
-    if "." not in host and settings.DNS_SEARCH_SUFFIXES:
-        for suffix in settings.DNS_SEARCH_SUFFIXES.split(","):
-            normalized = suffix.strip().strip(".")
-            if normalized:
-                candidates.append(f"{host}.{normalized}")
-
-    for candidate in candidates:
-        try:
-            resolved_target = socket.gethostbyname(candidate)
-            break
-        except OSError:
-            continue
-
-    if not resolved_target:
-        return False, "dns_unresolved"
-    # Try common Windows service ports.
-    if check_port(resolved_target, port=3389, timeout=1.5) or check_port(resolved_target, port=445, timeout=1.5):
-        return True, None
-    return False, "port_closed"
+    result = probe_host_ports(
+        hostname,
+        ports=(3389, 445),
+        timeout=1.5,
+        dns_search_suffixes=settings.DNS_SEARCH_SUFFIXES,
+    )
+    return result.is_online, result.reason
 
 
 def _offline_reason_ru(reason: str | None) -> str:
@@ -121,13 +92,8 @@ async def read_cash_registers(
     q: str | None = Query(default=None),
 ) -> CashRegistersPublic:
     cache_key = f"cash_registers:{q or ''}:{skip}:{limit}"
-    try:
-        r = await get_redis()
-        cached = await r.get(cache_key)
-        if cached:
-            return CashRegistersPublic(**json.loads(cached))
-    except Exception:
-        pass
+    if cached := await get_cached_model(cache_key, CashRegistersPublic):
+        return cached
 
     del current_user
     statement = select(CashRegister)
@@ -151,11 +117,7 @@ async def read_cash_registers(
     rows = session.exec(statement.order_by(CashRegister.kkm_number).offset(skip).limit(limit)).all()
     result = CashRegistersPublic(data=rows, count=count)
 
-    try:
-        r = await get_redis()
-        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
-    except Exception:
-        pass
+    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
 
     return result
 

@@ -129,7 +129,9 @@ def _configure_document_layout(doc: Document) -> None:
     section.gutter = Mm(0)
 
 
-def _build_word_from_nameext(rows: list[dict], *, airport_code: str, add_login: bool, db_name: str) -> tuple[str, bytes]:
+def _build_word_from_nameext(
+    rows: list[dict], *, airport_code: str, add_login: bool, db_name: str
+) -> tuple[str, bytes]:
     today = datetime.date.today().strftime("%Y-%m-%d")
     filename = f"Кассиры {db_name}_{airport_code}_{today}.docx"
     doc = Document()

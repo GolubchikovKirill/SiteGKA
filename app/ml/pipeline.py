@@ -7,13 +7,8 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session, delete, select
 
-from app.models import (
-    MLFeatureSnapshot,
-    MLModelRegistry,
-    MLOfflineRiskPrediction,
-    MLTonerPrediction,
-    Printer,
-)
+from app.domains.inventory.models import Printer
+from app.domains.ml.models import MLFeatureSnapshot, MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
 from app.observability.metrics import (
     ml_inference_duration_seconds,
     ml_model_active_info,
@@ -247,11 +242,7 @@ def score_toner_predictions(session: Session) -> int:
                     continue
                 key = f"{color}:{(toner_model or '').strip().lower() or 'unknown'}"
                 rate = (
-                    rates_by_key.get(key)
-                    or rates_by_color.get(color)
-                    or default_rates.get(color)
-                    or global_rate
-                    or 1.0
+                    rates_by_key.get(key) or rates_by_color.get(color) or default_rates.get(color) or global_rate or 1.0
                 )
                 if rate <= 0:
                     continue

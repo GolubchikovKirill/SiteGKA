@@ -29,9 +29,7 @@ def _get_producer():
 
             _PRODUCER = KafkaProducer(
                 bootstrap_servers=[
-                    server.strip()
-                    for server in settings.KAFKA_BOOTSTRAP_SERVERS.split(",")
-                    if server.strip()
+                    server.strip() for server in settings.KAFKA_BOOTSTRAP_SERVERS.split(",") if server.strip()
                 ],
                 value_serializer=lambda v: json.dumps(v, ensure_ascii=True).encode("utf-8"),
                 retries=0,

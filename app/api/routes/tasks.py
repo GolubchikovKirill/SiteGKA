@@ -127,4 +127,3 @@ def get_task_status(task_id: str, current_user: CurrentUser) -> TaskStatusRespon
     if result.state == "REVOKED":
         raise HTTPException(status_code=410, detail="Task has been revoked")
     return payload
-

@@ -52,8 +52,7 @@ class APInfo:
 class CiscoSSH:
     """Manages an SSH session to a Cisco IOS device."""
 
-    def __init__(self, ip: str, username: str, password: str,
-                 enable_password: str = "", port: int = 22):
+    def __init__(self, ip: str, username: str, password: str, enable_password: str = "", port: int = 22):
         self.ip = ip
         self.username = username
         self.password = password
@@ -240,8 +239,7 @@ class CiscoSSH:
         self.close()
 
 
-def get_switch_info(ip: str, username: str, password: str,
-                    enable_password: str = "", port: int = 22) -> SwitchInfo:
+def get_switch_info(ip: str, username: str, password: str, enable_password: str = "", port: int = 22) -> SwitchInfo:
     info = SwitchInfo()
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
@@ -283,9 +281,9 @@ def get_switch_info(ip: str, username: str, password: str,
     return info
 
 
-def get_access_points(ip: str, username: str, password: str,
-                      enable_password: str = "", port: int = 22,
-                      vlan: int = 20) -> list[APInfo]:
+def get_access_points(
+    ip: str, username: str, password: str, enable_password: str = "", port: int = 22, vlan: int = 20
+) -> list[APInfo]:
     """Discover access points on the given VLAN using CDP as primary source."""
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
@@ -320,9 +318,7 @@ def get_access_points(ip: str, username: str, password: str,
         ssh.close()
 
 
-def reboot_ap(ip: str, username: str, password: str,
-              enable_password: str, port: int,
-              interface: str) -> bool:
+def reboot_ap(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> bool:
     """Reboot an AP by PoE cycling the switch port."""
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
@@ -347,9 +343,7 @@ def reboot_ap(ip: str, username: str, password: str,
         ssh.close()
 
 
-def poe_cycle_ap(ip: str, username: str, password: str,
-                 enable_password: str, port: int,
-                 interface: str) -> bool:
+def poe_cycle_ap(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> bool:
     """Reboot AP via PoE power cycle (cleaner than shutdown)."""
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
@@ -414,14 +408,16 @@ def _parse_cdp_access_points(cdp_output: str, vlan: int) -> list[APInfo]:
         cdp_name = name_m.group(1).strip() if name_m else None
         ap_ip = ip_m.group(1) if ip_m else None
 
-        aps.append(APInfo(
-            mac_address="",
-            port=local_port,
-            vlan=vlan,
-            ip_address=ap_ip,
-            cdp_name=cdp_name,
-            cdp_platform=platform,
-        ))
+        aps.append(
+            APInfo(
+                mac_address="",
+                port=local_port,
+                vlan=vlan,
+                ip_address=ap_ip,
+                cdp_name=cdp_name,
+                cdp_platform=platform,
+            )
+        )
 
     return aps
 
@@ -452,7 +448,7 @@ def _format_mac(cisco_mac: str) -> str:
     """Convert Cisco MAC format (0011.2233.4455) to standard (00:11:22:33:44:55)."""
     raw = cisco_mac.replace(".", "").lower()
     if len(raw) == 12:
-        return ":".join(raw[i:i + 2] for i in range(0, 12, 2))
+        return ":".join(raw[i : i + 2] for i in range(0, 12, 2))
     return cisco_mac
 
 

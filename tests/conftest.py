@@ -59,6 +59,7 @@ def client(db_session, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(auth_routes, "blacklist_token", _blacklist_token)
     monkeypatch.setattr(auth_routes, "is_token_blacklisted", _is_blacklisted)
+
     def _fake_check_request_limit(request, _endpoint, _in_middleware=True):
         request.state.view_rate_limit = None
         return None

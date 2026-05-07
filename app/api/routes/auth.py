@@ -18,9 +18,9 @@ from app.core.security import (
     create_refresh_token,
     is_token_blacklisted,
 )
-from app.models import User
+from app.domains.identity.models import User
+from app.domains.identity.schemas import Token, TokenPayload, UserPublic
 from app.observability.metrics import auth_events_total
-from app.schemas import Token, TokenPayload, UserPublic
 
 router = APIRouter(tags=["auth"])
 

@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,7 +12,17 @@ from sqlmodel import func, select
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
 from app.core.redis import get_redis
-from app.models import MediaPlayer
+from app.domains.inventory.models import MediaPlayer
+from app.domains.inventory.schemas import (
+    DiscoveryResults,
+    MediaPlayerCreate,
+    MediaPlayerPublic,
+    MediaPlayersPublic,
+    MediaPlayerUpdate,
+    ScanProgress,
+    ScanRequest,
+)
+from app.domains.shared.schemas import Message
 from app.observability.metrics import (
     media_player_ops_total,
     media_player_polls_total,
@@ -21,16 +30,7 @@ from app.observability.metrics import (
     network_bulk_processed_total,
     set_device_counts,
 )
-from app.schemas import (
-    DiscoveryResults,
-    MediaPlayerCreate,
-    MediaPlayerPublic,
-    MediaPlayersPublic,
-    MediaPlayerUpdate,
-    Message,
-    ScanProgress,
-    ScanRequest,
-)
+from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
 from app.services.device_poll import find_device_by_mac, find_devices_by_macs, poll_device_sync
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.event_log import write_event_log
@@ -102,18 +102,7 @@ async def _run_iconbit_discovery(subnet: str, ports: str, known_players: list[di
 
 
 async def _invalidate_cache() -> None:
-    try:
-        from app.api.websockets import broadcast_event
-
-        await broadcast_event("invalidate", "media_players")
-        r = await get_redis()
-        keys = []
-        async for key in r.scan_iter("media_players:*"):
-            keys.append(key)
-        if keys:
-            await r.delete(*keys)
-    except Exception as e:
-        logger.warning("Media player cache invalidation failed: %s", e)
+    await invalidate_entity_cache("media_players")
 
 
 @router.get("/", response_model=MediaPlayersPublic)
@@ -126,13 +115,8 @@ async def read_media_players(
     device_type: str | None = None,
 ) -> MediaPlayersPublic:
     cache_key = f"media_players:{device_type or ''}:{name or ''}:{skip}:{limit}"
-    try:
-        r = await get_redis()
-        cached = await r.get(cache_key)
-        if cached:
-            return MediaPlayersPublic(**json.loads(cached))
-    except Exception:
-        pass
+    if cached := await get_cached_model(cache_key, MediaPlayersPublic):
+        return cached
 
     statement = select(MediaPlayer)
     count_stmt = select(func.count()).select_from(MediaPlayer)
@@ -160,11 +144,7 @@ async def read_media_players(
     players = session.exec(statement.offset(skip).limit(limit).order_by(MediaPlayer.name)).all()
     result = MediaPlayersPublic(data=players, count=count)
 
-    try:
-        r = await get_redis()
-        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
-    except Exception:
-        pass
+    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
 
     return result
 

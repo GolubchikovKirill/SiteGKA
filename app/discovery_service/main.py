@@ -10,8 +10,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from app.core.config import settings
 from app.core.readiness import build_readiness_response, check_redis
 from app.core.redis import close_redis, get_redis
+from app.domains.inventory.schemas import DiscoveryResults, ScanProgress, ScanResults
 from app.observability.tracing import setup_tracing
-from app.schemas import DiscoveryResults, ScanProgress, ScanResults
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.scanner import get_scan_progress, get_scan_results, scan_subnet
 

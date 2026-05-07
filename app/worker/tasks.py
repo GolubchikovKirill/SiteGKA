@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.db import engine
-from app.models import MediaPlayer, NetworkSwitch, Printer
+from app.domains.inventory.models import MediaPlayer, NetworkSwitch, Printer
 from app.observability.metrics import (
     observe_service_edge,
     worker_task_duration_seconds,
@@ -343,4 +343,3 @@ def ml_run_cycle_task(self) -> dict:
     except Exception:
         _task_finished(operation, started_at, "error")
         raise
-

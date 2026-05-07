@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import re
 import uuid
@@ -12,19 +11,10 @@ from sqlmodel import func, select
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
 from app.core.redis import get_redis
-from app.models import NetworkSwitch
-from app.observability.metrics import (
-    network_bulk_operation_duration_seconds,
-    network_bulk_processed_total,
-    set_device_counts,
-    switch_ops_total,
-    switch_port_op_duration_seconds,
-    switch_port_ops_total,
-)
-from app.schemas import (
+from app.domains.inventory.models import NetworkSwitch
+from app.domains.inventory.schemas import (
     AccessPointInfo,
     DiscoveryResults,
-    Message,
     NetworkSwitchCreate,
     NetworkSwitchesPublic,
     NetworkSwitchPublic,
@@ -39,6 +29,16 @@ from app.schemas import (
     SwitchPortsPublic,
     SwitchPortVlanUpdate,
 )
+from app.domains.shared.schemas import Message
+from app.observability.metrics import (
+    network_bulk_operation_duration_seconds,
+    network_bulk_processed_total,
+    set_device_counts,
+    switch_ops_total,
+    switch_port_op_duration_seconds,
+    switch_port_ops_total,
+)
+from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
 from app.services.cisco_ssh import get_access_points, poe_cycle_ap, reboot_ap
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.event_log import write_event_log
@@ -166,18 +166,7 @@ CACHE_TTL = 30
 
 
 async def _invalidate_cache() -> None:
-    try:
-        from app.api.websockets import broadcast_event
-
-        await broadcast_event("invalidate", "switches")
-        r = await get_redis()
-        keys = []
-        async for key in r.scan_iter("switches:*"):
-            keys.append(key)
-        if keys:
-            await r.delete(*keys)
-    except Exception as e:
-        logger.warning("Switch cache invalidation failed: %s", e)
+    await invalidate_entity_cache("switches")
 
 
 @router.get("/", response_model=NetworkSwitchesPublic)
@@ -189,13 +178,8 @@ async def read_switches(
     name: str | None = None,
 ) -> NetworkSwitchesPublic:
     cache_key = f"switches:{name or ''}:{skip}:{limit}"
-    try:
-        r = await get_redis()
-        cached = await r.get(cache_key)
-        if cached:
-            return NetworkSwitchesPublic(**json.loads(cached))
-    except Exception:
-        pass
+    if cached := await get_cached_model(cache_key, NetworkSwitchesPublic):
+        return cached
 
     statement = select(NetworkSwitch)
     count_stmt = select(func.count()).select_from(NetworkSwitch)
@@ -223,11 +207,7 @@ async def read_switches(
     )
     result = NetworkSwitchesPublic(data=switches, count=count)
 
-    try:
-        r = await get_redis()
-        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
-    except Exception:
-        pass
+    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
 
     return result
 

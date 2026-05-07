@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.models import MediaPlayer, MLFeatureSnapshot, NetworkSwitch, Printer
+from app.domains.inventory.models import MediaPlayer, NetworkSwitch, Printer
+from app.domains.ml.models import MLFeatureSnapshot
 
 
-def _base_snapshot(*, device_kind: str, device_id, device_name: str | None, address: str | None, is_online: bool | None):
+def _base_snapshot(
+    *, device_kind: str, device_id, device_name: str | None, address: str | None, is_online: bool | None
+):
     now = datetime.now(UTC)
     return {
         "device_kind": device_kind,

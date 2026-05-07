@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.models import AppSetting
+from app.domains.operations.models import AppSetting
 
 GENERAL_SETTINGS_KEYS = {
     "scan_subnet",
