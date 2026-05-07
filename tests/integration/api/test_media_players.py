@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from fastapi.testclient import TestClient
 
 from app.api.routes import media_players as media_routes
+from app.domains.inventory import media_polling
 
 
 @dataclass
@@ -19,8 +20,12 @@ def test_create_media_player_and_poll(client: TestClient, admin_token: str, monk
     async def _no_move(_mac: str):
         return None
 
-    monkeypatch.setattr(media_routes, "_poll_one", lambda _player: ("10.10.10.20", _PollResult(open_ports=[445, 3389])))
-    monkeypatch.setattr(media_routes, "find_device_by_mac", _no_move)
+    monkeypatch.setattr(
+        media_polling,
+        "poll_one_media_player",
+        lambda _player: ("10.10.10.20", _PollResult(open_ports=[445, 3389])),
+    )
+    monkeypatch.setattr(media_polling, "find_device_by_mac", _no_move)
 
     created = client.post(
         "/api/v1/media-players/",
@@ -130,12 +135,12 @@ def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token:
     )
     assert created.status_code == 200
 
-    monkeypatch.setattr(media_routes, "check_tcp_port", lambda _ip, port=8081, timeout=2.5: port == 8081)
+    monkeypatch.setattr(media_polling, "check_port", lambda _ip, port=8081, timeout=2.5: port == 8081)
 
     def _should_not_be_called(_address: str):
         raise RuntimeError("generic poll should not be used for iconbit in bulk")
 
-    monkeypatch.setattr(media_routes, "poll_device_sync", _should_not_be_called)
+    monkeypatch.setattr(media_polling, "poll_device_sync", _should_not_be_called)
 
     polled = client.post(
         "/api/v1/media-players/poll-all",

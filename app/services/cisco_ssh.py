@@ -8,12 +8,12 @@ Supports:
 
 from __future__ import annotations
 
-from contextlib import suppress
 import logging
 import re
 import socket
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 
 import paramiko

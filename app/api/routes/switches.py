@@ -3,7 +3,7 @@ import logging
 import re
 import uuid
 from datetime import UTC, datetime
-from time import monotonic, perf_counter
+from time import monotonic
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import func, select
@@ -29,10 +29,13 @@ from app.domains.inventory.schemas import (
     SwitchPortsPublic,
     SwitchPortVlanUpdate,
 )
+from app.domains.inventory.switch_polling import (
+    SwitchNotFoundError,
+    poll_all_switches_local,
+    poll_single_switch_local,
+)
 from app.domains.shared.schemas import Message
 from app.observability.metrics import (
-    network_bulk_operation_duration_seconds,
-    network_bulk_processed_total,
     set_device_counts,
     switch_ops_total,
     switch_port_op_duration_seconds,
@@ -43,8 +46,6 @@ from app.services.cisco_ssh import get_access_points, poe_cycle_ap, reboot_ap
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.event_log import write_event_log
 from app.services.internal_services import _proxy_request
-from app.services.ml_snapshots import write_switch_snapshot
-from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
 from app.services.smart_search import build_ilike_filter, text_matches_query
 from app.services.switches import resolve_switch_provider
 
@@ -138,21 +139,6 @@ async def _enforce_switch_cooldown(*, switch_id: uuid.UUID, port: str, operation
                     detail=f"Operation throttled by safety cooldown ({cooldown}s). Try again later.",
                 )
             _local_switch_cooldowns[cooldown_key] = now + cooldown
-
-
-def _record_status_change(session: SessionDep, sw: NetworkSwitch, was_online: bool | None) -> None:
-    if was_online is None or was_online == sw.is_online:
-        return
-    write_event_log(
-        session,
-        category="device",
-        event_type="device_online" if sw.is_online else "device_offline",
-        severity="info" if sw.is_online else "warning",
-        device_kind="switch",
-        device_name=sw.name,
-        ip_address=sw.ip_address,
-        message=f"Network device '{sw.name}' is now {'online' if sw.is_online else 'offline'}",
-    )
 
 
 async def _run_switch_discovery(subnet: str, ports: str, known_switches: list[dict]) -> None:
@@ -385,6 +371,7 @@ async def delete_switch(session: SessionDep, switch_id: uuid.UUID) -> Message:
 async def poll_switch(
     switch_id: uuid.UUID, session: SessionDep, current_user: CurrentUser
 ) -> NetworkSwitch | NetworkSwitchPublic:
+    del current_user
     if settings.POLLING_SERVICE_ENABLED:
         payload = await _proxy_request(
             base_url=settings.POLLING_SERVICE_URL,
@@ -393,27 +380,10 @@ async def poll_switch(
         )
         return NetworkSwitchPublic.model_validate(payload)
 
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
+    try:
+        return await poll_single_switch_local(session=session, switch_id=switch_id)
+    except SwitchNotFoundError:
         raise HTTPException(status_code=404, detail="Switch not found")
-
-    was_online = switch.is_online
-    provider = resolve_switch_provider(switch)
-    info = await asyncio.to_thread(provider.poll_switch, switch)
-
-    switch.is_online = info.is_online
-    switch_ops_total.labels(operation="poll", result="online" if info.is_online else "offline").inc()
-    switch.hostname = info.hostname or switch.hostname
-    switch.model_info = info.model_info or switch.model_info
-    switch.ios_version = info.ios_version or switch.ios_version
-    switch.uptime = info.uptime or switch.uptime
-    switch.last_polled_at = datetime.now(UTC)
-    _record_status_change(session, switch, was_online)
-    write_switch_snapshot(session, switch, source="single_poll")
-    session.add(switch)
-    session.commit()
-    session.refresh(switch)
-    return switch
 
 
 @router.post("/poll-all", response_model=Message)
@@ -430,106 +400,7 @@ async def poll_all_switches(
         )
         return Message.model_validate(payload)
 
-    started = perf_counter()
-    lock_key = "lock:poll-all:switches"
-    lock_acquired = True
-    try:
-        r = await get_redis()
-        lock_acquired = bool(await r.set(lock_key, "1", ex=45, nx=True))
-    except Exception:
-        lock_acquired = True
-    if not lock_acquired:
-        logger.info("Skipping duplicate poll-all request for switches: lock busy")
-        return Message(message="Switch poll already in progress")
-    switches = session.exec(select(NetworkSwitch)).all()
-    error_count = 0
-
-    semaphore = asyncio.Semaphore(12)
-
-    async def _poll_one(sw: NetworkSwitch) -> tuple[NetworkSwitch, object | None, Exception | None]:
-        try:
-            async with semaphore:
-                await poll_jitter_async()
-                provider = resolve_switch_provider(sw)
-                info = await asyncio.to_thread(provider.poll_switch, sw)
-                return sw, info, None
-        except Exception as exc:  # pragma: no cover - defensive
-            return sw, None, exc
-
-    try:
-        poll_targets: list[NetworkSwitch] = []
-        for sw in switches:
-            if await is_circuit_open("switch", str(sw.id)):
-                switch_ops_total.labels(operation="poll_all", result="skipped").inc()
-                continue
-            poll_targets.append(sw)
-
-        results = await asyncio.gather(*[_poll_one(sw) for sw in poll_targets]) if poll_targets else []
-        for switch, info, exc in results:
-            try:
-                was_online = switch.is_online
-                if exc:
-                    raise exc
-                if info is None:
-                    raise RuntimeError("poll returned no data")
-                effective_online = await apply_poll_outcome(
-                    kind="switch",
-                    entity_id=str(switch.id),
-                    previous_effective_online=bool(switch.is_online),
-                    probed_online=bool(info.is_online),
-                    probed_error=False,
-                )
-                switch.is_online = effective_online
-                switch.hostname = info.hostname or switch.hostname
-                switch.model_info = info.model_info or switch.model_info
-                switch.ios_version = info.ios_version or switch.ios_version
-                switch.uptime = info.uptime or switch.uptime
-                switch.last_polled_at = datetime.now(UTC)
-                _record_status_change(session, switch, was_online)
-                switch_ops_total.labels(operation="poll_all", result="online" if effective_online else "offline").inc()
-                write_switch_snapshot(session, switch, source="bulk_poll")
-                session.add(switch)
-            except Exception as exc:
-                logger.warning("Bulk switch poll failed for %s (%s): %s", switch.name, switch.ip_address, exc)
-                write_event_log(
-                    session,
-                    category="system",
-                    event_type="critical_poll_error",
-                    severity="critical",
-                    device_kind="switch",
-                    device_name=switch.name,
-                    ip_address=switch.ip_address,
-                    message=f"Critical switch poll error for '{switch.name}': {exc}",
-                )
-                switch.is_online = await apply_poll_outcome(
-                    kind="switch",
-                    entity_id=str(switch.id),
-                    previous_effective_online=bool(switch.is_online),
-                    probed_online=False,
-                    probed_error=True,
-                )
-                switch.last_polled_at = datetime.now(UTC)
-                write_switch_snapshot(session, switch, source="bulk_poll_error")
-                session.add(switch)
-                switch_ops_total.labels(operation="poll_all", result="error").inc()
-                error_count += 1
-        session.commit()
-        network_bulk_processed_total.labels(operation="switch_poll_all", result="success").inc(
-            max(len(switches) - error_count, 0)
-        )
-        if error_count:
-            network_bulk_processed_total.labels(operation="switch_poll_all", result="error").inc(error_count)
-        network_bulk_operation_duration_seconds.labels(operation="switch_poll_all").observe(
-            max(perf_counter() - started, 0)
-        )
-        return Message(message="Switches polled")
-    finally:
-        if lock_acquired:
-            try:
-                r = await get_redis()
-                await r.delete(lock_key)
-            except Exception:
-                pass
+    return await poll_all_switches_local(session=session)
 
 
 @router.get("/{switch_id}/access-points", response_model=list[AccessPointInfo])

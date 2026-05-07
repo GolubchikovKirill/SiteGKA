@@ -1,6 +1,4 @@
-import asyncio
 import csv
-import logging
 import uuid
 from datetime import UTC, datetime
 from io import StringIO
@@ -11,7 +9,12 @@ from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
-from app.domains.inventory.reachability import probe_host_ports
+from app.domains.operations.cash_register_polling import (
+    CashRegisterNotFoundError,
+    cash_register_offline_reason_ru,
+    poll_all_cash_registers_local,
+    poll_single_cash_register_local,
+)
 from app.domains.operations.models import CashRegister
 from app.domains.operations.schemas import (
     CashRegisterCreate,
@@ -21,11 +24,8 @@ from app.domains.operations.schemas import (
 )
 from app.domains.shared.schemas import Message
 from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
-from app.services.event_log import write_event_log
 from app.services.internal_services import _proxy_request
 from app.services.smart_search import build_ilike_filter
-
-logger = logging.getLogger(__name__)
 
 CACHE_TTL = 30
 
@@ -35,52 +35,6 @@ async def _invalidate_cache() -> None:
 
 
 router = APIRouter(tags=["cash-registers"])
-
-
-def _probe_register(hostname: str) -> tuple[bool, str | None]:
-    result = probe_host_ports(
-        hostname,
-        ports=(3389, 445),
-        timeout=1.5,
-        dns_search_suffixes=settings.DNS_SEARCH_SUFFIXES,
-    )
-    return result.is_online, result.reason
-
-
-def _offline_reason_ru(reason: str | None) -> str:
-    if reason == "dns_unresolved":
-        return "hostname не резолвится"
-    if reason == "port_closed":
-        return "сетевые порты недоступны"
-    return "хост недоступен"
-
-
-def _record_status_change(session, reg: CashRegister, prev_online: bool | None) -> None:
-    if prev_online == reg.is_online:
-        return
-    if reg.is_online:
-        write_event_log(
-            session,
-            event_type="cash_register_online",
-            category="availability",
-            severity="info",
-            device_kind="cash_register",
-            device_name=f"ККМ №{reg.kkm_number}",
-            ip_address=reg.hostname,
-            message=f"Касса ККМ №{reg.kkm_number} снова online ({reg.hostname})",
-        )
-        return
-    reason = _offline_reason_ru(reg.reachability_reason)
-    write_event_log(
-        session,
-        event_type="cash_register_offline",
-        category="availability",
-        severity="warning",
-        device_kind="cash_register",
-        device_name=f"ККМ №{reg.kkm_number}",
-        ip_address=reg.hostname,
-        message=f"Касса ККМ №{reg.kkm_number} offline ({reason})",
-    )
 
 
 @router.get("/", response_model=CashRegistersPublic)
@@ -170,19 +124,10 @@ async def poll_cash_register(
         )
         return CashRegisterPublic.model_validate(payload)
 
-    cash = session.get(CashRegister, cash_id)
-    if not cash:
+    try:
+        return await poll_single_cash_register_local(session=session, cash_id=cash_id)
+    except CashRegisterNotFoundError:
         raise HTTPException(status_code=404, detail="Cash register not found")
-    prev_online = cash.is_online
-    is_online, reason = await asyncio.to_thread(_probe_register, cash.hostname)
-    cash.is_online = is_online
-    cash.reachability_reason = reason
-    cash.last_polled_at = datetime.now(UTC)
-    _record_status_change(session, cash, prev_online)
-    session.add(cash)
-    session.commit()
-    session.refresh(cash)
-    return cash
 
 
 @router.post("/poll-all", response_model=CashRegistersPublic)
@@ -196,18 +141,7 @@ async def poll_all_cash_registers(session: SessionDep, current_user: CurrentUser
         )
         return CashRegistersPublic.model_validate(payload)
 
-    rows = session.exec(select(CashRegister)).all()
-    for row in rows:
-        prev_online = row.is_online
-        is_online, reason = await asyncio.to_thread(_probe_register, row.hostname)
-        row.is_online = is_online
-        row.reachability_reason = reason
-        row.last_polled_at = datetime.now(UTC)
-        _record_status_change(session, row, prev_online)
-        session.add(row)
-    session.commit()
-    result = session.exec(select(CashRegister).order_by(CashRegister.kkm_number)).all()
-    return CashRegistersPublic(data=result, count=len(result))
+    return await poll_all_cash_registers_local(session=session)
 
 
 @router.get("/export")
@@ -271,7 +205,7 @@ def export_cash_registers_csv(
                 row.hostname,
                 row.comment or "",
                 "online" if row.is_online else "offline",
-                _offline_reason_ru(row.reachability_reason) if row.is_online is False else "",
+                cash_register_offline_reason_ru(row.reachability_reason) if row.is_online is False else "",
                 row.last_polled_at.isoformat() if row.last_polled_at else "",
             ]
         )

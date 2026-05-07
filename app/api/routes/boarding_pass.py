@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_active_superuser
 from app.api.routes._service_errors import to_http_error
-from app.schemas import BoardingPassRequest
+from app.domains.integrations.schemas import BoardingPassRequest
 from app.services.boarding_pass import BoardingPassService
 
 router = APIRouter(tags=["boarding-pass"])

@@ -4,10 +4,10 @@ import datetime as dt
 import io
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw
 import qrcode
+from PIL import Image, ImageDraw
 
-from app.schemas import BoardingPassRequest
+from app.domains.integrations.schemas import BoardingPassRequest
 
 
 @dataclass(frozen=True)
@@ -125,6 +125,7 @@ class BoardingPassService:
             payload=payload_text,
             content=content,
         )
+
 
 _default_service = BoardingPassService()
 _default_payload_builder = BoardingPassPayloadBuilder()
