@@ -11,8 +11,8 @@ import yaml
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.models import EventLog
-from app.schemas import (
+from app.domains.operations.models import EventLog
+from app.domains.operations.schemas import (
     ServiceFlowEdgePublic,
     ServiceFlowLinkPublic,
     ServiceFlowMapPublic,
@@ -134,7 +134,14 @@ def _node_links(node_id: str) -> list[ServiceFlowLinkPublic]:
             url=f"{settings.JAEGER_UI_URL.rstrip('/')}/search?service={node_id}",
         )
     ]
-    if node_id in {"backend", "polling-service", "discovery-service", "network-control-service", "ml-service", "worker"}:
+    if node_id in {
+        "backend",
+        "polling-service",
+        "discovery-service",
+        "network-control-service",
+        "ml-service",
+        "worker",
+    }:
         links.append(
             ServiceFlowLinkPublic(
                 label="Prometheus metrics",
@@ -320,14 +327,8 @@ def build_service_flow_timeseries(
 
     if source and target:
         selector = f'source_service="{source}",target_service="{target}"'
-        req_query = (
-            "sum(rate(infrascope_service_edge_requests_total"
-            f"{{{selector}}}[2m]))"
-        )
-        err_query = (
-            "sum(rate(infrascope_service_edge_requests_total"
-            f"{{{selector},result=\"error\"}}[2m]))"
-        )
+        req_query = f"sum(rate(infrascope_service_edge_requests_total{{{selector}}}[2m]))"
+        err_query = f'sum(rate(infrascope_service_edge_requests_total{{{selector},result="error"}}[2m]))'
         p95_query = (
             "histogram_quantile(0.95, sum(rate(infrascope_service_edge_request_duration_seconds_bucket"
             f"{{{selector}}}[2m])) by (le))"
@@ -338,17 +339,20 @@ def build_service_flow_timeseries(
         if job == "worker":
             req_query = "sum(rate(infrascope_worker_task_executions_total[2m]))"
             err_query = 'sum(rate(infrascope_worker_task_executions_total{result="error"}[2m]))'
-            p95_query = "histogram_quantile(0.95, sum(rate(infrascope_worker_task_duration_seconds_bucket[2m])) by (le))"
+            p95_query = (
+                "histogram_quantile(0.95, sum(rate(infrascope_worker_task_duration_seconds_bucket[2m])) by (le))"
+            )
         else:
             req_query = f'sum(rate(http_requests_total{{job="{job}"}}[2m]))'
             err_query = f'sum(rate(http_requests_total{{job="{job}",status=~"5.."}}[2m]))'
             p95_query = (
-                "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket"
-                f'{{job="{job}"}}[2m])) by (le))'
+                f'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{{job="{job}"}}[2m])) by (le))'
             )
         entity = f"service:{job}"
 
     req_series = _query_range(req_query, start_ts=start_ts, end_ts=now_ts, step_seconds=max(step_seconds, 5))
     err_series = _query_range(err_query, start_ts=start_ts, end_ts=now_ts, step_seconds=max(step_seconds, 5))
     p95_series = _query_range(p95_query, start_ts=start_ts, end_ts=now_ts, step_seconds=max(step_seconds, 5))
-    return ServiceFlowTimeseriesPublic(entity=entity, points=_extract_timeseries_points(req_series, err_series, p95_series))
+    return ServiceFlowTimeseriesPublic(
+        entity=entity, points=_extract_timeseries_points(req_series, err_series, p95_series)
+    )

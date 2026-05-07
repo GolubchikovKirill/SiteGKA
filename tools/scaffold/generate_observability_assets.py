@@ -109,7 +109,9 @@ def main() -> int:
 
     targets_path = repo_root / "monitoring" / "prometheus" / "rules" / "service-targets.json"
     targets_path.parent.mkdir(parents=True, exist_ok=True)
-    targets_path.write_text(json.dumps(_build_prometheus_targets(descriptors), ensure_ascii=True, indent=2), encoding="utf-8")
+    targets_path.write_text(
+        json.dumps(_build_prometheus_targets(descriptors), ensure_ascii=True, indent=2), encoding="utf-8"
+    )
 
     alerts_path = repo_root / "monitoring" / "prometheus" / "rules" / "generated-service-alerts.yml"
     alerts_path.write_text(yaml.safe_dump(_build_generated_alerts(descriptors), sort_keys=False), encoding="utf-8")

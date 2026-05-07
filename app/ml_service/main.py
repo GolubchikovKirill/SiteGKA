@@ -13,8 +13,8 @@ from app.core.config import settings
 from app.core.db import engine
 from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import get_redis
+from app.domains.ml.models import MLModelRegistry
 from app.ml.pipeline import run_scoring_cycle, run_training_cycle
-from app.models import MLModelRegistry
 from app.observability.metrics import ml_train_runs_total
 from app.observability.tracing import setup_tracing
 
@@ -55,11 +55,7 @@ async def _scheduler_loop() -> None:
         now = datetime.now(UTC)
         today = now.strftime("%Y-%m-%d")
         try:
-            if (
-                settings.ML_ENABLED
-                and now.hour == settings.ML_RETRAIN_HOUR_UTC
-                and state.last_training_day != today
-            ):
+            if settings.ML_ENABLED and now.hour == settings.ML_RETRAIN_HOUR_UTC and state.last_training_day != today:
                 await _run_training()
                 await _run_scoring()
                 state.last_training_day = today

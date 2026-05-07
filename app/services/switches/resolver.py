@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models import NetworkSwitch
+from app.domains.inventory.models import NetworkSwitch
 from app.services.switches.cisco_provider import CiscoSwitchProvider
 from app.services.switches.dlink_provider import DLinkSwitchProvider
 from app.services.switches.snmp_provider import SnmpSwitchProvider

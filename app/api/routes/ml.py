@@ -8,13 +8,9 @@ from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
-from app.models import MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
-from app.schemas import (
-    Message,
-    MLModelsStatusPublic,
-    MLOfflineRiskPredictionsPublic,
-    MLTonerPredictionsPublic,
-)
+from app.domains.ml.models import MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
+from app.domains.ml.schemas import MLModelsStatusPublic, MLOfflineRiskPredictionsPublic, MLTonerPredictionsPublic
+from app.domains.shared.schemas import Message
 
 router = APIRouter(tags=["ml"])
 

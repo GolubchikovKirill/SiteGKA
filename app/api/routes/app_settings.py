@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
-from app.schemas import GeneralSettingsPublic, GeneralSettingsUpdate
+from app.domains.operations.schemas import GeneralSettingsPublic, GeneralSettingsUpdate
 from app.services.app_settings import get_general_settings, update_general_settings
 
 router = APIRouter(tags=["app-settings"])

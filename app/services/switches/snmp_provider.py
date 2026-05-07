@@ -17,7 +17,7 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
 from pysnmp.hlapi.asyncio.cmdgen import getCmd, setCmd, walkCmd  # noqa: E402
 from pysnmp.proto.rfc1902 import Integer, OctetString  # noqa: E402
 
-from app.models import NetworkSwitch  # noqa: E402
+from app.domains.inventory.models import NetworkSwitch  # noqa: E402
 from app.observability.metrics import snmp_operations_total  # noqa: E402
 from app.services.switches.base import SwitchPollInfo, SwitchPortState  # noqa: E402
 

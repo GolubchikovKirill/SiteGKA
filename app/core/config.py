@@ -36,9 +36,7 @@ class Settings(BaseSettings):
                 'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
         if self.ENVIRONMENT == "production" and self._is_weak_bootstrap_password(self.FIRST_SUPERUSER_PASSWORD):
-            raise ValueError(
-                "FIRST_SUPERUSER_PASSWORD must be explicitly set to a strong value in production."
-            )
+            raise ValueError("FIRST_SUPERUSER_PASSWORD must be explicitly set to a strong value in production.")
         internal_services_enabled = any(
             (
                 self.POLLING_SERVICE_ENABLED,
@@ -47,9 +45,7 @@ class Settings(BaseSettings):
             )
         )
         if self.ENVIRONMENT == "production" and internal_services_enabled and not self.INTERNAL_SERVICE_TOKEN.strip():
-            raise ValueError(
-                "INTERNAL_SERVICE_TOKEN must be set in production when internal services are enabled."
-            )
+            raise ValueError("INTERNAL_SERVICE_TOKEN must be set in production when internal services are enabled.")
         return self
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15 minutes

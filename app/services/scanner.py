@@ -88,6 +88,7 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
     has global state that causes failures under concurrency.
     """
     import warnings
+
     warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
 
     OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
@@ -112,7 +113,10 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
 
         # sysDescr
         result = await getCmd(
-            engine, comm, target, ctx,
+            engine,
+            comm,
+            target,
+            ctx,
             ObjectType(ObjectIdentity(OID_SYS_DESCR)),
         )
         error_indication, _, _, var_binds = result
@@ -124,7 +128,10 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
         # ifPhysAddress (walk to find first non-empty 6-byte MAC)
         try:
             async for err, _, _, vb in walkCmd(
-                engine, comm, target, ctx,
+                engine,
+                comm,
+                target,
+                ctx,
                 ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
             ):
                 if err:
@@ -154,9 +161,7 @@ def _snmp_batch(ips: list[str]) -> dict[str, SnmpInfo]:
     return results
 
 
-async def _update_progress(
-    status: str, scanned: int, total: int, found: int, message: str | None = None
-) -> None:
+async def _update_progress(status: str, scanned: int, total: int, found: int, message: str | None = None) -> None:
     r = await get_redis()
     progress = {
         "status": status,

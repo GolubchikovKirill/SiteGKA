@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # ── MIB-2 System OIDs ──────────────────────────────────────────────────────
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
-OID_SYS_NAME  = "1.3.6.1.2.1.1.5.0"
+OID_SYS_NAME = "1.3.6.1.2.1.1.5.0"
 
 # ── Host Resources MIB — printer status (walk to find any hrDeviceIndex) ───
 OID_PRINTER_STATUS_BASE = "1.3.6.1.2.1.25.3.5.1.1"
@@ -58,35 +58,39 @@ OID_PRINTER_STATUS_BASE = "1.3.6.1.2.1.25.3.5.1.1"
 # ── Printer MIB (RFC 3805) — marker supply OIDs ────────────────────────────
 # Walk from base WITHOUT device index so we catch all hrDeviceIndex values.
 # Some printers use index 1, others use 2 — walking the base handles both.
-OID_MARKER_DESCR      = "1.3.6.1.2.1.43.11.1.1.6"   # prtMarkerSuppliesDescription
-OID_MARKER_TYPE       = "1.3.6.1.2.1.43.11.1.1.5"   # prtMarkerSuppliesType
-OID_MARKER_MAX        = "1.3.6.1.2.1.43.11.1.1.8"   # prtMarkerSuppliesMaxCapacity
-OID_MARKER_LEVEL      = "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
-OID_MARKER_COLORANT_IDX = "1.3.6.1.2.1.43.11.1.1.3" # prtMarkerSuppliesColorantIndex
-OID_COLORANT_VALUE    = "1.3.6.1.2.1.43.12.1.1.4"   # prtMarkerColorantValue
+OID_MARKER_DESCR = "1.3.6.1.2.1.43.11.1.1.6"  # prtMarkerSuppliesDescription
+OID_MARKER_TYPE = "1.3.6.1.2.1.43.11.1.1.5"  # prtMarkerSuppliesType
+OID_MARKER_MAX = "1.3.6.1.2.1.43.11.1.1.8"  # prtMarkerSuppliesMaxCapacity
+OID_MARKER_LEVEL = "1.3.6.1.2.1.43.11.1.1.9"  # prtMarkerSuppliesLevel
+OID_MARKER_COLORANT_IDX = "1.3.6.1.2.1.43.11.1.1.3"  # prtMarkerSuppliesColorantIndex
+OID_COLORANT_VALUE = "1.3.6.1.2.1.43.12.1.1.4"  # prtMarkerColorantValue
 
 # RFC 3805 prtMarkerSuppliesType values — consumable types we track
-_CONSUMABLE_SUPPLY_TYPES: frozenset[int] = frozenset({
-    3,   # toner
-    5,   # ink
-    6,   # inkCartridge
-    10,  # developer
-    21,  # tonerCartridge
-})
+_CONSUMABLE_SUPPLY_TYPES: frozenset[int] = frozenset(
+    {
+        3,  # toner
+        5,  # ink
+        6,  # inkCartridge
+        10,  # developer
+        21,  # tonerCartridge
+    }
+)
 # Non-consumable supply types we always skip
-_NON_CONSUMABLE_SUPPLY_TYPES: frozenset[int] = frozenset({
-    4,   # wasteToner
-    8,   # wasteInk
-    9,   # opc (photo conductor)
-    11,  # fuserOil
-    14,  # wasteWax
-    15,  # fuser
-    16,  # coronaWire
-    17,  # fuserOilWick
-    18,  # cleanerUnit
-    19,  # fuserCleaningPad
-    20,  # transferUnit
-})
+_NON_CONSUMABLE_SUPPLY_TYPES: frozenset[int] = frozenset(
+    {
+        4,  # wasteToner
+        8,  # wasteInk
+        9,  # opc (photo conductor)
+        11,  # fuserOil
+        14,  # wasteWax
+        15,  # fuser
+        16,  # coronaWire
+        17,  # fuserOilWick
+        18,  # cleanerUnit
+        19,  # fuserCleaningPad
+        20,  # transferUnit
+    }
+)
 
 # ── Brother proprietary OIDs ────────────────────────────────────────────────
 BROTHER_TONER_BASE = "1.3.6.1.4.1.2435.2.3.9.4.2.1.5.5.10.0.1"
@@ -114,41 +118,51 @@ PRINTER_STATUS_MAP: dict[int, str] = {
 # Padded with spaces so " bk " matches as a word, not substring of "black".
 COLOR_KEYWORDS: dict[str, str] = {
     # English
-    "black":       "black",
-    "cyan":        "cyan",
-    "magenta":     "magenta",
-    "yellow":      "yellow",
+    "black": "black",
+    "cyan": "cyan",
+    "magenta": "magenta",
+    "yellow": "yellow",
     "photo black": "black",
     "matte black": "black",
     # Abbreviations (space-padded for word boundary)
-    " bk ":  "black",
-    "-bk ":  "black",
+    " bk ": "black",
+    "-bk ": "black",
     " bk\n": "black",
-    " k ":   "black",
-    " c ":   "cyan",
-    " m ":   "magenta",
-    " y ":   "yellow",
+    " k ": "black",
+    " c ": "cyan",
+    " m ": "magenta",
+    " y ": "yellow",
     # German
     "schwarz": "black",
-    "gelb":    "yellow",
+    "gelb": "yellow",
     # French
-    "noir":   "black",
-    "jaune":  "yellow",
+    "noir": "black",
+    "jaune": "yellow",
     # Russian
-    "чёрный":    "black",
-    "черный":    "black",
-    "голубой":   "cyan",
+    "чёрный": "black",
+    "черный": "black",
+    "голубой": "cyan",
     "пурпурный": "magenta",
     "малиновый": "magenta",
-    "жёлтый":   "yellow",
-    "желтый":   "yellow",
+    "жёлтый": "yellow",
+    "желтый": "yellow",
 }
 
 # Words that indicate a supply is NOT toner (drum, maintenance, waste, etc.)
-NON_TONER_KEYWORDS: frozenset[str] = frozenset({
-    "drum", "kit", "maintenance", "fuser", "waste",
-    "belt", "transfer", "roller", "cleaner", "filter",
-})
+NON_TONER_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "drum",
+        "kit",
+        "maintenance",
+        "fuser",
+        "waste",
+        "belt",
+        "transfer",
+        "roller",
+        "cleaner",
+        "filter",
+    }
+)
 
 SNMP_TIMEOUT = 5
 SNMP_RETRIES = 2
@@ -188,6 +202,7 @@ _SUFFIX_COLOR_RE: list[tuple[re.Pattern[str], str]] = [
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────
+
 
 def _detect_color(description: str) -> str | None:
     desc = " " + description.lower() + " "
@@ -257,6 +272,7 @@ def _extract_supply_key(oid: str) -> str:
 
 # ── SNMP primitives ────────────────────────────────────────────────────────
 
+
 def _decode_snmp_value(val) -> str:
     """Decode SNMP value, handling UTF-8 encoded OctetStrings correctly."""
     if hasattr(val, "asOctets"):
@@ -279,7 +295,10 @@ async def _snmp_get(
     oid: str,
 ) -> str | None:
     error_indication, error_status, _error_index, var_binds = await getCmd(
-        engine, community, target, ContextData(),
+        engine,
+        community,
+        target,
+        ContextData(),
         ObjectType(ObjectIdentity(oid)),
     )
     if error_indication or error_status:
@@ -297,7 +316,10 @@ async def _snmp_walk(
 ) -> list[tuple[str, str]]:
     results: list[tuple[str, str]] = []
     async for error_indication, error_status, _error_index, var_binds in walkCmd(
-        engine, community, target, ContextData(),
+        engine,
+        community,
+        target,
+        ContextData(),
         ObjectType(ObjectIdentity(oid)),
         lexicographicMode=False,
     ):
@@ -309,6 +331,7 @@ async def _snmp_walk(
 
 
 # ── Toner strategies ───────────────────────────────────────────────────────
+
 
 async def _get_standard_toners(
     engine: SnmpEngine,
@@ -334,7 +357,7 @@ async def _get_standard_toners(
         return []
 
     types_raw = await _snmp_walk(engine, target, comm, OID_MARKER_TYPE)
-    max_raw   = await _snmp_walk(engine, target, comm, OID_MARKER_MAX)
+    max_raw = await _snmp_walk(engine, target, comm, OID_MARKER_MAX)
     level_raw = await _snmp_walk(engine, target, comm, OID_MARKER_LEVEL)
 
     # If WALK worked for descriptions but not for levels, try GET fallback too
@@ -361,7 +384,7 @@ async def _get_standard_toners(
     colorant_val_raw = await _snmp_walk(engine, target, comm, OID_COLORANT_VALUE)
 
     types_map = {_extract_supply_key(oid): val for oid, val in types_raw}
-    max_map   = {_extract_supply_key(oid): val for oid, val in max_raw}
+    max_map = {_extract_supply_key(oid): val for oid, val in max_raw}
     level_map = {_extract_supply_key(oid): val for oid, val in level_raw}
     colorant_idx_map = {_extract_supply_key(oid): val for oid, val in colorant_idx_raw}
 
@@ -424,18 +447,19 @@ async def _get_standard_toners(
             # Monochrome printer with single supply — assume black
             color = "black"
 
-        toners.append(TonerLevel(
-            description=desc,
-            color=color,
-            level_pct=pct,
-            max_capacity=max_val,
-            current_level=cur_val,
-        ))
+        toners.append(
+            TonerLevel(
+                description=desc,
+                color=color,
+                level_pct=pct,
+                max_capacity=max_val,
+                current_level=cur_val,
+            )
+        )
 
     if descriptions and not toners:
         logger.info(
-            "Found %d supply entries but all filtered out — "
-            "descriptions: %s",
+            "Found %d supply entries but all filtered out — descriptions: %s",
             len(descriptions),
             [(d, types_map.get(_extract_supply_key(o))) for o, d in descriptions],
         )
@@ -462,13 +486,15 @@ async def _get_brother_toners(
         except (ValueError, TypeError):
             pct = None
 
-        toners.append(TonerLevel(
-            description=f"{color or 'unknown'} toner",
-            color=color,
-            level_pct=pct,
-            max_capacity=100,
-            current_level=pct if pct is not None else 0,
-        ))
+        toners.append(
+            TonerLevel(
+                description=f"{color or 'unknown'} toner",
+                color=color,
+                level_pct=pct,
+                max_capacity=100,
+                current_level=pct if pct is not None else 0,
+            )
+        )
     return toners
 
 
@@ -507,13 +533,15 @@ async def _get_ricoh_toners(
         if not color and len(level_raw) == 1:
             color = "black"
 
-        ricoh_toners.append(TonerLevel(
-            description=desc or f"{color or 'unknown'} toner",
-            color=color,
-            level_pct=pct,
-            max_capacity=100,
-            current_level=raw_val if raw_val >= 0 else 0,
-        ))
+        ricoh_toners.append(
+            TonerLevel(
+                description=desc or f"{color or 'unknown'} toner",
+                color=color,
+                level_pct=pct,
+                max_capacity=100,
+                current_level=raw_val if raw_val >= 0 else 0,
+            )
+        )
 
     # Only use Ricoh proprietary data if it has at least one precise level (>= 0)
     has_precise = any(t.level_pct is not None and t.level_pct >= 0 for t in ricoh_toners)
@@ -639,13 +667,15 @@ def _parse_hp_consumable_xml(data: bytes) -> list[TonerLevel]:
                 desc = text
 
         if is_consumable and pct is not None and color:
-            toners.append(TonerLevel(
-                description=desc or f"{color} toner",
-                color=color,
-                level_pct=pct,
-                max_capacity=100,
-                current_level=pct,
-            ))
+            toners.append(
+                TonerLevel(
+                    description=desc or f"{color} toner",
+                    color=color,
+                    level_pct=pct,
+                    max_capacity=100,
+                    current_level=pct,
+                )
+            )
 
     return toners
 
@@ -653,24 +683,31 @@ def _parse_hp_consumable_xml(data: bytes) -> list[TonerLevel]:
 # Regex: color from GIF filename, then percentage in next <td>
 _HP_HTML_TONER_RE = re.compile(
     r'<img\s+src="(Black|Cyan|Magenta|Yellow)_Toner\.gif"'
-    r'.*?'
-    r'(\d+)\s*%',
+    r".*?"
+    r"(\d+)\s*%",
     re.IGNORECASE | re.DOTALL,
 )
 
 # Fallback: any percentage near a color keyword in the HTML
 _HP_HTML_COLOR_PCT_RE = re.compile(
-    r'(?:'
-    r'(?P<color1>black|cyan|magenta|yellow|'
-    r'[чЧ]ерн\w*|[гГ]олуб\w*|[пП]урпурн\w*|[мМ]алинов\w*|[жЖ]елт\w*)'
-    r'.{1,300}?(?P<pct1>\d{1,3})\s*%'
-    r')',
+    r"(?:"
+    r"(?P<color1>black|cyan|magenta|yellow|"
+    r"[чЧ]ерн\w*|[гГ]олуб\w*|[пП]урпурн\w*|[мМ]алинов\w*|[жЖ]елт\w*)"
+    r".{1,300}?(?P<pct1>\d{1,3})\s*%"
+    r")",
     re.IGNORECASE | re.DOTALL,
 )
 
 _HTML_COLOR_MAP: dict[str, str] = {
-    "black": "black", "cyan": "cyan", "magenta": "magenta", "yellow": "yellow",
-    "черн": "black", "голуб": "cyan", "пурпурн": "magenta", "малинов": "magenta", "желт": "yellow",
+    "black": "black",
+    "cyan": "cyan",
+    "magenta": "magenta",
+    "yellow": "yellow",
+    "черн": "black",
+    "голуб": "cyan",
+    "пурпурн": "magenta",
+    "малинов": "magenta",
+    "желт": "yellow",
 }
 
 
@@ -686,13 +723,15 @@ def _parse_hp_supplies_html(data: bytes) -> list[TonerLevel]:
         pct = int(m.group(2))
         if color not in seen_colors:
             seen_colors.add(color)
-            toners.append(TonerLevel(
-                description=f"{color} cartridge",
-                color=color,
-                level_pct=max(0, min(100, pct)),
-                max_capacity=100,
-                current_level=max(0, min(100, pct)),
-            ))
+            toners.append(
+                TonerLevel(
+                    description=f"{color} cartridge",
+                    color=color,
+                    level_pct=max(0, min(100, pct)),
+                    max_capacity=100,
+                    current_level=max(0, min(100, pct)),
+                )
+            )
 
     if toners:
         return toners
@@ -710,13 +749,15 @@ def _parse_hp_supplies_html(data: bytes) -> list[TonerLevel]:
                 break
         if color and color not in seen_colors:
             seen_colors.add(color)
-            toners.append(TonerLevel(
-                description=f"{color} cartridge",
-                color=color,
-                level_pct=pct,
-                max_capacity=100,
-                current_level=pct,
-            ))
+            toners.append(
+                TonerLevel(
+                    description=f"{color} cartridge",
+                    color=color,
+                    level_pct=pct,
+                    max_capacity=100,
+                    current_level=pct,
+                )
+            )
 
     return toners
 
@@ -769,6 +810,7 @@ def _tcp_reachable(ip: str) -> bool:
 
 
 # ── Main poller ────────────────────────────────────────────────────────────
+
 
 async def _poll_printer_async(ip_address: str, community: str = "public") -> PrinterStatus:
     engine = SnmpEngine()
@@ -851,7 +893,8 @@ async def _poll_printer_async(ip_address: str, community: str = "public") -> Pri
     if not toners:
         logger.info(
             "%s (%s): no toner data via SNMP or HTTP",
-            ip_address, vendor or "unknown",
+            ip_address,
+            vendor or "unknown",
         )
 
     result = PrinterStatus(
@@ -885,6 +928,7 @@ def poll_printer(ip_address: str, community: str = "public") -> PrinterStatus:
     try:
         if loop and loop.is_running():
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 result = pool.submit(asyncio.run, _poll_printer_async(ip_address, community)).result()
         else:
@@ -915,7 +959,10 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
     comm = CommunityData(community)
     try:
         async for err, _, _, vb in walkCmd(
-            engine, comm, target, ContextData(),
+            engine,
+            comm,
+            target,
+            ContextData(),
             ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
             lexicographicMode=False,
         ):
@@ -934,11 +981,13 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
 def _get_mac_from_arp(ip_address: str) -> str | None:
     """Read MAC from system ARP table. Works with network_mode: host on Linux."""
     import subprocess
+
     # Ping to populate ARP cache
     try:
         subprocess.run(
             ["ping", "-c", "1", "-W", "1", ip_address],
-            capture_output=True, timeout=3,
+            capture_output=True,
+            timeout=3,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
@@ -957,7 +1006,9 @@ def _get_mac_from_arp(ip_address: str) -> str | None:
     try:
         out = subprocess.run(
             ["ip", "neigh", "show", ip_address],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
         ).stdout.strip()
         if "lladdr" in out:
             parts = out.split()
@@ -982,6 +1033,7 @@ def get_snmp_mac(ip_address: str, community: str = "public") -> str | None:
     try:
         if loop and loop.is_running():
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 mac = pool.submit(asyncio.run, _get_snmp_mac_async(ip_address, community)).result()
         else:

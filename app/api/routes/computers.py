@@ -1,7 +1,5 @@
 import asyncio
-import json
 import logging
-import socket
 import uuid
 from datetime import UTC, datetime
 
@@ -11,9 +9,11 @@ from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
-from app.core.redis import get_redis
-from app.models import Computer
-from app.schemas import ComputerCreate, ComputerPublic, ComputersPublic, ComputerUpdate, Message
+from app.domains.inventory.models import Computer
+from app.domains.inventory.reachability import probe_host_ports
+from app.domains.inventory.schemas import ComputerCreate, ComputerPublic, ComputersPublic, ComputerUpdate
+from app.domains.shared.schemas import Message
+from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
 from app.services.smart_search import build_ilike_filter
 
 router = APIRouter(tags=["computers"])
@@ -24,54 +24,21 @@ CACHE_TTL = 30
 
 
 async def _invalidate_cache() -> None:
-    try:
-        from app.api.websockets import broadcast_event
-
-        await broadcast_event("invalidate", "computers")
-        r = await get_redis()
-        keys = []
-        async for key in r.scan_iter("computers:*"):
-            keys.append(key)
-        if keys:
-            await r.delete(*keys)
-    except Exception as e:
-        logger.warning("Computers cache invalidation failed: %s", e)
+    await invalidate_entity_cache("computers")
 
 
 _COMPUTER_PROBE_PORTS = (445, 3389, 135)
 _COMPUTER_POLL_CONCURRENCY = 32
 
 
-def _resolve_hostname(hostname: str) -> str | None:
-    if not hostname:
-        return None
-    value = hostname.strip()
-    if not value:
-        return None
-    candidates = [value]
-    if "." not in value:
-        suffixes = [s.strip() for s in settings.DNS_SEARCH_SUFFIXES.split(",") if s.strip()]
-        candidates.extend([f"{value}.{suffix}" for suffix in suffixes])
-
-    for candidate in candidates:
-        try:
-            return socket.gethostbyname(candidate)
-        except OSError:
-            continue
-    return None
-
-
 def _probe_computer(hostname: str) -> tuple[bool, str | None]:
-    resolved_ip = _resolve_hostname(hostname)
-    if not resolved_ip:
-        return False, "dns_unresolved"
-    for port in _COMPUTER_PROBE_PORTS:
-        try:
-            with socket.create_connection((resolved_ip, port), timeout=1.2):
-                return True, None
-        except OSError:
-            continue
-    return False, "port_closed"
+    result = probe_host_ports(
+        hostname,
+        ports=_COMPUTER_PROBE_PORTS,
+        timeout=1.2,
+        dns_search_suffixes=settings.DNS_SEARCH_SUFFIXES,
+    )
+    return result.is_online, result.reason
 
 
 async def _probe_computers_bulk(rows: list[Computer]) -> dict[uuid.UUID, tuple[bool, str | None]]:
@@ -95,13 +62,8 @@ async def read_computers(
 ) -> ComputersPublic:
     del current_user
     cache_key = f"computers:{q or ''}:{skip}:{limit}"
-    try:
-        r = await get_redis()
-        cached = await r.get(cache_key)
-        if cached:
-            return ComputersPublic(**json.loads(cached))
-    except Exception:
-        pass
+    if cached := await get_cached_model(cache_key, ComputersPublic):
+        return cached
 
     statement = select(Computer)
     count_stmt = select(func.count()).select_from(Computer)
@@ -117,11 +79,7 @@ async def read_computers(
     count = session.exec(count_stmt).one()
     result = ComputersPublic(data=rows, count=count)
 
-    try:
-        r = await get_redis()
-        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
-    except Exception:
-        pass
+    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
 
     return result
 

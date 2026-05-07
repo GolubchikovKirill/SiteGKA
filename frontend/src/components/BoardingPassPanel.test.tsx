@@ -25,14 +25,24 @@ function renderPanel() {
   );
 }
 
+function getTodayDefaults() {
+  const today = new Date();
+  const yearStart = new Date(today.getFullYear(), 0, 0);
+  return {
+    flight_date: today.toISOString().slice(0, 10),
+    day_in_year: String(Math.floor((today.getTime() - yearStart.getTime()) / 86_400_000)).padStart(3, "0"),
+  };
+}
+
 describe("BoardingPassPanel", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     api.exportBoardingPass.mockReset();
   });
 
   it("prefills simple route mode with defaults", () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-03-11T12:00:00Z"));
 
     renderPanel();
@@ -40,8 +50,6 @@ describe("BoardingPassPanel", () => {
     expect(screen.getByDisplayValue("SVO")).toBeInTheDocument();
     expect(screen.getByDisplayValue("LED")).toBeInTheDocument();
     expect(screen.getByText("Шаблон по умолчанию: John Doe, BA1234, место 35A, сегодняшняя дата.")).toBeInTheDocument();
-
-    vi.useRealTimers();
   });
 
   it("submits only route fields and auto-fills the rest", async () => {
@@ -49,8 +57,7 @@ describe("BoardingPassPanel", () => {
     const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
     const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-11T12:00:00Z"));
+    const todayDefaults = getTodayDefaults();
 
     renderPanel();
 
@@ -70,8 +77,8 @@ describe("BoardingPassPanel", () => {
         to_code: "SFO",
         flight_operator: "BA",
         flight_number: "1234",
-        flight_date: "2026-03-11",
-        day_in_year: "070",
+        flight_date: todayDefaults.flight_date,
+        day_in_year: todayDefaults.day_in_year,
         travel_class: "Y",
         seat: "35A",
         boarding_index: "0001",
@@ -82,7 +89,6 @@ describe("BoardingPassPanel", () => {
     createUrl.mockRestore();
     revokeUrl.mockRestore();
     clickSpy.mockRestore();
-    vi.useRealTimers();
   });
 
   it("uses raw payload when it is provided", async () => {

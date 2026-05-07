@@ -235,4 +235,3 @@ def observe_service_edge(*, source: str, target: str, transport: str, operation:
             operation=operation,
             result=result,
         ).inc()
-

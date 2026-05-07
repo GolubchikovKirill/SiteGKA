@@ -47,15 +47,9 @@ class OneCExchangeService:
     def _build_missing_url_message(self, *, target: str) -> str:
         target_human = "Duty Free" if target == "duty_free" else "Duty Paid"
         ib_connection = (
-            settings.ONEC_DUTY_FREE_IB_CONNECTION
-            if target == "duty_free"
-            else settings.ONEC_DUTY_PAID_IB_CONNECTION
+            settings.ONEC_DUTY_FREE_IB_CONNECTION if target == "duty_free" else settings.ONEC_DUTY_PAID_IB_CONNECTION
         )
-        ib_domain = (
-            settings.ONEC_DUTY_FREE_DOMAIN
-            if target == "duty_free"
-            else settings.ONEC_DUTY_PAID_DOMAIN
-        )
+        ib_domain = settings.ONEC_DUTY_FREE_DOMAIN if target == "duty_free" else settings.ONEC_DUTY_PAID_DOMAIN
         terminal_server = (
             settings.ONEC_DUTY_FREE_TERMINAL_SERVER
             if target == "duty_free"

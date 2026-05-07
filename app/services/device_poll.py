@@ -120,7 +120,10 @@ async def _get_snmp_info(ip: str, community: str = "public") -> dict:
 
     try:
         err_indication, err_status, _, var_binds = await getCmd(
-            engine, comm, target, ContextData(),
+            engine,
+            comm,
+            target,
+            ContextData(),
             ObjectType(ObjectIdentity(OID_SYS_DESCR)),
             ObjectType(ObjectIdentity(OID_SYS_NAME)),
             ObjectType(ObjectIdentity(OID_SYS_UPTIME)),
@@ -159,7 +162,10 @@ async def _get_snmp_mac(ip: str, community: str = "public") -> str | None:
     comm = CommunityData(community)
     try:
         async for err, _, _, vb in walkCmd(
-            engine, comm, target, ContextData(),
+            engine,
+            comm,
+            target,
+            ContextData(),
             ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
             lexicographicMode=False,
         ):
@@ -177,10 +183,12 @@ async def _get_snmp_mac(ip: str, community: str = "public") -> str | None:
 
 def _get_mac_from_arp(ip: str) -> str | None:
     import subprocess
+
     try:
         subprocess.run(
             _ping_command(ip),
-            capture_output=True, timeout=3,
+            capture_output=True,
+            timeout=3,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
@@ -199,7 +207,9 @@ def _get_mac_from_arp(ip: str) -> str | None:
     try:
         out = subprocess.run(
             ["ip", "neigh", "show", ip],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
         ).stdout.strip()
         if "lladdr" in out:
             parts = out.split()
@@ -228,9 +238,12 @@ def _netbios_query_packet(name: str) -> bytes:
     """Build a NetBIOS Name Query Request packet."""
     header = struct.pack(
         ">HHHHHH",
-        0x0001,   # transaction id
-        0x0110,   # flags: recursion desired, broadcast
-        1, 0, 0, 0,  # 1 question, 0 answers
+        0x0001,  # transaction id
+        0x0110,  # flags: recursion desired, broadcast
+        1,
+        0,
+        0,
+        0,  # 1 question, 0 answers
     )
     qname = _netbios_encode_name(name)
     qtype_class = struct.pack(">HH", 0x0020, 0x0001)  # NB, IN
@@ -269,7 +282,7 @@ def _netbios_parse_response(data: bytes) -> str | None:
         # rdata: flags(2) + ip(4)
         offset += 2
         if offset + 4 <= len(data):
-            return socket.inet_ntoa(data[offset:offset + 4])
+            return socket.inet_ntoa(data[offset : offset + 4])
     except Exception:
         pass
     return None
@@ -319,6 +332,7 @@ def _netbios_resolve(name: str, subnets: list[str] | None = None) -> str | None:
 
         import select as _select
         import time
+
         end = time.monotonic() + 3.0
         while time.monotonic() < end:
             remaining = end - time.monotonic()
@@ -399,7 +413,9 @@ async def poll_device(address: str, community: str = "public") -> DeviceStatus:
     mac_task = _get_snmp_mac(ip, community)
 
     open_ports, snmp_info, mac = await asyncio.gather(
-        ports_task, snmp_task, mac_task,
+        ports_task,
+        snmp_task,
+        mac_task,
     )
 
     status.open_ports = open_ports
@@ -429,6 +445,7 @@ async def poll_device(address: str, community: str = "public") -> DeviceStatus:
 def _check_arp_for_mac(target_mac: str) -> str | None:
     """Check current ARP table for a MAC address (no scanning)."""
     import subprocess
+
     target_mac = target_mac.lower().strip()
 
     try:
@@ -442,7 +459,10 @@ def _check_arp_for_mac(target_mac: str) -> str | None:
 
     try:
         out = subprocess.run(
-            ["ip", "neigh"], capture_output=True, text=True, timeout=5,
+            ["ip", "neigh"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         ).stdout
         for line in out.strip().split("\n"):
             if target_mac in line.lower():
@@ -491,7 +511,10 @@ def _arp_table_mac_to_ip() -> dict[str, str]:
 
     try:
         neigh = subprocess.run(
-            ["ip", "neigh"], capture_output=True, text=True, timeout=5,
+            ["ip", "neigh"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         ).stdout
         for line in neigh.strip().split("\n"):
             parts = line.split()
@@ -548,7 +571,7 @@ async def find_devices_by_macs(macs: list[str], subnets: list[str] | None = None
     # Ping sweep in bounded batches to avoid self-induced packet storms.
     batch_size = _PING_SWEEP_CONCURRENCY
     for i in range(0, len(hosts), batch_size):
-        batch = hosts[i:i + batch_size]
+        batch = hosts[i : i + batch_size]
         await asyncio.gather(*[_async_ping(h) for h in batch])
         arp_map = await asyncio.to_thread(_arp_table_mac_to_ip)
         for mac in targets - found.keys():
@@ -577,6 +600,7 @@ def poll_device_sync(address: str, community: str = "public") -> DeviceStatus:
 
     if loop and loop.is_running():
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, poll_device(address, community)).result()
     else:

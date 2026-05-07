@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends
 from sqlmodel import select
 
 from app.api.deps import SessionDep, get_current_active_superuser
-from app.models import CashRegister
-from app.schemas import OneCExchangeByBarcodeRequest, OneCExchangeByBarcodeResponse
+from app.domains.integrations.schemas import OneCExchangeByBarcodeRequest, OneCExchangeByBarcodeResponse
+from app.domains.operations.models import CashRegister
 from app.services.onec_exchange import OneCExchangeService
 
 router = APIRouter(tags=["1c-exchange"])

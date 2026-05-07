@@ -13,9 +13,9 @@ from sqlmodel import Session
 from app.core.config import settings
 from app.core.db import engine
 from app.core.security import ALGORITHM, is_token_blacklisted
-from app.models import User
+from app.domains.identity.models import User
+from app.domains.identity.schemas import TokenPayload
 from app.observability.metrics import auth_events_total
-from app.schemas import TokenPayload
 
 reusable_oauth2 = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
 

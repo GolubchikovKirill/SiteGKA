@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query
 
 from app.api.deps import CurrentUser, SessionDep
-from app.schemas import ServiceFlowMapPublic, ServiceFlowTimeseriesPublic
+from app.domains.operations.schemas import ServiceFlowMapPublic, ServiceFlowTimeseriesPublic
 from app.services.service_flow import build_service_flow_map, build_service_flow_timeseries
 
 router = APIRouter(tags=["observability"])

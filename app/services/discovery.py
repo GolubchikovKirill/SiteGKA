@@ -102,8 +102,7 @@ def _parse_subnets(subnet_str: str) -> list[str]:
                 all_ips.append(ip_str)
                 if len(all_ips) > max_hosts:
                     raise ValueError(
-                        f"Too many hosts to scan ({len(all_ips)}). "
-                        f"Limit is {max_hosts}; split subnet ranges."
+                        f"Too many hosts to scan ({len(all_ips)}). Limit is {max_hosts}; split subnet ranges."
                     )
         except ValueError as exc:
             if "Too many hosts" in str(exc):
@@ -231,12 +230,7 @@ def _is_likely_iconbit_response(main_text: str, status_xml_text: str | None, now
     text = main_text.lower()
     if any(h in text for h in _PRINTER_HINTS):
         return False
-    page_hints = (
-        "delete?file=" in text
-        or "/play" in text
-        or "/stop" in text
-        or "iconbit" in text
-    )
+    page_hints = "delete?file=" in text or "/play" in text or "/stop" in text or "iconbit" in text
     status_hints = False
     if status_xml_text:
         xml = status_xml_text.lower()
@@ -273,7 +267,9 @@ async def _iconbit_fingerprint(ip: str) -> dict[str, str | None]:
     return {}
 
 
-async def _update_progress(kind: str, status: str, scanned: int, total: int, found: int, message: str | None = None) -> None:
+async def _update_progress(
+    kind: str, status: str, scanned: int, total: int, found: int, message: str | None = None
+) -> None:
     r = await get_redis()
     payload = {"status": status, "scanned": scanned, "total": total, "found": found, "message": message}
     await r.setex(_progress_key(kind), DISCOVERY_TTL, json.dumps(payload))
@@ -318,7 +314,9 @@ async def run_discovery_scan(kind: str, subnet: str, ports_str: str, known_devic
             await _update_progress(kind, "running", scanned, len(all_ips), len(devices))
 
         if devices:
-            await _update_progress(kind, "running", len(all_ips), len(all_ips), len(devices), "Идентификация устройств…")
+            await _update_progress(
+                kind, "running", len(all_ips), len(all_ips), len(devices), "Идентификация устройств…"
+            )
             if kind == "iconbit":
                 semaphore = asyncio.Semaphore(_DISCOVERY_IDENTIFY_CONCURRENCY)
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 from contextlib import asynccontextmanager
@@ -10,6 +11,9 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+os.environ.setdefault("FIRST_SUPERUSER_PASSWORD", "TestPassword123!")
+os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-internal-token")
 
 from app.api import deps
 from app.core.limiter import limiter as app_limiter
@@ -59,6 +63,7 @@ def client(db_session, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(auth_routes, "blacklist_token", _blacklist_token)
     monkeypatch.setattr(auth_routes, "is_token_blacklisted", _is_blacklisted)
+
     def _fake_check_request_limit(request, _endpoint, _in_middleware=True):
         request.state.view_rate_limit = None
         return None

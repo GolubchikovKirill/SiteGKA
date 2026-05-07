@@ -12,7 +12,8 @@ from app.core.config import settings
 from app.core.db import engine
 from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import close_redis, get_redis
-from app.models import MediaPlayer, NetworkSwitch
+from app.domains.inventory.models import MediaPlayer, NetworkSwitch
+from app.domains.shared.schemas import Message
 from app.observability.metrics import (
     media_player_ops_total,
     switch_ops_total,
@@ -20,7 +21,6 @@ from app.observability.metrics import (
     switch_port_ops_total,
 )
 from app.observability.tracing import setup_tracing
-from app.schemas import Message
 from app.services.cisco_ssh import poe_cycle_ap, reboot_ap
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
@@ -318,7 +318,11 @@ async def _run_port_write(switch_id: str, port: str, operation: str, callback) -
     return Message(message="ok")
 
 
-@app.post("/switches/{switch_id}/ports/{port:path}/admin-state", response_model=Message, dependencies=[Depends(_verify_internal_token)])
+@app.post(
+    "/switches/{switch_id}/ports/{port:path}/admin-state",
+    response_model=Message,
+    dependencies=[Depends(_verify_internal_token)],
+)
 async def set_port_admin_state(switch_id: str, port: str, body: dict = Body(default_factory=dict)) -> Message:
     admin_state = str(body.get("admin_state", "")).strip().lower()
     if admin_state not in {"up", "down"}:
@@ -331,7 +335,11 @@ async def set_port_admin_state(switch_id: str, port: str, body: dict = Body(defa
     )
 
 
-@app.post("/switches/{switch_id}/ports/{port:path}/description", response_model=Message, dependencies=[Depends(_verify_internal_token)])
+@app.post(
+    "/switches/{switch_id}/ports/{port:path}/description",
+    response_model=Message,
+    dependencies=[Depends(_verify_internal_token)],
+)
 async def set_port_description(switch_id: str, port: str, body: dict = Body(default_factory=dict)) -> Message:
     description = str(body.get("description", ""))
     return await _run_port_write(
@@ -342,7 +350,11 @@ async def set_port_description(switch_id: str, port: str, body: dict = Body(defa
     )
 
 
-@app.post("/switches/{switch_id}/ports/{port:path}/vlan", response_model=Message, dependencies=[Depends(_verify_internal_token)])
+@app.post(
+    "/switches/{switch_id}/ports/{port:path}/vlan",
+    response_model=Message,
+    dependencies=[Depends(_verify_internal_token)],
+)
 async def set_port_vlan(switch_id: str, port: str, body: dict = Body(default_factory=dict)) -> Message:
     vlan = int(body.get("vlan", 0))
     if vlan < 1 or vlan > 4094:
@@ -355,7 +367,11 @@ async def set_port_vlan(switch_id: str, port: str, body: dict = Body(default_fac
     )
 
 
-@app.post("/switches/{switch_id}/ports/{port:path}/poe", response_model=Message, dependencies=[Depends(_verify_internal_token)])
+@app.post(
+    "/switches/{switch_id}/ports/{port:path}/poe",
+    response_model=Message,
+    dependencies=[Depends(_verify_internal_token)],
+)
 async def set_port_poe(switch_id: str, port: str, body: dict = Body(default_factory=dict)) -> Message:
     action = str(body.get("action", "")).strip().lower()
     if action not in {"on", "off", "cycle"}:
@@ -368,7 +384,11 @@ async def set_port_poe(switch_id: str, port: str, body: dict = Body(default_fact
     )
 
 
-@app.post("/switches/{switch_id}/ports/{port:path}/mode", response_model=Message, dependencies=[Depends(_verify_internal_token)])
+@app.post(
+    "/switches/{switch_id}/ports/{port:path}/mode",
+    response_model=Message,
+    dependencies=[Depends(_verify_internal_token)],
+)
 async def set_port_mode(switch_id: str, port: str, body: dict = Body(default_factory=dict)) -> Message:
     mode = str(body.get("mode", "")).strip().lower()
     if mode not in {"access", "trunk"}:

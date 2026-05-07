@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models import NetworkSwitch
+from app.domains.inventory.models import NetworkSwitch
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 from app.services.switches.snmp_provider import SnmpSwitchProvider
 

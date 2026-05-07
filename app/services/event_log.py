@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.models import EventLog
+from app.domains.operations.models import EventLog
 from app.services.kafka_events import publish_event
 
 _SEVERITIES = {"info", "warning", "error", "critical"}

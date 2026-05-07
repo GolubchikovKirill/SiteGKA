@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 
-from app.models import NetworkSwitch
+from app.domains.inventory.models import NetworkSwitch
 from app.services.cisco_ssh import CiscoSSH, get_switch_info
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 from app.services.switches.snmp_provider import SnmpSwitchProvider

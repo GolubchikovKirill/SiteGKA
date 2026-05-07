@@ -6,8 +6,8 @@ from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
-from app.models import Printer
-from app.schemas import (
+from app.domains.inventory.models import Printer
+from app.domains.inventory.schemas import (
     PrinterCreate,
     PrinterPublic,
     ScanProgress,
@@ -193,9 +193,7 @@ def update_printer_ip(
         raise HTTPException(status_code=404, detail="Printer not found")
     old_ip = printer.ip_address
     if new_ip:
-        conflict = session.exec(
-            select(Printer).where(Printer.ip_address == new_ip, Printer.id != printer.id)
-        ).first()
+        conflict = session.exec(select(Printer).where(Printer.ip_address == new_ip, Printer.id != printer.id)).first()
         if conflict:
             raise HTTPException(status_code=409, detail="Another printer already has this IP")
         printer.ip_address = new_ip
@@ -235,7 +233,9 @@ async def get_scanner_settings(session: SessionDep, current_user: CurrentUser) -
 
 
 @router.post("/smart-search/computers", response_model=SmartNetworkSearchPublic)
-async def smart_search_computers(body: SmartNetworkSearchRequest, session: SessionDep, current_user: CurrentUser) -> SmartNetworkSearchPublic:
+async def smart_search_computers(
+    body: SmartNetworkSearchRequest, session: SessionDep, current_user: CurrentUser
+) -> SmartNetworkSearchPublic:
     del current_user
     general = get_general_settings(session)
     used_subnet = body.subnet or general["scan_subnet"]

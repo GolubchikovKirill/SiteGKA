@@ -43,9 +43,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_cashregister_cash_number"), "cashregister", ["cash_number"], unique=False)
     op.create_index(op.f("ix_cashregister_created_at"), "cashregister", ["created_at"], unique=False)
     op.create_index(op.f("ix_cashregister_hostname"), "cashregister", ["hostname"], unique=False)
-    op.create_index(
-        op.f("ix_cashregister_inventory_number"), "cashregister", ["inventory_number"], unique=False
-    )
+    op.create_index(op.f("ix_cashregister_inventory_number"), "cashregister", ["inventory_number"], unique=False)
     op.create_index(op.f("ix_cashregister_is_online"), "cashregister", ["is_online"], unique=False)
     op.create_index(op.f("ix_cashregister_kkm_number"), "cashregister", ["kkm_number"], unique=False)
     op.create_index(op.f("ix_cashregister_kkm_type"), "cashregister", ["kkm_type"], unique=False)

@@ -1,6 +1,7 @@
 from sqlmodel import Session, create_engine
 
 from app.core.config import settings
+from app.domains.identity.models import User
 
 engine = create_engine(
     str(settings.SQLALCHEMY_DATABASE_URI),
@@ -14,7 +15,6 @@ def init_db(session: Session) -> None:
     from sqlmodel import select
 
     from app.core.security import get_password_hash
-    from app.models import User
 
     if settings.ENVIRONMENT == "production" and settings._is_weak_bootstrap_password(settings.FIRST_SUPERUSER_PASSWORD):
         raise RuntimeError("Refusing to bootstrap admin user with a weak production password")

@@ -4,6 +4,7 @@ from time import monotonic
 from fastapi.testclient import TestClient
 
 from app.api.routes import switches as switch_routes
+from app.domains.inventory import switch_polling
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 
 
@@ -70,7 +71,7 @@ def test_create_and_poll_switch(client: TestClient, admin_token: str, monkeypatc
         def set_poe(self, _switch, _port, _action):
             return None
 
-    monkeypatch.setattr(switch_routes, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
+    monkeypatch.setattr(switch_polling, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
 
     created = client.post(
         "/api/v1/switches/",
@@ -309,6 +310,7 @@ def test_switch_write_rejects_unsafe_port_identifier(client: TestClient, admin_t
             return None
 
     fake_redis = _FakeRedis()
+
     async def _fake_get_redis():
         return fake_redis
 
@@ -359,6 +361,7 @@ def test_switch_poe_cycle_is_rate_limited_by_cooldown(client: TestClient, admin_
             return None
 
     fake_redis = _FakeRedis()
+
     async def _fake_get_redis():
         return fake_redis
 

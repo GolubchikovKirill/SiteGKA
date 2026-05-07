@@ -16,4 +16,3 @@ def start_worker_metrics_server(**_kwargs) -> None:
     port = int(os.getenv("WORKER_METRICS_PORT", "9108"))
     start_http_server(port)
     _started = True
-

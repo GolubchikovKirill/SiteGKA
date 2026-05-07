@@ -11,7 +11,11 @@ from app.core.config import settings
 from app.core.db import engine
 from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import close_redis, get_redis
-from app.models import CashRegister, MediaPlayer, NetworkSwitch, Printer
+from app.domains.inventory.models import MediaPlayer, NetworkSwitch, Printer
+from app.domains.inventory.schemas import MediaPlayersPublic, NetworkSwitchPublic, PrintersPublic
+from app.domains.operations.models import CashRegister
+from app.domains.operations.schemas import CashRegisterPublic, CashRegistersPublic
+from app.domains.shared.schemas import Message
 from app.observability.tracing import setup_tracing
 from app.services.polling_orchestrator import (
     poll_all_cash_registers_local,
@@ -20,14 +24,6 @@ from app.services.polling_orchestrator import (
     poll_all_switches_local,
     poll_cash_register_local,
     poll_switch_local,
-)
-from app.schemas import (
-    CashRegisterPublic,
-    CashRegistersPublic,
-    MediaPlayersPublic,
-    Message,
-    NetworkSwitchPublic,
-    PrintersPublic,
 )
 
 
@@ -83,7 +79,9 @@ async def poll_switches() -> Message:
         return await poll_all_switches_local(session=session)
 
 
-@app.post("/poll/switches/{switch_id}", response_model=NetworkSwitchPublic, dependencies=[Depends(_verify_internal_token)])
+@app.post(
+    "/poll/switches/{switch_id}", response_model=NetworkSwitchPublic, dependencies=[Depends(_verify_internal_token)]
+)
 async def poll_switch(switch_id: str) -> NetworkSwitchPublic:
     with Session(engine) as session:
         return await poll_switch_local(switch_id=uuid.UUID(switch_id), session=session)

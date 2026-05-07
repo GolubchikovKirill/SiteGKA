@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 from sqlmodel import Session, select
 
 from app.core.security import get_password_hash, needs_rehash, verify_password
-from app.models import User
-from app.schemas import UserCreate, UserUpdate
+from app.domains.identity.models import User
+from app.domains.identity.schemas import UserCreate, UserUpdate
 
 
 def create_user(*, session: Session, user_create: UserCreate) -> User:

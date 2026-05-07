@@ -1,8 +1,4 @@
-import asyncio
 import csv
-import json
-import logging
-import socket
 import uuid
 from datetime import UTC, datetime
 from io import StringIO
@@ -13,103 +9,32 @@ from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
-from app.core.redis import get_redis
-from app.models import CashRegister
-from app.schemas import (
+from app.domains.operations.cash_register_polling import (
+    CashRegisterNotFoundError,
+    cash_register_offline_reason_ru,
+    poll_all_cash_registers_local,
+    poll_single_cash_register_local,
+)
+from app.domains.operations.models import CashRegister
+from app.domains.operations.schemas import (
     CashRegisterCreate,
     CashRegisterPublic,
     CashRegistersPublic,
     CashRegisterUpdate,
-    Message,
 )
-from app.services.event_log import write_event_log
+from app.domains.shared.schemas import Message
+from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
 from app.services.internal_services import _proxy_request
-from app.services.ping import check_port
 from app.services.smart_search import build_ilike_filter
-
-logger = logging.getLogger(__name__)
 
 CACHE_TTL = 30
 
 
 async def _invalidate_cache() -> None:
-    try:
-        from app.api.websockets import broadcast_event
-
-        await broadcast_event("invalidate", "cash_registers")
-        r = await get_redis()
-        keys = []
-        async for key in r.scan_iter("cash_registers:*"):
-            keys.append(key)
-        if keys:
-            await r.delete(*keys)
-    except Exception as e:
-        logger.warning("Cash registers cache invalidation failed: %s", e)
+    await invalidate_entity_cache("cash_registers")
 
 
 router = APIRouter(tags=["cash-registers"])
-
-
-def _probe_register(hostname: str) -> tuple[bool, str | None]:
-    # Resolve first so obvious DNS issues are treated as offline fast.
-    host = hostname.strip()
-    resolved_target: str | None = None
-    candidates = [host]
-    if "." not in host and settings.DNS_SEARCH_SUFFIXES:
-        for suffix in settings.DNS_SEARCH_SUFFIXES.split(","):
-            normalized = suffix.strip().strip(".")
-            if normalized:
-                candidates.append(f"{host}.{normalized}")
-
-    for candidate in candidates:
-        try:
-            resolved_target = socket.gethostbyname(candidate)
-            break
-        except OSError:
-            continue
-
-    if not resolved_target:
-        return False, "dns_unresolved"
-    # Try common Windows service ports.
-    if check_port(resolved_target, port=3389, timeout=1.5) or check_port(resolved_target, port=445, timeout=1.5):
-        return True, None
-    return False, "port_closed"
-
-
-def _offline_reason_ru(reason: str | None) -> str:
-    if reason == "dns_unresolved":
-        return "hostname не резолвится"
-    if reason == "port_closed":
-        return "сетевые порты недоступны"
-    return "хост недоступен"
-
-
-def _record_status_change(session, reg: CashRegister, prev_online: bool | None) -> None:
-    if prev_online == reg.is_online:
-        return
-    if reg.is_online:
-        write_event_log(
-            session,
-            event_type="cash_register_online",
-            category="availability",
-            severity="info",
-            device_kind="cash_register",
-            device_name=f"ККМ №{reg.kkm_number}",
-            ip_address=reg.hostname,
-            message=f"Касса ККМ №{reg.kkm_number} снова online ({reg.hostname})",
-        )
-        return
-    reason = _offline_reason_ru(reg.reachability_reason)
-    write_event_log(
-        session,
-        event_type="cash_register_offline",
-        category="availability",
-        severity="warning",
-        device_kind="cash_register",
-        device_name=f"ККМ №{reg.kkm_number}",
-        ip_address=reg.hostname,
-        message=f"Касса ККМ №{reg.kkm_number} offline ({reason})",
-    )
 
 
 @router.get("/", response_model=CashRegistersPublic)
@@ -121,13 +46,8 @@ async def read_cash_registers(
     q: str | None = Query(default=None),
 ) -> CashRegistersPublic:
     cache_key = f"cash_registers:{q or ''}:{skip}:{limit}"
-    try:
-        r = await get_redis()
-        cached = await r.get(cache_key)
-        if cached:
-            return CashRegistersPublic(**json.loads(cached))
-    except Exception:
-        pass
+    if cached := await get_cached_model(cache_key, CashRegistersPublic):
+        return cached
 
     del current_user
     statement = select(CashRegister)
@@ -151,11 +71,7 @@ async def read_cash_registers(
     rows = session.exec(statement.order_by(CashRegister.kkm_number).offset(skip).limit(limit)).all()
     result = CashRegistersPublic(data=rows, count=count)
 
-    try:
-        r = await get_redis()
-        await r.setex(cache_key, CACHE_TTL, result.model_dump_json())
-    except Exception:
-        pass
+    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
 
     return result
 
@@ -208,19 +124,10 @@ async def poll_cash_register(
         )
         return CashRegisterPublic.model_validate(payload)
 
-    cash = session.get(CashRegister, cash_id)
-    if not cash:
+    try:
+        return await poll_single_cash_register_local(session=session, cash_id=cash_id)
+    except CashRegisterNotFoundError:
         raise HTTPException(status_code=404, detail="Cash register not found")
-    prev_online = cash.is_online
-    is_online, reason = await asyncio.to_thread(_probe_register, cash.hostname)
-    cash.is_online = is_online
-    cash.reachability_reason = reason
-    cash.last_polled_at = datetime.now(UTC)
-    _record_status_change(session, cash, prev_online)
-    session.add(cash)
-    session.commit()
-    session.refresh(cash)
-    return cash
 
 
 @router.post("/poll-all", response_model=CashRegistersPublic)
@@ -234,18 +141,7 @@ async def poll_all_cash_registers(session: SessionDep, current_user: CurrentUser
         )
         return CashRegistersPublic.model_validate(payload)
 
-    rows = session.exec(select(CashRegister)).all()
-    for row in rows:
-        prev_online = row.is_online
-        is_online, reason = await asyncio.to_thread(_probe_register, row.hostname)
-        row.is_online = is_online
-        row.reachability_reason = reason
-        row.last_polled_at = datetime.now(UTC)
-        _record_status_change(session, row, prev_online)
-        session.add(row)
-    session.commit()
-    result = session.exec(select(CashRegister).order_by(CashRegister.kkm_number)).all()
-    return CashRegistersPublic(data=result, count=len(result))
+    return await poll_all_cash_registers_local(session=session)
 
 
 @router.get("/export")
@@ -309,7 +205,7 @@ def export_cash_registers_csv(
                 row.hostname,
                 row.comment or "",
                 "online" if row.is_online else "offline",
-                _offline_reason_ru(row.reachability_reason) if row.is_online is False else "",
+                cash_register_offline_reason_ru(row.reachability_reason) if row.is_online is False else "",
                 row.last_polled_at.isoformat() if row.last_polled_at else "",
             ]
         )

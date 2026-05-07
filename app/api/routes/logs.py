@@ -2,8 +2,8 @@ from fastapi import APIRouter, Query
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models import EventLog
-from app.schemas import EventLogsPublic
+from app.domains.operations.models import EventLog
+from app.domains.operations.schemas import EventLogsPublic
 from app.services.smart_search import build_ilike_filter
 
 router = APIRouter(tags=["logs"])
